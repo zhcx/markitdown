@@ -6,6 +6,9 @@ on:
       - 'v*'
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     strategy:
@@ -26,6 +29,10 @@ jobs:
             arch: 'x64'
 
     runs-on: ${{ matrix.platform }}
+
+    defaults:
+      run:
+        working-directory: .
 
     steps:
       - name: Checkout repository
@@ -51,6 +58,7 @@ jobs:
         uses: swatinem/rust-cache@v2
         with:
           target: ${{ matrix.target }}
+          workspaces: './src-tauri -> target'
 
       - name: Install frontend dependencies
         run: npm ci
