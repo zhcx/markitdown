@@ -1,0 +1,378 @@
+import { useState, useRef, useEffect } from 'react';
+import { useAppStore } from '../../stores/appStore';
+import { open, save } from '@tauri-apps/plugin-dialog';
+import { invoke } from '@tauri-apps/api/core';
+
+interface MenuItem {
+  label: string;
+  action?: () => void;
+  shortcut?: string;
+  divider?: boolean;
+}
+
+interface MenuGroup {
+  label: string;
+  items: MenuItem[];
+}
+
+interface HelpModalProps {
+  type: 'shortcuts' | 'syntax' | 'about';
+  onClose: () => void;
+}
+
+function HelpModal({ type, onClose }: HelpModalProps) {
+  const content = {
+    shortcuts: {
+      title: '快捷键说明',
+      body: `
+**文件操作**
+• Ctrl+N - 新建文件
+• Ctrl+O - 打开文件
+• Ctrl+S - 保存文件
+• Ctrl+Shift+S - 另存为
+
+**编辑操作**
+• Ctrl+Z - 撤销
+• Ctrl+Y - 重做
+• Ctrl+X - 剪切
+• Ctrl+C - 复制
+• Ctrl+V - 粘贴
+• Ctrl+A - 全选
+
+**格式化**
+• Ctrl+B - 加粗
+• Ctrl+I - 斜体
+• Ctrl+K - 插入链接
+
+**视图**
+• F11 - 全屏切换
+      `
+    },
+    syntax: {
+      title: 'Markdown 语法说明',
+      body: `
+**标题**
+# 一级标题
+## 二级标题
+### 三级标题
+
+**文本样式**
+**粗体** 或 __粗体__
+*斜体* 或 _斜体_
+~~删除线~~
+==高亮==
+
+**列表**
+- 无序列表项
+1. 有序列表项
+- [ ] 任务列表项
+
+**链接和图片**
+[链接文本](URL)
+![图片描述](图片URL)
+
+**代码**
+\`行内代码\`
+\`\`\`
+代码块
+\`\`\`
+
+**引用**
+> 引用内容
+
+**表格**
+| 列1 | 列2 |
+|---|---|
+| 内容 | 内容 |
+
+**分割线**
+---
+
+**数学公式**
+行内公式: $E=mc^2$
+块公式: $$E=mc^2$$
+
+**Mermaid图表**
+\`\`\`mermaid
+graph TD
+  A --> B
+\`\`\`
+      `
+    },
+    about: {
+      title: '关于 MarkitDown',
+      body: `
+**MarkitDown v0.1.0**
+
+一款现代化的 Markdown 编辑器
+
+**功能特点**
+• 实时预览
+• 多标签页编辑
+• 支持数学公式
+• 支持 Mermaid 图表
+• 多种图床支持
+• 深色/浅色主题
+
+**技术栈**
+Tauri 2.0 + React + TypeScript
+
+---
+
+© 2024 MarkitDown
+      `
+    }
+  };
+
+  const { title, body } = content[type];
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2>{title}</h2>
+          <button className="modal-close" onClick={onClose}>×</button>
+        </div>
+        <div className="modal-body">
+          <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', margin: 0 }}>{body}</pre>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function MenuBar() {
+  const {
+    content,
+    currentFile,
+    settings,
+    setSettings,
+    setSettingsOpen,
+    addTab,
+    saveFile
+  } = useAppStore();
+
+  const [activeMenu, setActiveMenu] = useState<string | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [helpModal, setHelpModal] = useState<'shortcuts' | 'syntax' | 'about' | null>(null);
+  const menubarRef = useRef<HTMLDivElement>(null);
+  const mouseOverMenuRef = useRef(false);
+
+  const handleNewFile = () => {
+    addTab();
+    setActiveMenu(null);
+  };
+
+  const handleOpenFile = async () => {
+    try {
+      const selected = await open({
+        filters: [{ name: 'Markdown', extensions: ['md', 'txt'] }],
+        multiple: true,
+      });
+      if (selected) {
+        const files = Array.isArray(selected) ? selected : [selected];
+        for (const file of files) {
+          const fileContent = await invoke<string>('get_file_content', { path: file });
+          addTab({ path: file as string, content: fileContent, title: (file as string).split(/[\\/]/).pop() || '未命名' });
+        }
+      }
+    } catch (error) {
+      console.error('Failed to open file:', error);
+    }
+    setActiveMenu(null);
+  };
+
+  const handleSaveFile = async () => {
+    if (currentFile) {
+      await saveFile(currentFile);
+    } else {
+      await handleSaveAs();
+    }
+    setActiveMenu(null);
+  };
+
+  const handleSaveAs = async () => {
+    try {
+      const selected = await save({
+        filters: [{ name: 'Markdown', extensions: ['md'] }],
+        defaultPath: currentFile || 'untitled.md',
+      });
+      if (selected) {
+        await saveFile(selected as string);
+      }
+    } catch (error) {
+      console.error('Failed to save file:', error);
+    }
+    setActiveMenu(null);
+  };
+
+  const handleExport = async (format: 'pdf' | 'html') => {
+    try {
+      const selected = await save({
+        filters: [{ name: format.toUpperCase(), extensions: [format] }],
+        defaultPath: `document.${format}`,
+      });
+      if (selected) {
+        if (format === 'html') {
+          const html = await invoke<string>('export_html', {
+            content,
+            template: settings.export.html_template
+          });
+          await invoke('save_file_content', { path: selected, content: html });
+        }
+      }
+    } catch (error) {
+      console.error('Failed to export:', error);
+    }
+    setActiveMenu(null);
+  };
+
+  const menus: MenuGroup[] = [
+    {
+      label: '文件',
+      items: [
+        { label: '新建', action: handleNewFile, shortcut: 'Ctrl+N' },
+        { label: '打开', action: handleOpenFile, shortcut: 'Ctrl+O' },
+        { label: '保存', action: handleSaveFile, shortcut: 'Ctrl+S' },
+        { label: '另存为', action: handleSaveAs, shortcut: 'Ctrl+Shift+S' },
+        { divider: true, label: '' },
+        { label: '导出为 HTML', action: () => handleExport('html') },
+        { label: '导出为 PDF', action: () => handleExport('pdf') },
+      ],
+    },
+    {
+      label: '编辑',
+      items: [
+        { label: '撤销', action: () => document.execCommand('undo'), shortcut: 'Ctrl+Z' },
+        { label: '重做', action: () => document.execCommand('redo'), shortcut: 'Ctrl+Y' },
+        { divider: true, label: '' },
+        { label: '剪切', action: () => document.execCommand('cut'), shortcut: 'Ctrl+X' },
+        { label: '复制', action: () => document.execCommand('copy'), shortcut: 'Ctrl+C' },
+        { label: '粘贴', action: () => document.execCommand('paste'), shortcut: 'Ctrl+V' },
+        { divider: true, label: '' },
+        { label: '全选', action: () => document.execCommand('selectAll'), shortcut: 'Ctrl+A' },
+      ],
+    },
+    {
+      label: '视图',
+      items: [
+        { label: '分屏模式', action: () => useAppStore.getState().setMode('split') },
+        { label: '沉浸模式', action: () => useAppStore.getState().setMode('immersive') },
+        { divider: true, label: '' },
+        { label: '浅色主题', action: () => {
+          setSettings({
+            ...settings,
+            appearance: { ...settings.appearance, theme: 'light' }
+          });
+          setActiveMenu(null);
+        }},
+        { label: '深色主题', action: () => {
+          setSettings({
+            ...settings,
+            appearance: { ...settings.appearance, theme: 'dark' }
+          });
+          setActiveMenu(null);
+        }},
+        { label: 'Solarized主题', action: () => {
+          setSettings({
+            ...settings,
+            appearance: { ...settings.appearance, theme: 'solarized' }
+          });
+          setActiveMenu(null);
+        }},
+        { divider: true, label: '' },
+        { label: '设置', action: () => setSettingsOpen(true) },
+      ],
+    },
+    {
+      label: '帮助',
+      items: [
+        { label: '快捷键说明', action: () => setHelpModal('shortcuts') },
+        { label: 'Markdown 语法', action: () => setHelpModal('syntax') },
+        { divider: true, label: '' },
+        { label: '关于 MarkitDown', action: () => setHelpModal('about') },
+      ],
+    },
+  ];
+
+  // Close menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menubarRef.current && !menubarRef.current.contains(event.target as Node)) {
+        setActiveMenu(null);
+        setMenuOpen(false);
+        mouseOverMenuRef.current = false;
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  return (
+    <>
+      <div className="menubar" ref={menubarRef}
+        onMouseEnter={() => {
+          mouseOverMenuRef.current = true;
+        }}
+        onMouseLeave={() => {
+          mouseOverMenuRef.current = false;
+          setTimeout(() => {
+            if (!mouseOverMenuRef.current) {
+              setActiveMenu(null);
+              setMenuOpen(false);
+            }
+          }, 150);
+        }}
+      >
+        {menus.map((menu) => (
+          <div
+            key={menu.label}
+            className="menu-item"
+            onMouseEnter={() => {
+              // If menu is already open, switch to this menu automatically
+              if (menuOpen) {
+                setActiveMenu(menu.label);
+              }
+            }}
+          >
+            <button
+              className={`menu-trigger ${activeMenu === menu.label ? 'active' : ''}`}
+              onClick={() => {
+                if (activeMenu === menu.label && menuOpen) {
+                  setActiveMenu(null);
+                  setMenuOpen(false);
+                } else {
+                  setActiveMenu(menu.label);
+                  setMenuOpen(true);
+                }
+              }}
+            >
+              {menu.label}
+            </button>
+            {menuOpen && activeMenu === menu.label && (
+              <div className="menu-dropdown">
+                {menu.items.map((item, index) => (
+                  item.divider ? (
+                    <div key={index} className="menu-divider" />
+                  ) : (
+                    <button
+                      key={index}
+                      className="menu-option"
+                      onClick={item.action}
+                    >
+                      <span>{item.label}</span>
+                      {item.shortcut && <span className="shortcut">{item.shortcut}</span>}
+                    </button>
+                  )
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+      {helpModal && (
+        <HelpModal type={helpModal} onClose={() => setHelpModal(null)} />
+      )}
+    </>
+  );
+}

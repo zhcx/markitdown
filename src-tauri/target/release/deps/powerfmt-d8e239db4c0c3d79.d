@@ -1,0 +1,11 @@
+D:\Documents\Claude Code\Markitdown\markitdown\src-tauri\target\release\deps\powerfmt-d8e239db4c0c3d79.d: C:\Users\zhcx\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\powerfmt-0.2.0\src\lib.rs C:\Users\zhcx\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\powerfmt-0.2.0\src\buf.rs C:\Users\zhcx\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\powerfmt-0.2.0\src\ext.rs C:\Users\zhcx\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\powerfmt-0.2.0\src\smart_display.rs C:\Users\zhcx\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\powerfmt-0.2.0\src\smart_display_impls.rs
+
+D:\Documents\Claude Code\Markitdown\markitdown\src-tauri\target\release\deps\libpowerfmt-d8e239db4c0c3d79.rlib: C:\Users\zhcx\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\powerfmt-0.2.0\src\lib.rs C:\Users\zhcx\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\powerfmt-0.2.0\src\buf.rs C:\Users\zhcx\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\powerfmt-0.2.0\src\ext.rs C:\Users\zhcx\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\powerfmt-0.2.0\src\smart_display.rs C:\Users\zhcx\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\powerfmt-0.2.0\src\smart_display_impls.rs
+
+D:\Documents\Claude Code\Markitdown\markitdown\src-tauri\target\release\deps\libpowerfmt-d8e239db4c0c3d79.rmeta: C:\Users\zhcx\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\powerfmt-0.2.0\src\lib.rs C:\Users\zhcx\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\powerfmt-0.2.0\src\buf.rs C:\Users\zhcx\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\powerfmt-0.2.0\src\ext.rs C:\Users\zhcx\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\powerfmt-0.2.0\src\smart_display.rs C:\Users\zhcx\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\powerfmt-0.2.0\src\smart_display_impls.rs
+
+C:\Users\zhcx\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\powerfmt-0.2.0\src\lib.rs:
+C:\Users\zhcx\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\powerfmt-0.2.0\src\buf.rs:
+C:\Users\zhcx\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\powerfmt-0.2.0\src\ext.rs:
+C:\Users\zhcx\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\powerfmt-0.2.0\src\smart_display.rs:
+C:\Users\zhcx\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\powerfmt-0.2.0\src\smart_display_impls.rs:

@@ -1,0 +1,14 @@
+D:\Documents\Claude Code\Markitdown\markitdown\src-tauri\target\release\deps\serde-f0f24b89827aaebc.d: C:\Users\zhcx\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\lib.rs C:\Users\zhcx\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\integer128.rs C:\Users\zhcx\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\mod.rs C:\Users\zhcx\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\de.rs C:\Users\zhcx\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\ser.rs D:\Documents\Claude\ Code\Markitdown\markitdown\src-tauri\target\release\build\serde-d9df9f44df3d7ed0\out/private.rs
+
+D:\Documents\Claude Code\Markitdown\markitdown\src-tauri\target\release\deps\libserde-f0f24b89827aaebc.rlib: C:\Users\zhcx\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\lib.rs C:\Users\zhcx\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\integer128.rs C:\Users\zhcx\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\mod.rs C:\Users\zhcx\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\de.rs C:\Users\zhcx\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\ser.rs D:\Documents\Claude\ Code\Markitdown\markitdown\src-tauri\target\release\build\serde-d9df9f44df3d7ed0\out/private.rs
+
+D:\Documents\Claude Code\Markitdown\markitdown\src-tauri\target\release\deps\libserde-f0f24b89827aaebc.rmeta: C:\Users\zhcx\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\lib.rs C:\Users\zhcx\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\integer128.rs C:\Users\zhcx\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\mod.rs C:\Users\zhcx\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\de.rs C:\Users\zhcx\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\ser.rs D:\Documents\Claude\ Code\Markitdown\markitdown\src-tauri\target\release\build\serde-d9df9f44df3d7ed0\out/private.rs
+
+C:\Users\zhcx\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\lib.rs:
+C:\Users\zhcx\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\integer128.rs:
+C:\Users\zhcx\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\mod.rs:
+C:\Users\zhcx\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\de.rs:
+C:\Users\zhcx\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\ser.rs:
+D:\Documents\Claude\ Code\Markitdown\markitdown\src-tauri\target\release\build\serde-d9df9f44df3d7ed0\out/private.rs:
+
+# env-dep:OUT_DIR=D:\\Documents\\Claude Code\\Markitdown\\markitdown\\src-tauri\\target\\release\\build\\serde-d9df9f44df3d7ed0\\out
