@@ -56,6 +56,15 @@
 ### 🖼️ 图片上传
 - **多图床支持** - Cloudinary、PicGo、S3、本地存储
 
+### 🤖 AI 智能助手 (v0.1.2 新增)
+- **智能校对** - 自动检测错别字、语法错误、标点问题
+- **伴写建议** - 根据上下文提供写作建议
+- **文本重写** - 一键改写选中内容
+- **智能翻译** - 支持多语言翻译
+- **摘要生成** - 自动生成文档摘要
+- **大纲生成** - 智能提取文档大纲
+- **风格切换** - 正式/活泼/学术/创意等多种写作风格
+
 ### 💾 导出功能
 - **HTML 导出** - 自定义模板
 - **PDF 导出** - 专业排版输出
@@ -68,12 +77,15 @@
 
 从 [Releases](https://github.com/zhcx/markitdown/releases) 页面下载适合您系统的安装包：
 
-| 平台 | 推荐下载 |
-|------|----------|
-| macOS (Apple Silicon) | `MarkitDown_0.1.0_aarch64.dmg` |
-| macOS (Intel) | `MarkitDown_0.1.0_x64.dmg` |
-| Windows | `MarkitDown_0.1.0_x64-setup.exe` |
-| Linux | `MarkitDown_0.1.0_amd64.AppImage` |
+| 平台 | 推荐下载 | 说明 |
+|------|----------|------|
+| Windows | `MarkitDown_0.1.2_x64-setup.exe` | NSIS安装包，推荐下载 |
+| Windows | `MarkitDown_0.1.2_x64_en-US.msi` | MSI安装包 |
+| macOS (Apple Silicon) | `MarkitDown_0.1.2_aarch64.dmg` | Apple M1/M2/M3 芯片 |
+| macOS (Intel) | `MarkitDown_0.1.2_x64.dmg` | Intel 芯片 |
+| Linux | `MarkitDown_0.1.2_amd64.AppImage` | 通用Linux包 |
+
+> **注意**：v0.1.2 版本新增 AI 智能助手功能，需要在设置中配置 API 密钥后使用。
 
 ### 本地构建
 

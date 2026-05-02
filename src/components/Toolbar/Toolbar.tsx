@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useAppStore } from '../../stores/appStore';
+import { useAIStore } from '../../stores/aiStore';
 import { EditorSelection } from '@codemirror/state';
 import { open } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
@@ -95,8 +96,102 @@ function ImageOptionsModal({ onClose, onInsert }: { onClose: () => void; onInser
 }
 
 export function Toolbar() {
-  const { mode, setMode, editorView, setContent, content, sidebarVisible, setSidebarVisible } = useAppStore();
+  const { mode, setMode, editorView, setContent, content, sidebarVisible, setSidebarVisible, settings } = useAppStore();
   const [showImageModal, setShowImageModal] = useState(false);
+  const {
+    checkProofread,
+    getCompanionSuggestion,
+    rewriteSelection,
+    translateText,
+    summarizeText,
+    generateOutline,
+    currentStyle,
+    setCurrentStyle,
+  } = useAIStore();
+
+  const getSelectedText = () => {
+    if (!editorView) return '';
+    const selection = editorView.state.selection.main;
+    return editorView.state.sliceDoc(selection.from, selection.to);
+  };
+
+  const handleProofread = () => {
+    checkProofread(content);
+  };
+
+  const handleCompanion = () => {
+    // 获取光标位置前的内容作为上下文
+    if (!editorView) return;
+    const selection = editorView.state.selection.main;
+    const textBefore = editorView.state.sliceDoc(Math.max(0, selection.to - 500), selection.to);
+
+    // 获取光标在视口中的位置
+    const coords = editorView.coordsAtPos(selection.to);
+    if (coords) {
+      useAIStore.getState().setCompanionVisible(true, {
+        x: coords.left,
+        y: coords.bottom
+      });
+    }
+    getCompanionSuggestion(textBefore);
+  };
+
+  const handleRewrite = async () => {
+    const selectedText = getSelectedText();
+    if (!selectedText) return;
+    const rewritten = await rewriteSelection(selectedText);
+    if (rewritten && rewritten !== selectedText) {
+      const selection = editorView!.state.selection.main;
+      const transaction = editorView!.state.update({
+        changes: { from: selection.from, to: selection.to, insert: rewritten },
+      });
+      editorView!.dispatch(transaction);
+    }
+  };
+
+  const handleTranslate = async () => {
+    const selectedText = getSelectedText();
+    if (!selectedText) return;
+
+    // 获取光标位置
+    if (!editorView) return;
+    const selection = editorView.state.selection.main;
+    const coords = editorView.coordsAtPos(selection.from);
+
+    const result = await translateText(selectedText);
+    if (result && result.includes('|||')) {
+      const [original, translated] = result.split('|||');
+      if (translated && translated !== selectedText) {
+        // 显示翻译弹窗
+        useAIStore.getState().setTranslationVisible(
+          true,
+          coords ? { x: coords.left, y: coords.bottom } : null,
+          original,
+          translated
+        );
+      }
+    }
+  };
+
+  const handleSummarize = async () => {
+    const summary = await summarizeText(content);
+    if (summary) {
+      // 在文档开头插入摘要
+      const transaction = editorView?.state.update({
+        changes: { from: 0, to: 0, insert: `## 摘要\n\n${summary}\n\n---\n\n` },
+      });
+      if (transaction && editorView) {
+        editorView.dispatch(transaction);
+      }
+    }
+  };
+
+  const handleOutline = async () => {
+    const outline = await generateOutline(content);
+    if (outline) {
+      insertAtCursor(outline);
+    }
+  };
 
   const wrapSelection = (before: string, after: string) => {
     if (!editorView) {
@@ -235,6 +330,44 @@ export function Toolbar() {
       ],
     },
   ];
+
+  const styleNames: Record<string, string> = {
+    formal: '正式',
+    casual: '活泼',
+    academic: '学术',
+    creative: '创意',
+    custom: '自定义'
+  };
+
+  const handleStyleChange = () => {
+    const styles = ['formal', 'casual', 'academic', 'creative', 'custom'] as const;
+    const currentIndex = styles.indexOf(currentStyle);
+    const nextIndex = (currentIndex + 1) % styles.length;
+    const newStyle = styles[nextIndex];
+    setCurrentStyle(newStyle);
+    // 显示风格切换提示
+    const { setStatus } = useAIStore.getState();
+    setStatus('success', `风格切换为: ${styleNames[newStyle]}`);
+    setTimeout(() => setStatus('idle'), 2000);
+  };
+
+  // AI按钮组 - 仅在启用时显示
+  const aiGroup = settings.ai.enabled ? {
+    title: 'AI',
+    buttons: [
+      { label: '✓', title: '校对文字', action: handleProofread },
+      { label: '✨', title: '伴写建议', action: handleCompanion },
+      { label: '🎨', title: `风格: ${styleNames[currentStyle] || currentStyle}`, action: handleStyleChange },
+      { label: '📝', title: '重写选中', action: handleRewrite },
+      { label: '🌐', title: '翻译选中', action: handleTranslate },
+      { label: '📋', title: '生成摘要', action: handleSummarize },
+      { label: '💡', title: '生成大纲', action: handleOutline },
+    ],
+  } : null;
+
+  if (aiGroup) {
+    toolbarGroups.push(aiGroup);
+  }
 
   return (
     <div className="toolbar">

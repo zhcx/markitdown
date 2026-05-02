@@ -15,12 +15,22 @@ interface MenuGroup {
   items: MenuItem[];
 }
 
+interface UpdateInfo {
+  has_update: boolean;
+  current_version: string;
+  latest_version: string;
+  download_url: string;
+  release_notes: string;
+  published_at: string;
+}
+
 interface HelpModalProps {
-  type: 'shortcuts' | 'syntax' | 'about';
+  type: 'shortcuts' | 'syntax' | 'about' | 'update';
+  updateInfo?: UpdateInfo | null;
   onClose: () => void;
 }
 
-function HelpModal({ type, onClose }: HelpModalProps) {
+function HelpModal({ type, updateInfo, onClose }: HelpModalProps) {
   const content = {
     shortcuts: {
       title: '快捷键说明',
@@ -102,7 +112,7 @@ graph TD
     about: {
       title: '关于 MarkitDown',
       body: `
-**MarkitDown v0.1.0**
+**MarkitDown v0.1.2**
 
 一款现代化的 Markdown 编辑器
 
@@ -113,6 +123,7 @@ graph TD
 • 支持 Mermaid 图表
 • 多种图床支持
 • 深色/浅色主题
+• AI智能助手
 
 **技术栈**
 Tauri 2.0 + React + TypeScript
@@ -121,10 +132,24 @@ Tauri 2.0 + React + TypeScript
 
 © 2024 MarkitDown
       `
+    },
+    update: {
+      title: '检查更新',
+      body: ''
     }
   };
 
-  const { title, body } = content[type];
+  const { title } = content[type];
+
+  const formatDate = (dateStr: string) => {
+    if (!dateStr) return '';
+    try {
+      const date = new Date(dateStr);
+      return date.toLocaleDateString('zh-CN');
+    } catch {
+      return dateStr;
+    }
+  };
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -134,7 +159,56 @@ Tauri 2.0 + React + TypeScript
           <button className="modal-close" onClick={onClose}>×</button>
         </div>
         <div className="modal-body">
-          <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', margin: 0 }}>{body}</pre>
+          {type === 'update' ? (
+            updateInfo ? (
+              <div className="update-modal-content">
+                {updateInfo.has_update ? (
+                  <>
+                    <div className="update-badge new">发现新版本</div>
+                    <div className="update-version-info">
+                      <p>当前版本: <span className="version-old">v{updateInfo.current_version}</span></p>
+                      <p>最新版本: <span className="version-new">v{updateInfo.latest_version}</span></p>
+                      <p className="update-date">发布日期: {formatDate(updateInfo.published_at)}</p>
+                    </div>
+                    <div className="update-notes">
+                      <h4>更新内容</h4>
+                      <pre>{updateInfo.release_notes}</pre>
+                    </div>
+                    <div className="update-actions">
+                      <button
+                        className="update-download-btn"
+                        onClick={() => window.open(updateInfo.download_url, '_blank')}
+                      >
+                        前往下载
+                      </button>
+                      <button className="update-cancel-btn" onClick={onClose}>
+                        稍后提醒
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="update-badge current">已是最新版本</div>
+                    <div className="update-version-info">
+                      <p>当前版本: <span className="version-current">v{updateInfo.current_version}</span></p>
+                    </div>
+                    <div className="update-actions">
+                      <button className="update-cancel-btn" onClick={onClose}>
+                        关闭
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            ) : (
+              <div className="update-checking">
+                <span className="update-spinner"></span>
+                正在检查更新...
+              </div>
+            )
+          ) : (
+            <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', margin: 0 }}>{content[type].body}</pre>
+          )}
         </div>
       </div>
     </div>
@@ -154,13 +228,33 @@ export function MenuBar() {
 
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [helpModal, setHelpModal] = useState<'shortcuts' | 'syntax' | 'about' | null>(null);
+  const [helpModal, setHelpModal] = useState<'shortcuts' | 'syntax' | 'about' | 'update' | null>(null);
+  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
   const menubarRef = useRef<HTMLDivElement>(null);
   const mouseOverMenuRef = useRef(false);
 
   const handleNewFile = () => {
     addTab();
     setActiveMenu(null);
+  };
+
+  const handleCheckUpdates = async () => {
+    setHelpModal('update');
+    setUpdateInfo(null);
+    try {
+      const info = await invoke<UpdateInfo>('check_for_updates');
+      setUpdateInfo(info);
+    } catch (error) {
+      console.error('检查更新失败:', error);
+      setUpdateInfo({
+        has_update: false,
+        current_version: '0.1.2',
+        latest_version: '0.1.2',
+        download_url: 'https://github.com/zhcx/markitdown/releases',
+        release_notes: '检查更新失败，请稍后重试',
+        published_at: ''
+      });
+    }
   };
 
   const handleOpenFile = async () => {
@@ -254,7 +348,7 @@ export function MenuBar() {
       ],
     },
     {
-      label: '视图',
+      label: '功能',
       items: [
         { label: '分屏模式', action: () => useAppStore.getState().setMode('split') },
         { label: '沉浸模式', action: () => useAppStore.getState().setMode('immersive') },
@@ -289,6 +383,8 @@ export function MenuBar() {
       items: [
         { label: '快捷键说明', action: () => setHelpModal('shortcuts') },
         { label: 'Markdown 语法', action: () => setHelpModal('syntax') },
+        { divider: true, label: '' },
+        { label: '检查更新', action: handleCheckUpdates },
         { divider: true, label: '' },
         { label: '关于 MarkitDown', action: () => setHelpModal('about') },
       ],
@@ -371,7 +467,7 @@ export function MenuBar() {
         ))}
       </div>
       {helpModal && (
-        <HelpModal type={helpModal} onClose={() => setHelpModal(null)} />
+        <HelpModal type={helpModal} updateInfo={helpModal === 'update' ? updateInfo : undefined} onClose={() => setHelpModal(null)} />
       )}
     </>
   );

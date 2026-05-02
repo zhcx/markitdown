@@ -1,5 +1,6 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import { useAppStore } from './stores/appStore';
+import { useAIStore } from './stores/aiStore';
 import { MenuBar } from './components/MenuBar/MenuBar';
 import { TabsBar } from './components/TabsBar/TabsBar';
 import { Toolbar } from './components/Toolbar/Toolbar';
@@ -8,6 +9,8 @@ import { Preview } from './components/Preview/Preview';
 import { SettingsPanel } from './components/Settings/SettingsPanel';
 import { StatusBar } from './components/StatusBar/StatusBar';
 import { Sidebar } from './components/Sidebar/Sidebar';
+import { AICompanionPopup } from './components/AI/AICompanionPopup';
+import { AITranslationPopup } from './components/AI/AITranslationPopup';
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 import './styles/main.css';
 
@@ -29,11 +32,15 @@ function App() {
     setSidebarWidth,
     openFile
   } = useAppStore();
+  const { proofreadResults, setProofreadPanelVisible, translationPosition, translationOriginal, translationResult, setTranslationVisible } = useAIStore();
 
   const dividerRef = useRef<HTMLDivElement>(null);
   const sidebarDividerRef = useRef<HTMLDivElement>(null);
+  const proofreadDividerRef = useRef<HTMLDivElement>(null);
   const isDragging = useRef(false);
   const isDraggingSidebar = useRef(false);
+  const isDraggingProofread = useRef(false);
+  const [proofreadPanelWidth, setProofreadPanelWidth] = useState(280);
 
   useEffect(() => {
     loadSettings();
@@ -97,6 +104,24 @@ function App() {
     setSidebarWidth(newWidth);
   }, [setSidebarWidth]);
 
+  const handleProofreadMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    isDraggingProofread.current = true;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  }, []);
+
+  const handleProofreadMouseMove = useCallback((e: MouseEvent) => {
+    if (!isDraggingProofread.current) return;
+
+    const container = proofreadDividerRef.current?.parentElement;
+    if (!container) return;
+
+    const rect = container.getBoundingClientRect();
+    const newWidth = rect.right - e.clientX;
+    setProofreadPanelWidth(Math.max(200, Math.min(500, newWidth)));
+  }, []);
+
   const handleMouseUp = useCallback(() => {
     if (isDragging.current) {
       isDragging.current = false;
@@ -108,18 +133,25 @@ function App() {
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
     }
+    if (isDraggingProofread.current) {
+      isDraggingProofread.current = false;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    }
   }, []);
 
   useEffect(() => {
     document.addEventListener('mousemove', handleSplitMouseMove);
     document.addEventListener('mousemove', handleSidebarMouseMove);
+    document.addEventListener('mousemove', handleProofreadMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
     return () => {
       document.removeEventListener('mousemove', handleSplitMouseMove);
       document.removeEventListener('mousemove', handleSidebarMouseMove);
+      document.removeEventListener('mousemove', handleProofreadMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [handleSplitMouseMove, handleSidebarMouseMove, handleMouseUp]);
+  }, [handleSplitMouseMove, handleSidebarMouseMove, handleProofreadMouseMove, handleMouseUp]);
 
   return (
     <div className="app">
@@ -146,7 +178,66 @@ function App() {
                 className="divider resizable"
                 onMouseDown={handleSplitMouseDown}
               />
-              <Preview className="preview-pane" style={{ flex: 1 - splitRatio }} />
+              <div className="preview-with-panel" style={{ flex: 1 - splitRatio }}>
+                <Preview className="preview-pane" style={{ flex: 1 }} />
+                {proofreadResults.length > 0 && (
+                  <>
+                    <div
+                      ref={proofreadDividerRef}
+                      className="proofread-divider resizable"
+                      onMouseDown={handleProofreadMouseDown}
+                    />
+                    <div className="proofread-side-panel" style={{ width: proofreadPanelWidth }}>
+                      <div className="proofread-side-header">
+                        <h4>校对建议 ({proofreadResults.length})</h4>
+                        <button className="close-btn" onClick={() => {
+                          setProofreadPanelVisible(false);
+                          useAIStore.getState().clearResults();
+                        }}>×</button>
+                      </div>
+                      <div className="proofread-side-list">
+                        {proofreadResults.map((result, index) => (
+                          <div key={index} className="proofread-side-item">
+                            <div className="proofread-type-badge" data-type={result.type}>
+                              {result.type === 'spelling' ? '错字' :
+                               result.type === 'grammar' ? '语法' :
+                               result.type === 'punctuation' ? '标点' :
+                               result.type === 'markdown' ? 'MD语法' :
+                               result.type === 'layout' ? '排版' : '风格'}
+                            </div>
+                            <div className="proofread-content">
+                              <div className="original-text">
+                                <span className="label">原文:</span>
+                                <span className="text strikethrough">{result.original}</span>
+                              </div>
+                              <div className="suggestion-text">
+                                <span className="label">建议:</span>
+                                <span className="text highlight">{result.suggestion}</span>
+                              </div>
+                              <div className="explanation-text">{result.explanation}</div>
+                            </div>
+                            <button
+                              className="apply-fix-btn"
+                              onClick={() => useAIStore.getState().applyProofreadFix(result)}
+                            >
+                              应用
+                            </button>
+                            <button
+                              className="proofread-ignore-btn"
+                              onClick={() => {
+                                const newResults = proofreadResults.filter(r => r !== result);
+                                useAIStore.getState().setStatus('success', `已忽略，剩余 ${newResults.length} 处问题`);
+                              }}
+                            >
+                              忽略
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
             </>
           ) : (
             <Preview className="immersive-preview" />
@@ -155,6 +246,24 @@ function App() {
       </div>
       <StatusBar />
       {settingsOpen && <SettingsPanel />}
+      <AICompanionPopup />
+      <AITranslationPopup
+        originalText={translationOriginal}
+        translatedText={translationResult}
+        position={translationPosition}
+        onClose={() => setTranslationVisible(false)}
+        onApply={(text) => {
+          const { editorView } = useAppStore.getState();
+          if (editorView) {
+            const selection = editorView.state.selection.main;
+            const transaction = editorView.state.update({
+              changes: { from: selection.from, to: selection.to, insert: text },
+            });
+            editorView.dispatch(transaction);
+            editorView.focus();
+          }
+        }}
+      />
     </div>
   );
 }

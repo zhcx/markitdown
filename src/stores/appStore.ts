@@ -46,6 +46,18 @@ export interface Settings {
     pdf_margin: number;
     html_template: string;
   };
+  ai: {
+    enabled: boolean;
+    provider: 'openai' | 'anthropic' | 'deepseek' | 'custom';
+    api_key: string;
+    api_endpoint: string;
+    model: string;
+    temperature: number;
+    auto_suggest: boolean;
+    suggest_delay: number;
+    writing_style: 'formal' | 'casual' | 'academic' | 'creative' | 'custom';
+    custom_style_prompt: string;
+  };
 }
 
 export interface Tab {
@@ -144,6 +156,18 @@ const defaultSettings: Settings = {
   export: {
     pdf_margin: 20,
     html_template: 'default',
+  },
+  ai: {
+    enabled: false,
+    provider: 'openai',
+    api_key: '',
+    api_endpoint: 'https://api.openai.com/v1',
+    model: 'gpt-4o-mini',
+    temperature: 0.7,
+    auto_suggest: false,
+    suggest_delay: 2000,
+    writing_style: 'formal',
+    custom_style_prompt: '',
   },
 };
 

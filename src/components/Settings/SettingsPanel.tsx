@@ -4,7 +4,7 @@ import { useAppStore } from '../../stores/appStore';
 export function SettingsPanel() {
   const { settings, saveSettings, setSettingsOpen } = useAppStore();
   const [localSettings, setLocalSettings] = useState(settings);
-  const [activeTab, setActiveTab] = useState<'appearance' | 'editor' | 'image' | 'export'>('appearance');
+  const [activeTab, setActiveTab] = useState<'appearance' | 'editor' | 'image' | 'export' | 'ai'>('appearance');
 
   const handleSave = async () => {
     await saveSettings(localSettings);
@@ -16,6 +16,7 @@ export function SettingsPanel() {
     { id: 'editor', label: '编辑器' },
     { id: 'image', label: '图床' },
     { id: 'export', label: '导出' },
+    { id: 'ai', label: 'AI助手' },
   ] as const;
 
   const s3Providers = [
@@ -487,6 +488,174 @@ export function SettingsPanel() {
                   <option value="academic">学术</option>
                 </select>
               </div>
+            </div>
+          )}
+
+          {activeTab === 'ai' && (
+            <div className="settings-section">
+              <div className="setting-item">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={localSettings.ai.enabled}
+                    onChange={(e) =>
+                      setLocalSettings({
+                        ...localSettings,
+                        ai: { ...localSettings.ai, enabled: e.target.checked },
+                      })
+                    }
+                  />
+                  启用AI助手
+                </label>
+              </div>
+              {localSettings.ai.enabled && (
+                <>
+                  <div className="setting-item">
+                    <label>AI服务商</label>
+                    <select
+                      value={localSettings.ai.provider}
+                      onChange={(e) =>
+                        setLocalSettings({
+                          ...localSettings,
+                          ai: { ...localSettings.ai, provider: e.target.value as 'openai' | 'anthropic' | 'deepseek' | 'custom' },
+                        })
+                      }
+                    >
+                      <option value="openai">OpenAI</option>
+                      <option value="anthropic">Anthropic (Claude)</option>
+                      <option value="deepseek">DeepSeek</option>
+                      <option value="custom">自定义</option>
+                    </select>
+                  </div>
+                  <div className="setting-item">
+                    <label>API密钥</label>
+                    <input
+                      type="password"
+                      value={localSettings.ai.api_key}
+                      onChange={(e) =>
+                        setLocalSettings({
+                          ...localSettings,
+                          ai: { ...localSettings.ai, api_key: e.target.value },
+                        })
+                      }
+                      placeholder="sk-..."
+                    />
+                  </div>
+                  {localSettings.ai.provider === 'custom' && (
+                    <div className="setting-item">
+                      <label>API端点</label>
+                      <input
+                        type="text"
+                        value={localSettings.ai.api_endpoint}
+                        onChange={(e) =>
+                          setLocalSettings({
+                            ...localSettings,
+                            ai: { ...localSettings.ai, api_endpoint: e.target.value },
+                          })
+                        }
+                        placeholder="https://api.example.com/v1"
+                      />
+                    </div>
+                  )}
+                  <div className="setting-item">
+                    <label>模型</label>
+                    <input
+                      type="text"
+                      value={localSettings.ai.model}
+                      onChange={(e) =>
+                        setLocalSettings({
+                          ...localSettings,
+                          ai: { ...localSettings.ai, model: e.target.value },
+                        })
+                      }
+                      placeholder="gpt-4o-mini"
+                    />
+                  </div>
+                  <div className="setting-item">
+                    <label>温度 (0-1)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="1"
+                      step="0.1"
+                      value={localSettings.ai.temperature}
+                      onChange={(e) =>
+                        setLocalSettings({
+                          ...localSettings,
+                          ai: { ...localSettings.ai, temperature: parseFloat(e.target.value) },
+                        })
+                      }
+                    />
+                  </div>
+                  <div className="setting-item">
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={localSettings.ai.auto_suggest}
+                        onChange={(e) =>
+                          setLocalSettings({
+                            ...localSettings,
+                            ai: { ...localSettings.ai, auto_suggest: e.target.checked },
+                          })
+                        }
+                      />
+                      自动伴写建议
+                    </label>
+                  </div>
+                  {localSettings.ai.auto_suggest && (
+                    <div className="setting-item">
+                      <label>建议延迟 (ms)</label>
+                      <input
+                        type="number"
+                        min="500"
+                        max="10000"
+                        step="100"
+                        value={localSettings.ai.suggest_delay}
+                        onChange={(e) =>
+                          setLocalSettings({
+                            ...localSettings,
+                            ai: { ...localSettings.ai, suggest_delay: parseInt(e.target.value) },
+                          })
+                        }
+                      />
+                    </div>
+                  )}
+                  <div className="setting-item">
+                    <label>写作风格</label>
+                    <select
+                      value={localSettings.ai.writing_style}
+                      onChange={(e) =>
+                        setLocalSettings({
+                          ...localSettings,
+                          ai: { ...localSettings.ai, writing_style: e.target.value as 'formal' | 'casual' | 'academic' | 'creative' | 'custom' },
+                        })
+                      }
+                    >
+                      <option value="formal">正式</option>
+                      <option value="casual">活泼</option>
+                      <option value="academic">学术</option>
+                      <option value="creative">创意</option>
+                      <option value="custom">自定义</option>
+                    </select>
+                  </div>
+                  {localSettings.ai.writing_style === 'custom' && (
+                    <div className="setting-item">
+                      <label>自定义风格提示</label>
+                      <input
+                        type="text"
+                        value={localSettings.ai.custom_style_prompt}
+                        onChange={(e) =>
+                          setLocalSettings({
+                            ...localSettings,
+                            ai: { ...localSettings.ai, custom_style_prompt: e.target.value },
+                          })
+                        }
+                        placeholder="例如：请以幽默风趣的方式..."
+                      />
+                    </div>
+                  )}
+                </>
+              )}
             </div>
           )}
         </div>

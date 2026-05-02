@@ -4,6 +4,7 @@
 #[cfg(debug_assertions)]
 use tauri::Manager;
 
+mod ai;
 mod commands;
 mod image;
 
@@ -24,6 +25,9 @@ fn main() {
             commands::update_recent_file,
             commands::remove_recent_file,
             commands::read_folder,
+            commands::check_for_updates,
+            ai::ai_request,
+            ai::ai_streaming,
         ])
         .setup(|_app| {
             #[cfg(debug_assertions)]

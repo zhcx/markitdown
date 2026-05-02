@@ -1,8 +1,21 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use std::time::Duration;
 use tauri::{AppHandle, Manager};
 
 use crate::image::{self, ImageService, CloudinaryConfig, PicGoConfig, S3Config, LocalImageConfig};
+
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateInfo {
+    pub has_update: bool,
+    pub current_version: String,
+    pub latest_version: String,
+    pub download_url: String,
+    pub release_notes: String,
+    pub published_at: String,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RecentFile {
@@ -25,6 +38,7 @@ pub struct Settings {
     pub editor: EditorSettings,
     pub image_hosting: ImageHostingSettings,
     pub export: ExportSettings,
+    pub ai: AISettings,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -55,6 +69,20 @@ pub struct ImageHostingSettings {
 pub struct ExportSettings {
     pub pdf_margin: f32,
     pub html_template: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AISettings {
+    pub enabled: bool,
+    pub provider: String,
+    pub api_key: String,
+    pub api_endpoint: String,
+    pub model: String,
+    pub temperature: f32,
+    pub auto_suggest: bool,
+    pub suggest_delay: u32,
+    pub writing_style: String,
+    pub custom_style_prompt: String,
 }
 
 impl Default for Settings {
@@ -102,6 +130,18 @@ impl Default for Settings {
             export: ExportSettings {
                 pdf_margin: 20.0,
                 html_template: "default".to_string(),
+            },
+            ai: AISettings {
+                enabled: false,
+                provider: "openai".to_string(),
+                api_key: String::new(),
+                api_endpoint: "https://api.openai.com/v1".to_string(),
+                model: "gpt-4o-mini".to_string(),
+                temperature: 0.7,
+                auto_suggest: false,
+                suggest_delay: 2000,
+                writing_style: "formal".to_string(),
+                custom_style_prompt: String::new(),
             },
         }
     }
@@ -278,4 +318,101 @@ pub async fn read_folder(path: String) -> Result<Vec<FileNode>, String> {
     });
 
     Ok(nodes)
+}
+
+#[tauri::command]
+pub async fn check_for_updates() -> Result<UpdateInfo, String> {
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .connect_timeout(Duration::from_secs(10))
+        .build()
+        .map_err(|e| format!("创建HTTP客户端失败: {}", e))?;
+
+    let url = "https://api.github.com/repos/zhcx/markitdown/releases/latest";
+
+    let response = client
+        .get(url)
+        .header("User-Agent", "MarkitDown")
+        .header("Accept", "application/vnd.github.v3+json")
+        .send()
+        .await
+        .map_err(|e| format!("网络请求失败: {}", e))?;
+
+    if !response.status().is_success() {
+        return Err(format!("GitHub API 错误: {}", response.status()));
+    }
+
+    let release: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| format!("解析响应失败: {}", e))?;
+
+    let latest_version = release["tag_name"]
+        .as_str()
+        .unwrap_or("v0.0.0")
+        .trim_start_matches('v')
+        .to_string();
+
+    let current_version = VERSION.to_string();
+
+    // 比较版本号
+    let has_update = compare_versions(&latest_version, &current_version)?;
+
+    let download_url = release["html_url"]
+        .as_str()
+        .unwrap_or("https://github.com/zhcx/markitdown/releases")
+        .to_string();
+
+    let release_notes = release["body"]
+        .as_str()
+        .unwrap_or("暂无更新说明")
+        .to_string();
+
+    let published_at = release["published_at"]
+        .as_str()
+        .unwrap_or("")
+        .to_string();
+
+    Ok(UpdateInfo {
+        has_update,
+        current_version,
+        latest_version,
+        download_url,
+        release_notes,
+        published_at,
+    })
+}
+
+fn compare_versions(latest: &str, current: &str) -> Result<bool, String> {
+    let parse_version = |v: &str| -> Result<Vec<u32>, String> {
+        v.split('.')
+            .map(|s| s.parse::<u32>().map_err(|e| format!("版本号解析失败: {}", e)))
+            .collect()
+    };
+
+    let latest_parts = parse_version(latest)?;
+    let current_parts = parse_version(current)?;
+
+    // 补齐版本号长度
+    let max_len = latest_parts.len().max(current_parts.len());
+    let mut latest_parts = latest_parts;
+    let mut current_parts = current_parts;
+
+    while latest_parts.len() < max_len {
+        latest_parts.push(0);
+    }
+    while current_parts.len() < max_len {
+        current_parts.push(0);
+    }
+
+    // 比较各部分
+    for (l, c) in latest_parts.iter().zip(current_parts.iter()) {
+        if l > c {
+            return Ok(true);
+        } else if l < c {
+            return Ok(false);
+        }
+    }
+
+    Ok(false)
 }
