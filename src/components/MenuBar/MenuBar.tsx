@@ -1,7 +1,9 @@
 import { useState, useRef, useEffect } from 'react';
 import { useAppStore } from '../../stores/appStore';
-import { open, save } from '@tauri-apps/plugin-dialog';
+import { open as openDialog, save } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
+import { open } from '@tauri-apps/plugin-shell';
+import MarkdownIt from 'markdown-it';
 
 interface MenuItem {
   label: string;
@@ -29,6 +31,8 @@ interface HelpModalProps {
   updateInfo?: UpdateInfo | null;
   onClose: () => void;
 }
+
+const md = new MarkdownIt({ html: true, linkify: true });
 
 function HelpModal({ type, updateInfo, onClose }: HelpModalProps) {
   const content = {
@@ -172,12 +176,15 @@ Tauri 2.0 + React + TypeScript
                     </div>
                     <div className="update-notes">
                       <h4>更新内容</h4>
-                      <pre>{updateInfo.release_notes}</pre>
+                      <div
+                        className="update-notes-content"
+                        dangerouslySetInnerHTML={{ __html: md.render(updateInfo.release_notes || '暂无更新说明') }}
+                      />
                     </div>
                     <div className="update-actions">
                       <button
                         className="update-download-btn"
-                        onClick={() => window.open(updateInfo.download_url, '_blank')}
+                        onClick={() => open(updateInfo.download_url)}
                       >
                         前往下载
                       </button>
@@ -259,7 +266,7 @@ export function MenuBar() {
 
   const handleOpenFile = async () => {
     try {
-      const selected = await open({
+      const selected = await openDialog({
         filters: [{ name: 'Markdown', extensions: ['md', 'txt'] }],
         multiple: true,
       });

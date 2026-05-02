@@ -2115,11 +2115,58 @@ body {
   color: var(--text-color);
 }
 
-.update-notes pre {
-  font-size: 12px;
-  white-space: pre-wrap;
+.update-notes-content {
+  font-size: 13px;
+  line-height: 1.5;
   color: var(--text-secondary);
-  margin: 0;
+}
+
+.update-notes-content h1,
+.update-notes-content h2,
+.update-notes-content h3 {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 8px 0 4px 0;
+  color: var(--text-color);
+}
+
+.update-notes-content p {
+  margin: 4px 0;
+}
+
+.update-notes-content ul,
+.update-notes-content ol {
+  margin: 4px 0;
+  padding-left: 20px;
+}
+
+.update-notes-content li {
+  margin: 2px 0;
+}
+
+.update-notes-content code {
+  background: var(--bg-tertiary);
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 12px;
+}
+
+.update-notes-content pre {
+  background: var(--bg-tertiary);
+  padding: 8px;
+  border-radius: var(--radius-sm);
+  overflow-x: auto;
+  font-size: 12px;
+  margin: 8px 0;
+}
+
+.update-notes-content a {
+  color: var(--primary-color);
+  text-decoration: none;
+}
+
+.update-notes-content a:hover {
+  text-decoration: underline;
 }
 
 .update-actions {
