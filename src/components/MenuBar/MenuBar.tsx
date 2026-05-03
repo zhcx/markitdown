@@ -1,9 +1,10 @@
-import { useState, useRef, useEffect } from 'react';
+﻿import { useState, useRef, useEffect } from 'react';
 import { useAppStore } from '../../stores/appStore';
 import { open as openDialog, save } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-shell';
 import MarkdownIt from 'markdown-it';
+import hljs from 'highlight.js';
 
 interface MenuItem {
   label: string;
@@ -32,7 +33,20 @@ interface HelpModalProps {
   onClose: () => void;
 }
 
-const md = new MarkdownIt({ html: true, linkify: true });
+const md = new MarkdownIt({
+  html: true,
+  linkify: true,
+  typographer: true,
+  breaks: true,
+  highlight: (str: string, lang: string) => {
+    if (lang && hljs.getLanguage(lang)) {
+      try {
+        return '<pre class="hljs"><code>' + hljs.highlight(str, { language: lang, ignoreIllegals: true }).value + '</code></pre>';
+      } catch (_) {}
+    }
+    return '<pre class="hljs"><code>' + md.utils.escapeHtml(str) + '</code></pre>';
+  },
+});
 
 function HelpModal({ type, updateInfo, onClose }: HelpModalProps) {
   const content = {
@@ -40,26 +54,26 @@ function HelpModal({ type, updateInfo, onClose }: HelpModalProps) {
       title: '快捷键说明',
       body: `
 **文件操作**
-• Ctrl+N - 新建文件
-• Ctrl+O - 打开文件
-• Ctrl+S - 保存文件
-• Ctrl+Shift+S - 另存为
+- Ctrl+N - 新建文件
+- Ctrl+O - 打开文件
+- Ctrl+S - 保存文件
+- Ctrl+Shift+S - 另存为
 
 **编辑操作**
-• Ctrl+Z - 撤销
-• Ctrl+Y - 重做
-• Ctrl+X - 剪切
-• Ctrl+C - 复制
-• Ctrl+V - 粘贴
-• Ctrl+A - 全选
+- Ctrl+Z - 撤销
+- Ctrl+Y - 重做
+- Ctrl+X - 剪切
+- Ctrl+C - 复制
+- Ctrl+V - 粘贴
+- Ctrl+A - 全选
 
 **格式化**
-• Ctrl+B - 加粗
-• Ctrl+I - 斜体
-• Ctrl+K - 插入链接
+- Ctrl+B - 加粗
+- Ctrl+I - 斜体
+- Ctrl+K - 插入链接
 
 **视图**
-• F11 - 全屏切换
+- F11 - 全屏切换
       `
     },
     syntax: {
@@ -74,39 +88,31 @@ function HelpModal({ type, updateInfo, onClose }: HelpModalProps) {
 **粗体** 或 __粗体__
 *斜体* 或 _斜体_
 ~~删除线~~
-==高亮==
 
 **列表**
 - 无序列表项
 1. 有序列表项
-- [ ] 任务列表项
 
 **链接和图片**
 [链接文本](URL)
-![图片描述](图片URL)
+![图片描述](URL)
 
 **代码**
-\`行内代码\`
+行内代码: \`code\`
+
+代码块:
 \`\`\`
-代码块
+code block
 \`\`\`
 
 **引用**
 > 引用内容
 
-**表格**
-| 列1 | 列2 |
-|---|---|
-| 内容 | 内容 |
-
-**分割线**
----
-
 **数学公式**
-行内公式: $E=mc^2$
-块公式: $$E=mc^2$$
+行内: $E=mc^2$
+块: $$E=mc^2$$
 
-**Mermaid图表**
+**Mermaid 图表**
 \`\`\`mermaid
 graph TD
   A --> B
@@ -116,25 +122,27 @@ graph TD
     about: {
       title: '关于 MarkitDown',
       body: `
-**MarkitDown v0.1.2**
+**MarkitDown v0.1.4**
 
 一款现代化的 Markdown 编辑器
 
 **功能特点**
-• 实时预览
-• 多标签页编辑
-• 支持数学公式
-• 支持 Mermaid 图表
-• 多种图床支持
-• 深色/浅色主题
-• AI智能助手
+- 实时预览
+- 多标签页编辑
+- 支持数学公式
+- 支持 Mermaid 图表
+- 多种图床支持
+- 深色/浅色主题
+- AI智能助手
 
 **技术栈**
 Tauri 2.0 + React + TypeScript
 
----
+**开发者**
+[七月](https://github.com/zhcx)
 
-© 2024 MarkitDown
+**项目地址**
+https://github.com/zhcx/markitdown
       `
     },
     update: {
@@ -182,10 +190,7 @@ Tauri 2.0 + React + TypeScript
                       />
                     </div>
                     <div className="update-actions">
-                      <button
-                        className="update-download-btn"
-                        onClick={() => open(updateInfo.download_url)}
-                      >
+                      <button className="update-download-btn" onClick={() => open(updateInfo.download_url)}>
                         前往下载
                       </button>
                       <button className="update-cancel-btn" onClick={onClose}>
@@ -200,9 +205,7 @@ Tauri 2.0 + React + TypeScript
                       <p>当前版本: <span className="version-current">v{updateInfo.current_version}</span></p>
                     </div>
                     <div className="update-actions">
-                      <button className="update-cancel-btn" onClick={onClose}>
-                        关闭
-                      </button>
+                      <button className="update-cancel-btn" onClick={onClose}>关闭</button>
                     </div>
                   </>
                 )}
@@ -214,7 +217,10 @@ Tauri 2.0 + React + TypeScript
               </div>
             )
           ) : (
-            <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', margin: 0 }}>{content[type].body}</pre>
+            <div
+              className="help-content"
+              dangerouslySetInnerHTML={{ __html: md.render(content[type].body) }}
+            />
           )}
         </div>
       </div>
@@ -230,7 +236,8 @@ export function MenuBar() {
     setSettings,
     setSettingsOpen,
     addTab,
-    saveFile
+    saveFile,
+    getActiveTab
   } = useAppStore();
 
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
@@ -307,20 +314,51 @@ export function MenuBar() {
     setActiveMenu(null);
   };
 
+  const getExportFilename = (format: string) => {
+    const activeTab = getActiveTab();
+    if (activeTab) {
+      const title = activeTab.path
+        ? activeTab.path.split(/[\\/]/).pop()?.replace(/\.md$/i, '') || activeTab.title
+        : activeTab.title;
+      return title + '.' + format;
+    }
+    return 'document.' + format;
+  };
+
+  // Render markdown to HTML using the same markdown-it as the preview
+  const renderMarkdown = (text: string): string => {
+    return md.render(text);
+  };
+
   const handleExport = async (format: 'pdf' | 'html') => {
     try {
-      const selected = await save({
-        filters: [{ name: format.toUpperCase(), extensions: [format] }],
-        defaultPath: `document.${format}`,
-      });
-      if (selected) {
-        if (format === 'html') {
-          const html = await invoke<string>('export_html', {
-            content,
-            template: settings.export.html_template
+      const activeTab = getActiveTab();
+      const filePath = activeTab?.path || null;
+
+      // Render markdown to HTML on the front-end using markdown-it
+      const htmlBody = renderMarkdown(content);
+
+      if (format === 'html') {
+        const defaultFilename = getExportFilename('html');
+        const selected = await save({
+          filters: [{ name: 'HTML', extensions: ['html'] }],
+          defaultPath: defaultFilename,
+        });
+        if (selected) {
+          const fullHtml = await invoke<string>('export_html', {
+            htmlBody,
+            settings: settings.export,
+            filePath
           });
-          await invoke('save_file_content', { path: selected, content: html });
+          await invoke('save_file_content', { path: selected, content: fullHtml });
         }
+      } else if (format === 'pdf') {
+        const tempPath = await invoke<string>('export_pdf', {
+          htmlBody,
+          settings: settings.export,
+          filePath
+        });
+        await open(tempPath);
       }
     } catch (error) {
       console.error('Failed to export:', error);
@@ -361,24 +399,15 @@ export function MenuBar() {
         { label: '沉浸模式', action: () => useAppStore.getState().setMode('immersive') },
         { divider: true, label: '' },
         { label: '浅色主题', action: () => {
-          setSettings({
-            ...settings,
-            appearance: { ...settings.appearance, theme: 'light' }
-          });
+          setSettings({ ...settings, appearance: { ...settings.appearance, theme: 'light' } });
           setActiveMenu(null);
         }},
         { label: '深色主题', action: () => {
-          setSettings({
-            ...settings,
-            appearance: { ...settings.appearance, theme: 'dark' }
-          });
+          setSettings({ ...settings, appearance: { ...settings.appearance, theme: 'dark' } });
           setActiveMenu(null);
         }},
         { label: 'Solarized主题', action: () => {
-          setSettings({
-            ...settings,
-            appearance: { ...settings.appearance, theme: 'solarized' }
-          });
+          setSettings({ ...settings, appearance: { ...settings.appearance, theme: 'solarized' } });
           setActiveMenu(null);
         }},
         { divider: true, label: '' },
@@ -398,7 +427,6 @@ export function MenuBar() {
     },
   ];
 
-  // Close menu when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (menubarRef.current && !menubarRef.current.contains(event.target as Node)) {
@@ -414,9 +442,7 @@ export function MenuBar() {
   return (
     <>
       <div className="menubar" ref={menubarRef}
-        onMouseEnter={() => {
-          mouseOverMenuRef.current = true;
-        }}
+        onMouseEnter={() => { mouseOverMenuRef.current = true; }}
         onMouseLeave={() => {
           mouseOverMenuRef.current = false;
           setTimeout(() => {
@@ -428,18 +454,11 @@ export function MenuBar() {
         }}
       >
         {menus.map((menu) => (
-          <div
-            key={menu.label}
-            className="menu-item"
-            onMouseEnter={() => {
-              // If menu is already open, switch to this menu automatically
-              if (menuOpen) {
-                setActiveMenu(menu.label);
-              }
-            }}
+          <div key={menu.label} className="menu-item"
+            onMouseEnter={() => { if (menuOpen) setActiveMenu(menu.label); }}
           >
             <button
-              className={`menu-trigger ${activeMenu === menu.label ? 'active' : ''}`}
+              className={'menu-trigger' + (activeMenu === menu.label ? ' active' : '')}
               onClick={() => {
                 if (activeMenu === menu.label && menuOpen) {
                   setActiveMenu(null);
@@ -458,11 +477,7 @@ export function MenuBar() {
                   item.divider ? (
                     <div key={index} className="menu-divider" />
                   ) : (
-                    <button
-                      key={index}
-                      className="menu-option"
-                      onClick={item.action}
-                    >
+                    <button key={index} className="menu-option" onClick={item.action}>
                       <span>{item.label}</span>
                       {item.shortcut && <span className="shortcut">{item.shortcut}</span>}
                     </button>

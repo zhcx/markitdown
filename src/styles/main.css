@@ -2115,35 +2115,39 @@ body {
   color: var(--text-color);
 }
 
+.help-content,
 .update-notes-content {
   font-size: 13px;
   line-height: 1.5;
   color: var(--text-secondary);
 }
 
-.update-notes-content h1,
-.update-notes-content h2,
-.update-notes-content h3 {
+.help-content h1, .help-content h2, .help-content h3,
+.update-notes-content h1, .update-notes-content h2, .update-notes-content h3 {
   font-size: 14px;
   font-weight: 600;
   margin: 8px 0 4px 0;
   color: var(--text-color);
 }
 
+.help-content p,
 .update-notes-content p {
   margin: 4px 0;
 }
 
+.help-content ul, .help-content ol,
 .update-notes-content ul,
 .update-notes-content ol {
   margin: 4px 0;
   padding-left: 20px;
 }
 
+.help-content li,
 .update-notes-content li {
   margin: 2px 0;
 }
 
+.help-content code,
 .update-notes-content code {
   background: var(--bg-tertiary);
   padding: 1px 4px;
@@ -2151,6 +2155,7 @@ body {
   font-size: 12px;
 }
 
+.help-content pre,
 .update-notes-content pre {
   background: var(--bg-tertiary);
   padding: 8px;
@@ -2160,11 +2165,13 @@ body {
   margin: 8px 0;
 }
 
+.help-content a,
 .update-notes-content a {
   color: var(--primary-color);
   text-decoration: none;
 }
 
+.help-content a:hover,
 .update-notes-content a:hover {
   text-decoration: underline;
 }

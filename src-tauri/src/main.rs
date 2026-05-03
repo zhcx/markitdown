@@ -19,6 +19,7 @@ fn main() {
             commands::upload_image,
             commands::export_pdf,
             commands::export_html,
+            commands::cleanup_export_file,
             commands::get_file_content,
             commands::save_file_content,
             commands::get_recent_files,
