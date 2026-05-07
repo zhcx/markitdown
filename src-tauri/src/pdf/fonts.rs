@@ -50,7 +50,8 @@ impl FontConfig {
             font_dirs.push(PathBuf::from("/usr/share/fonts"));
             font_dirs.push(PathBuf::from("/usr/local/share/fonts"));
             if let Ok(home) = std::env::var("HOME") {
-                font_dirs.push(PathBuf::from(home).join(".local/share/fonts"));
+                let home_path = PathBuf::from(&home);
+                font_dirs.push(home_path.join(".local/share/fonts"));
                 font_dirs.push(PathBuf::from(home).join(".fonts"));
             }
         }
