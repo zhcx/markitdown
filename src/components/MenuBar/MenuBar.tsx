@@ -5,6 +5,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-shell';
 import MarkdownIt from 'markdown-it';
 import hljs from 'highlight.js';
+import { PdfExportDialog } from '../Export/PdfExportDialog';
 
 interface MenuItem {
   label: string;
@@ -244,6 +245,7 @@ export function MenuBar() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [helpModal, setHelpModal] = useState<'shortcuts' | 'syntax' | 'about' | 'update' | null>(null);
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
+  const [pdfExportOpen, setPdfExportOpen] = useState(false);
   const menubarRef = useRef<HTMLDivElement>(null);
   const mouseOverMenuRef = useRef(false);
 
@@ -353,12 +355,21 @@ export function MenuBar() {
           await invoke('save_file_content', { path: selected, content: fullHtml });
         }
       } else if (format === 'pdf') {
-        const tempPath = await invoke<string>('export_pdf', {
-          htmlBody,
-          settings: settings.export,
-          filePath
+        // 使用新的直接 PDF 导出功能
+        const defaultFilename = getExportFilename('pdf');
+        const selected = await save({
+          filters: [{ name: 'PDF', extensions: ['pdf'] }],
+          defaultPath: defaultFilename,
         });
-        await open(tempPath);
+        if (selected) {
+          await invoke<string>('export_pdf_direct', {
+            htmlBody,
+            outputPath: selected,
+            settings: settings.export,
+            options: null,
+            filePath
+          });
+        }
       }
     } catch (error) {
       console.error('Failed to export:', error);
@@ -376,7 +387,7 @@ export function MenuBar() {
         { label: '另存为', action: handleSaveAs, shortcut: 'Ctrl+Shift+S' },
         { divider: true, label: '' },
         { label: '导出为 HTML', action: () => handleExport('html') },
-        { label: '导出为 PDF', action: () => handleExport('pdf') },
+        { label: '导出为 PDF...', action: () => { setPdfExportOpen(true); setActiveMenu(null); } },
       ],
     },
     {
@@ -490,6 +501,13 @@ export function MenuBar() {
       </div>
       {helpModal && (
         <HelpModal type={helpModal} updateInfo={helpModal === 'update' ? updateInfo : undefined} onClose={() => setHelpModal(null)} />
+      )}
+      {pdfExportOpen && (
+        <PdfExportDialog
+          content={content}
+          filePath={getActiveTab()?.path || null}
+          onClose={() => setPdfExportOpen(false)}
+        />
       )}
     </>
   );

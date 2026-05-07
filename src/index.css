@@ -109,3 +109,221 @@ code {
   padding: 4px 8px;
   background: var(--code-bg);
 }
+
+/* PDF 导出对话框样式 */
+.pdf-export-modal {
+  min-width: 400px;
+  max-width: 500px;
+}
+
+.export-section {
+  margin-bottom: 20px;
+}
+
+.section-label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 12px;
+  color: var(--text-h);
+}
+
+.option-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.option-row label {
+  color: var(--text);
+}
+
+.option-row select,
+.option-row input[type="number"] {
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text-h);
+  min-width: 120px;
+}
+
+.option-row.checkbox {
+  justify-content: flex-start;
+}
+
+.option-row.checkbox label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.export-error {
+  padding: 12px;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid #ef4444;
+  border-radius: 6px;
+  color: #ef4444;
+  margin-bottom: 16px;
+}
+
+.export-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  margin-top: 24px;
+}
+
+.export-btn {
+  padding: 10px 24px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.export-btn.primary {
+  background: var(--accent);
+  color: white;
+}
+
+.export-btn.primary:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.export-btn.primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.export-btn.secondary {
+  background: var(--border);
+  color: var(--text-h);
+}
+
+.export-btn.secondary:hover:not(:disabled) {
+  background: var(--code-bg);
+}
+
+/* PDF Export Progress Bar */
+.pdf-progress-container {
+  margin-bottom: 20px;
+  padding: 16px;
+  background: var(--code-bg);
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
+.pdf-progress-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.pdf-progress-stage {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+.pdf-progress-percent {
+  font-size: 12px;
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.pdf-progress-bar-wrapper {
+  height: 8px;
+  background: var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+  position: relative;
+}
+
+.pdf-progress-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), #8b5cf6);
+  border-radius: 4px;
+  transition: width 0.3s ease-out;
+  animation: progressPulse 2s ease-in-out infinite;
+}
+
+@keyframes progressPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.85; }
+}
+
+.pdf-progress-message {
+  font-size: 12px;
+  color: var(--text);
+  margin-top: 8px;
+  text-align: center;
+}
+
+.pdf-progress-steps {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 16px;
+  padding: 0 4px;
+}
+
+.pdf-step-indicator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text);
+  opacity: 0.5;
+  transition: all 0.3s;
+}
+
+.pdf-step-indicator.active {
+  opacity: 1;
+  color: var(--accent);
+}
+
+.pdf-step-indicator.completed {
+  opacity: 1;
+  color: #51cf66;
+}
+
+.pdf-step-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--border);
+  transition: all 0.3s;
+}
+
+.pdf-step-indicator.active .pdf-step-dot {
+  background: var(--accent);
+  box-shadow: 0 0 6px var(--accent);
+}
+
+.pdf-step-indicator.completed .pdf-step-dot {
+  background: #51cf66;
+}
+
+/* Export success animation */
+.pdf-success-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  animation: successPop 0.4s ease-out;
+}
+
+@keyframes successPop {
+  0% { transform: scale(0.5); opacity: 0; }
+  50% { transform: scale(1.1); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.pdf-success-icon svg {
+  width: 48px;
+  height: 48px;
+  color: #51cf66;
+}

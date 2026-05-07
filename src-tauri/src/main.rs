@@ -7,6 +7,7 @@ use tauri::Manager;
 mod ai;
 mod commands;
 mod image;
+mod pdf;
 
 fn main() {
     tauri::Builder::default()
@@ -29,6 +30,7 @@ fn main() {
             commands::check_for_updates,
             ai::ai_request,
             ai::ai_streaming,
+            pdf::converter::export_pdf_direct,
         ])
         .setup(|_app| {
             #[cfg(debug_assertions)]
