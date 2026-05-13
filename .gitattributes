@@ -1,0 +1,15 @@
+* text=auto working-tree-encoding=UTF-8
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.bmp binary
+*.ico binary
+*.icns binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.exe binary
+*.msi binary

@@ -224,10 +224,7 @@ function App() {
                             </button>
                             <button
                               className="proofread-ignore-btn"
-                              onClick={() => {
-                                const newResults = proofreadResults.filter(r => r !== result);
-                                useAIStore.getState().setStatus('success', `已忽略，剩余 ${newResults.length} 处问题`);
-                              }}
+                              onClick={() => useAIStore.getState().ignoreProofreadResult(result)}
                             >
                               忽略
                             </button>

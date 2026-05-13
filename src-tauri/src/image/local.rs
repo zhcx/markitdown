@@ -1,6 +1,6 @@
 use super::ImageError;
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -24,7 +24,7 @@ pub async fn save(file_path: &str, config: LocalImageConfig) -> Result<String, I
     Ok(format!("assets/images/{}", file_name))
 }
 
-fn generate_filename(source: &PathBuf, naming_rule: &str) -> String {
+fn generate_filename(source: &Path, naming_rule: &str) -> String {
     let extension = source
         .extension()
         .unwrap()

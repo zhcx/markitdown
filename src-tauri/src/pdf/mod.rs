@@ -21,31 +21,21 @@ pub struct PdfExportOptions {
 }
 
 /// 页面格式
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub enum PageFormat {
+    #[default]
     A4,
     A3,
     Letter,
     Legal,
 }
 
-impl Default for PageFormat {
-    fn default() -> Self {
-        PageFormat::A4
-    }
-}
-
 /// 页面方向
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub enum PageOrientation {
+    #[default]
     Portrait,
     Landscape,
-}
-
-impl Default for PageOrientation {
-    fn default() -> Self {
-        PageOrientation::Portrait
-    }
 }
 
 impl Default for PdfExportOptions {

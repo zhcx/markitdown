@@ -1,5 +1,5 @@
 import { useAppStore } from '../../stores/appStore';
-import { ask } from '@tauri-apps/plugin-dialog';
+import { ask, save } from '@tauri-apps/plugin-dialog';
 
 export function TabsBar() {
   const { tabs, activeTabId, setActiveTab, closeTab, addTab, saveFile } = useAppStore();
@@ -20,8 +20,6 @@ export function TabsBar() {
         if (tab.path) {
           await saveFile(tab.path);
         } else {
-          // If no path, trigger save as dialog
-          const { save } = await import('@tauri-apps/plugin-dialog');
           const selected = await save({
             filters: [{ name: 'Markdown', extensions: ['md'] }],
             defaultPath: 'untitled.md',
@@ -50,7 +48,6 @@ export function TabsBar() {
         if (tab.path) {
           await saveFile(tab.path);
         } else {
-          const { save } = await import('@tauri-apps/plugin-dialog');
           const selected = await save({
             filters: [{ name: 'Markdown', extensions: ['md'] }],
             defaultPath: 'untitled.md',

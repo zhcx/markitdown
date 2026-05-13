@@ -10,13 +10,17 @@ pub enum PromptAction {
     Outline,
 }
 
-fn get_style_prompt(style: &str) -> &'static str {
-    match style {
-        "formal" => "请以正式、专业的风格",
-        "casual" => "请以轻松、活泼的风格",
-        "academic" => "请以学术论文的风格",
-        "creative" => "请以富有创意和想象力的风格",
-        _ => "请以自然流畅的风格",
+fn get_style_prompt(settings: &AISettings) -> String {
+    if settings.writing_style == "custom" && !settings.custom_style_prompt.trim().is_empty() {
+        return settings.custom_style_prompt.trim().to_string();
+    }
+
+    match settings.writing_style.as_str() {
+        "formal" => "请使用正式、专业、清晰的表达风格".to_string(),
+        "casual" => "请使用轻松、自然、有亲和力的表达风格".to_string(),
+        "academic" => "请使用严谨、准确、偏学术的表达风格".to_string(),
+        "creative" => "请使用富有创意、节奏更鲜明的表达风格".to_string(),
+        _ => "请使用自然、流畅、易读的表达风格".to_string(),
     }
 }
 
@@ -27,82 +31,71 @@ pub fn get_prompt(
     settings: &AISettings,
 ) -> String {
     match action {
-        PromptAction::Proofread => {
-            format!(
-                r#"检查以下Markdown文本中的错误（错别字、语法、标点、用词、Markdown语法错误、排版问题）。
+        PromptAction::Proofread => format!(
+            r#"请校对下面的 Markdown 文本，只检查真实问题，避免把作者风格当成错误。
 
-严格要求：只返回JSON数组，不要任何其他文字、说明或代码块标记。
+要求：
+1. 只返回 JSON 数组，不要返回解释、Markdown 代码块或额外文字。
+2. 无问题时返回 []。
+3. from/to 必须是原文中的 JavaScript 字符串索引（UTF-16 code unit），from 从 0 开始，to 为结束位置。
+4. type 只能是 spelling、grammar、punctuation、style、markdown、layout 之一。
+5. suggestion 只给可直接替换 original 的文本。
 
-返回格式（无问题返回[]）：
-[{{"from":起始位置,"to":结束位置,"original":"原文","suggestion":"建议","type":"spelling|grammar|punctuation|style|markdown|layout","explanation":"说明"}}]
-
-type类型：spelling(错字)、grammar(语法)、punctuation(标点)、style(风格)、markdown(MD语法)、layout(排版)
-from和to是字符位置索引（从0开始）。
+返回格式：
+[{{"from":0,"to":2,"original":"原文","suggestion":"建议","type":"spelling","explanation":"简短说明"}}]
 
 文本：
 {}"#,
-                content
-            )
-        }
+            content
+        ),
         PromptAction::Companion => {
-            let style = get_style_prompt(&settings.writing_style);
+            let style = get_style_prompt(settings);
             let context_info = context
+                .filter(|c| !c.trim().is_empty())
                 .map(|c| format!("\n\n前文上下文：\n{}", c))
                 .unwrap_or_default();
+
             format!(
-                r#"{}续写以下内容。请直接输出续写的文字，不要添加任何解释或说明。
-{}
-内容：{}"#,
+                r#"{}。请续写下面的内容，直接输出续写文本，不要添加解释。{}
+
+内容：
+{}"#,
                 style, context_info, content
             )
         }
         PromptAction::Rewrite => {
-            let style = get_style_prompt(&settings.writing_style);
+            let style = get_style_prompt(settings);
             format!(
-                r#"{}重写以下内容，保持原意但使用更好的表达方式。请直接输出重写后的文字。
+                r#"{}。请重写下面的内容，保持原意，提升表达质量。直接输出重写后的文本。
 
-内容：{}"#,
+内容：
+{}"#,
                 style, content
             )
         }
         PromptAction::Translate => {
             let target_lang = context.unwrap_or("英文");
             format!(
-                r#"请将以下内容翻译成{}。如果是中文内容则翻译成英文，如果是英文内容则翻译成中文。
-请直接输出翻译结果，不要添加任何解释。
+                r#"请将下面内容翻译成{}。如果原文已经是英文且目标为英文，请翻译成中文。保留 Markdown 结构，直接输出译文。
 
-内容：{}"#,
+内容：
+{}"#,
                 target_lang, content
             )
         }
-        PromptAction::Summarize => {
-            format!(
-                r#"请为以下内容生成一个简洁的摘要，突出主要观点。摘要长度控制在100字以内。
+        PromptAction::Summarize => format!(
+            r#"请为下面内容生成 100 字以内的中文摘要，突出主要观点，直接输出摘要。
 
-内容：{}"#,
-                content
-            )
-        }
-        PromptAction::Outline => {
-            format!(
-                r#"请根据以下标题和内容，生成一个详细的写作大纲。使用Markdown格式输出。
+内容：
+{}"#,
+            content
+        ),
+        PromptAction::Outline => format!(
+            r#"请根据下面内容生成一个清晰、可执行的写作大纲，使用 Markdown 列表输出。
 
-内容：{}"#,
-                content
-            )
-        }
-    }
-}
-
-impl PromptAction {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            PromptAction::Proofread => "proofread",
-            PromptAction::Companion => "companion",
-            PromptAction::Rewrite => "rewrite",
-            PromptAction::Translate => "translate",
-            PromptAction::Summarize => "summarize",
-            PromptAction::Outline => "outline",
-        }
+内容：
+{}"#,
+            content
+        ),
     }
 }

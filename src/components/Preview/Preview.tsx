@@ -51,7 +51,7 @@ export function Preview({ className, style }: PreviewProps) {
     });
 
     // Inline math: $...$
-    processedContent = processedContent.replace(/\$([^\$\n]+?)\$/g, (_, tex) => {
+    processedContent = processedContent.replace(/\$([^$\n]+?)\$/g, (_, tex) => {
       try {
         return katex.renderToString(tex, {
           displayMode: false,

@@ -40,9 +40,12 @@ export function Editor({ className, style }: EditorProps) {
   const decorationsCompartmentRef = useRef(new Compartment());
   const { content, setContent, settings, setEditorView } = useAppStore();
   const { proofreadResults } = useAIStore();
+  const initialContentRef = useRef(content);
+  const initialAppearanceRef = useRef(settings.appearance);
 
   useEffect(() => {
     if (!editorRef.current || viewRef.current) return;
+    const initialAppearance = initialAppearanceRef.current;
 
     const updateListener = EditorView.updateListener.of((update) => {
       if (update.docChanged) {
@@ -57,7 +60,7 @@ export function Editor({ className, style }: EditorProps) {
     ]));
 
     const state = EditorState.create({
-      doc: content,
+      doc: initialContentRef.current,
       extensions: [
         enterKeymap,
         lineNumbers(),
@@ -73,12 +76,12 @@ export function Editor({ className, style }: EditorProps) {
         EditorView.theme({
           '&': {
             height: '100%',
-            fontSize: `${settings.appearance.font_size}px`,
-            fontFamily: settings.appearance.font_family,
+            fontSize: `${initialAppearance.font_size}px`,
+            fontFamily: initialAppearance.font_family,
           },
           '.cm-content': {
             caretColor: 'var(--text-color)',
-            lineHeight: String(settings.appearance.line_height),
+            lineHeight: String(initialAppearance.line_height),
             whiteSpace: 'pre-wrap',
             wordBreak: 'break-word',
           },
@@ -112,7 +115,7 @@ export function Editor({ className, style }: EditorProps) {
       viewRef.current = null;
       setEditorView(null);
     };
-  }, []);
+  }, [setContent, setEditorView]);
 
   useEffect(() => {
     if (viewRef.current) {

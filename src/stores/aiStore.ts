@@ -22,8 +22,8 @@ function formatError(error: unknown): string {
   return errorMsg;
 }
 
-// 带超时的invoke调用
-function invokeWithTimeout<T>(cmd: string, args: Record<string, unknown>, timeoutMs: number = 90000): Promise<T> {
+// Invoke wrapper with timeout so slow AI providers do not leave the UI hanging.
+function invokeWithTimeout<T>(cmd: string, args: Record<string, unknown>, timeoutMs: number = 60000): Promise<T> {
   return new Promise((resolve, reject) => {
     const timeoutId = setTimeout(() => {
       reject(new Error('请求超时，请检查网络连接或稍后重试'));
@@ -71,7 +71,7 @@ interface AIState {
 
   // 操作
   setStatus: (status: AIStatus, message?: string) => void;
-  checkProofread: (content: string) => Promise<void>;
+  checkProofread: (content: string, baseOffset?: number) => Promise<void>;
   getCompanionSuggestion: (content: string, context?: string) => Promise<void>;
   rewriteSelection: (text: string) => Promise<string>;
   translateText: (text: string, targetLang?: string) => Promise<string>;
@@ -108,9 +108,8 @@ export const useAIStore = create<AIState>((set, get) => ({
     set({ status, statusMessage: message });
   },
 
-  checkProofread: async (content) => {
+  checkProofread: async (content, baseOffset = 0) => {
     const settings = useAppStore.getState().settings;
-    console.log('AI校对设置:', settings.ai);
 
     if (!settings.ai.enabled) {
       set({ status: 'error', statusMessage: 'AI功能未启用' });
@@ -122,26 +121,41 @@ export const useAIStore = create<AIState>((set, get) => ({
       return;
     }
 
-    set({ status: 'proofreading', statusMessage: '正在校对...' });
+    const trimmedContent = content.trim();
+    if (!trimmedContent) {
+      set({ status: 'idle', statusMessage: '' });
+      return;
+    }
+
+    const trimStartOffset = content.indexOf(trimmedContent);
+    const resultOffset = baseOffset + Math.max(0, trimStartOffset);
+
+    set({
+      status: 'proofreading',
+      statusMessage: baseOffset > 0 ? '正在校对选中文本...' : '正在校对全文...',
+    });
 
     try {
       const requestData = {
         action: 'proofread',
-        content,
+        content: trimmedContent,
         settings: settings.ai,
       };
-      console.log('发送校对请求:', requestData);
 
       const response = await invokeWithTimeout<{
         success: boolean;
         data: ProofreadResult[];
         message?: string;
-      }>('ai_request', requestData, 90000);
-
-      console.log('校对响应:', response);
+      }>('ai_request', requestData, 45000);
 
       if (response.success) {
-        const results = Array.isArray(response.data) ? response.data : [];
+        const results = Array.isArray(response.data)
+          ? response.data.map(result => ({
+              ...result,
+              from: result.from + resultOffset,
+              to: result.to + resultOffset,
+            }))
+          : [];
         set({
           status: 'success',
           statusMessage: results.length > 0 ? `发现 ${results.length} 处问题` : '校对完成，未发现问题',
@@ -153,7 +167,7 @@ export const useAIStore = create<AIState>((set, get) => ({
         set({ status: 'error', statusMessage: response.message || '校对失败' });
       }
     } catch (error) {
-      console.error('AI校对错误:', error);
+      console.error('AI proofreading failed:', error);
       set({ status: 'error', statusMessage: formatError(error) });
     }
   },

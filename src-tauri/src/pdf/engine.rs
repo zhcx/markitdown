@@ -1,11 +1,3 @@
-use super::PdfExportOptions;
-use super::error::PdfResult;
-
-/// PDF 引擎抽象 trait
-pub trait PdfEngine: Send + Sync {
-    fn generate(&self, input: PdfInput, options: &PdfExportOptions) -> PdfResult<Vec<u8>>;
-}
-
 /// PDF 输入数据
 #[derive(Debug, Clone)]
 pub struct PdfInput {

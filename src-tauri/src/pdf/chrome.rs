@@ -6,7 +6,7 @@ use std::time::Duration;
 use tauri::{Emitter, WebviewWindow};
 
 use super::browser_pool;
-use super::engine::{PdfEngine, PdfInput};
+use super::engine::PdfInput;
 use super::error::{PdfError, PdfResult};
 use super::fonts::FontConfig;
 use super::PdfExportOptions;
@@ -35,15 +35,6 @@ impl ChromeEngine {
 impl Default for ChromeEngine {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-impl PdfEngine for ChromeEngine {
-    fn generate(&self, input: PdfInput, options: &PdfExportOptions) -> PdfResult<Vec<u8>> {
-        // 无 window 时使用同步版本
-        let html_with_images = embed_images(&input.html_body, input.file_path.as_deref());
-        let full_html = wrap_html_with_fonts(&html_with_images, options.margin_mm, &self.font_config);
-        generate_pdf_via_chrome(&full_html, options, None)
     }
 }
 

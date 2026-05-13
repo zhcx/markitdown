@@ -82,7 +82,7 @@ async fn upload_via_cli(file_path: &str, config: &PicGoConfig) -> Result<String,
         .arg(file_path)
         .output()
         .await
-        .map_err(|e| ImageError::Io(e))?;
+        .map_err(ImageError::Io)?;
 
     if !output.status.success() {
         return Err(ImageError::Api(format!(

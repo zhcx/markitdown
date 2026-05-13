@@ -1,4 +1,5 @@
 ﻿use serde::{Deserialize, Serialize};
+use base64::{engine::general_purpose, Engine as _};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tauri::{AppHandle, Manager};
@@ -133,7 +134,7 @@ fn resolve_image_src(md_file_path: Option<&str>, src: &str) -> Option<String> {
     if !resolved.exists() { return None; }
     let data = std::fs::read(&resolved).ok()?;
     let mime = guess_mime(&resolved);
-    Some(format!("data:{};base64,{}", mime, base64::encode(&data)))
+    Some(format!("data:{};base64,{}", mime, general_purpose::STANDARD.encode(&data)))
 }
 
 /// Replace every local <img src="..."> with a base64 data URL.
@@ -242,8 +243,19 @@ pub async fn export_pdf(html_body: String, settings: ExportSettings, file_path: 
 
 #[tauri::command] pub async fn cleanup_export_file(path: String) -> Result<(), String> { std::fs::remove_file(&path).ok(); Ok(()) }
 
-#[tauri::command] pub async fn get_file_content(path: String) -> Result<String, String> { std::fs::read_to_string(path).map_err(|e| e.to_string()) }
-#[tauri::command] pub async fn save_file_content(path: String, content: String) -> Result<(), String> { std::fs::write(path, content).map_err(|e| e.to_string()) }
+fn read_utf8_text_file(path: &str) -> Result<String, String> {
+    let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
+    let content = String::from_utf8(bytes)
+        .map_err(|_| "文件不是 UTF-8 编码，请先转换为 UTF-8 后再打开。".to_string())?;
+    Ok(content.strip_prefix('\u{feff}').unwrap_or(&content).to_string())
+}
+
+fn write_utf8_text_file(path: &str, content: &str) -> Result<(), String> {
+    std::fs::write(path, content.as_bytes()).map_err(|e| e.to_string())
+}
+
+#[tauri::command] pub async fn get_file_content(path: String) -> Result<String, String> { read_utf8_text_file(&path) }
+#[tauri::command] pub async fn save_file_content(path: String, content: String) -> Result<(), String> { write_utf8_text_file(&path, &content) }
 
 fn get_recent_files_path(app: &AppHandle) -> PathBuf {
     let d = app.path().app_config_dir().expect("config dir");

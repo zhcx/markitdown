@@ -1,29 +1,11 @@
 mod client;
 mod prompts;
 
-use serde::{Deserialize, Serialize};
 use tauri::WebviewWindow;
 
 use crate::commands::AISettings;
 
 pub use client::AIResponse;
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ProofreadResult {
-    pub from: usize,
-    pub to: usize,
-    pub original: String,
-    pub suggestion: String,
-    #[serde(rename = "type")]
-    pub error_type: String,
-    pub explanation: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CompanionSuggestion {
-    pub text: String,
-    pub style: String,
-}
 
 #[tauri::command]
 pub async fn ai_request(

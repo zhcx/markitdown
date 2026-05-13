@@ -1,17 +1,29 @@
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use std::sync::OnceLock;
 use std::time::Duration;
 use tauri::{Emitter, WebviewWindow};
 
 use crate::commands::AISettings;
 use super::prompts::{get_prompt, PromptAction};
 
-fn create_client() -> Result<Client, String> {
-    Client::builder()
-        .timeout(Duration::from_secs(120))
-        .connect_timeout(Duration::from_secs(30))
+static HTTP_CLIENT: OnceLock<Client> = OnceLock::new();
+
+fn get_client() -> Result<Client, String> {
+    if let Some(client) = HTTP_CLIENT.get() {
+        return Ok(client.clone());
+    }
+
+    let client = Client::builder()
+        .timeout(Duration::from_secs(75))
+        .connect_timeout(Duration::from_secs(10))
+        .pool_idle_timeout(Duration::from_secs(90))
+        .tcp_nodelay(true)
         .build()
-        .map_err(|e| format!("创建HTTP客户端失败: {}", e))
+        .map_err(|e| format!("创建HTTP客户端失败: {}", e))?;
+
+    let _ = HTTP_CLIENT.set(client);
+    Ok(HTTP_CLIENT.get().expect("HTTP client initialized").clone())
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -33,6 +45,8 @@ struct ChatRequest {
     messages: Vec<ChatMessage>,
     temperature: f32,
     stream: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    max_tokens: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -46,7 +60,7 @@ struct Choice {
 }
 
 fn get_api_endpoint(settings: &AISettings) -> String {
-    if settings.provider == "custom" && !settings.api_endpoint.is_empty() {
+    let endpoint = if settings.provider == "custom" && !settings.api_endpoint.is_empty() {
         settings.api_endpoint.clone()
     } else if settings.provider == "anthropic" {
         "https://api.anthropic.com/v1".to_string()
@@ -54,11 +68,18 @@ fn get_api_endpoint(settings: &AISettings) -> String {
         "https://api.deepseek.com/v1".to_string()
     } else {
         "https://api.openai.com/v1".to_string()
-    }
+    };
+
+    endpoint.trim_end_matches('/').to_string()
 }
 
-async fn call_api(prompt: String, settings: &AISettings) -> Result<String, String> {
-    let client = create_client()?;
+async fn call_api(
+    prompt: String,
+    settings: &AISettings,
+    max_tokens: Option<u32>,
+    temperature: Option<f32>,
+) -> Result<String, String> {
+    let client = get_client()?;
     let endpoint = get_api_endpoint(settings);
     let url = format!("{}/chat/completions", endpoint);
 
@@ -74,8 +95,9 @@ async fn call_api(prompt: String, settings: &AISettings) -> Result<String, Strin
                 content: prompt,
             },
         ],
-        temperature: settings.temperature,
+        temperature: temperature.unwrap_or(settings.temperature),
         stream: false,
+        max_tokens,
     };
 
     let response = client
@@ -107,7 +129,8 @@ async fn call_api(prompt: String, settings: &AISettings) -> Result<String, Strin
 
 pub async fn proofread(content: &str, settings: &AISettings) -> Result<AIResponse, String> {
     let prompt = get_prompt(PromptAction::Proofread, content, None, settings);
-    let result = call_api(prompt, settings).await?;
+    let max_tokens = Some(((content.chars().count() / 8) as u32).clamp(800, 3000));
+    let result = call_api(prompt, settings, max_tokens, Some(0.1)).await?;
 
     // Extract JSON from response (handle markdown code blocks and extra text)
     let json_str = extract_json_array(&result);
@@ -177,7 +200,7 @@ pub async fn companion(
     settings: &AISettings,
 ) -> Result<AIResponse, String> {
     let prompt = get_prompt(PromptAction::Companion, content, context, settings);
-    let result = call_api(prompt, settings).await?;
+    let result = call_api(prompt, settings, Some(500), None).await?;
 
     Ok(AIResponse {
         success: true,
@@ -188,7 +211,8 @@ pub async fn companion(
 
 pub async fn rewrite(content: &str, settings: &AISettings) -> Result<AIResponse, String> {
     let prompt = get_prompt(PromptAction::Rewrite, content, None, settings);
-    let result = call_api(prompt, settings).await?;
+    let max_tokens = Some(((content.chars().count() / 2) as u32).clamp(400, 1800));
+    let result = call_api(prompt, settings, max_tokens, None).await?;
 
     Ok(AIResponse {
         success: true,
@@ -203,7 +227,8 @@ pub async fn translate(
     settings: &AISettings,
 ) -> Result<AIResponse, String> {
     let prompt = get_prompt(PromptAction::Translate, content, target_lang, settings);
-    let result = call_api(prompt, settings).await?;
+    let max_tokens = Some(((content.chars().count() / 2) as u32).clamp(400, 1800));
+    let result = call_api(prompt, settings, max_tokens, Some(0.2)).await?;
 
     Ok(AIResponse {
         success: true,
@@ -214,7 +239,7 @@ pub async fn translate(
 
 pub async fn summarize(content: &str, settings: &AISettings) -> Result<AIResponse, String> {
     let prompt = get_prompt(PromptAction::Summarize, content, None, settings);
-    let result = call_api(prompt, settings).await?;
+    let result = call_api(prompt, settings, Some(500), Some(0.2)).await?;
 
     Ok(AIResponse {
         success: true,
@@ -225,7 +250,7 @@ pub async fn summarize(content: &str, settings: &AISettings) -> Result<AIRespons
 
 pub async fn outline(content: &str, settings: &AISettings) -> Result<AIResponse, String> {
     let prompt = get_prompt(PromptAction::Outline, content, None, settings);
-    let result = call_api(prompt, settings).await?;
+    let result = call_api(prompt, settings, Some(900), Some(0.3)).await?;
 
     Ok(AIResponse {
         success: true,
@@ -251,7 +276,7 @@ pub async fn streaming_request(
     };
 
     let prompt = get_prompt(prompt_action, content, None, settings);
-    let client = create_client()?;
+    let client = get_client()?;
     let endpoint = get_api_endpoint(settings);
     let url = format!("{}/chat/completions", endpoint);
 
@@ -269,6 +294,7 @@ pub async fn streaming_request(
         ],
         temperature: settings.temperature,
         stream: true,
+        max_tokens: None,
     };
 
     let response = client

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useAppStore } from '../../stores/appStore';
 import { useAIStore } from '../../stores/aiStore';
 import { EditorSelection } from '@codemirror/state';
@@ -98,6 +98,8 @@ function ImageOptionsModal({ onClose, onInsert }: { onClose: () => void; onInser
 export function Toolbar() {
   const { mode, setMode, editorView, setContent, content, sidebarVisible, setSidebarVisible, settings } = useAppStore();
   const [showImageModal, setShowImageModal] = useState(false);
+  const toolbarWheelDeltaRef = useRef(0);
+  const toolbarWheelFrameRef = useRef<number | null>(null);
   const {
     checkProofread,
     getCompanionSuggestion,
@@ -116,7 +118,14 @@ export function Toolbar() {
   };
 
   const handleProofread = () => {
-    checkProofread(content);
+    if (!editorView) {
+      checkProofread(content);
+      return;
+    }
+
+    const selection = editorView.state.selection.main;
+    const selectedText = editorView.state.sliceDoc(selection.from, selection.to);
+    checkProofread(selectedText || content, selectedText ? selection.from : 0);
   };
 
   const handleCompanion = () => {
@@ -369,9 +378,44 @@ export function Toolbar() {
     toolbarGroups.push(aiGroup);
   }
 
+  useEffect(() => {
+    return () => {
+      if (toolbarWheelFrameRef.current !== null) {
+        cancelAnimationFrame(toolbarWheelFrameRef.current);
+      }
+    };
+  }, []);
+
+  const handleToolbarWheel = (event: React.WheelEvent<HTMLDivElement>) => {
+    const container = event.currentTarget;
+    const maxScrollLeft = container.scrollWidth - container.clientWidth;
+    const canScroll = maxScrollLeft > 0;
+    if (!canScroll) return;
+
+    const rawDelta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
+    if (rawDelta === 0) return;
+
+    const deltaUnit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? container.clientWidth : 1;
+    const delta = rawDelta * deltaUnit;
+    const canMove = delta < 0 ? container.scrollLeft > 0 : container.scrollLeft < maxScrollLeft;
+    if (!canMove) return;
+
+    event.preventDefault();
+    toolbarWheelDeltaRef.current += delta;
+
+    if (toolbarWheelFrameRef.current !== null) return;
+
+    toolbarWheelFrameRef.current = requestAnimationFrame(() => {
+      const nextScrollLeft = container.scrollLeft + toolbarWheelDeltaRef.current;
+      container.scrollLeft = Math.max(0, Math.min(maxScrollLeft, nextScrollLeft));
+      toolbarWheelDeltaRef.current = 0;
+      toolbarWheelFrameRef.current = null;
+    });
+  };
+
   return (
     <div className="toolbar">
-      <div className="toolbar-left">
+      <div className="toolbar-left" onWheel={handleToolbarWheel}>
         {toolbarGroups.map((group) => (
           <div className="toolbar-group" key={group.title}>
             <span className="toolbar-group-title">{group.title}</span>
