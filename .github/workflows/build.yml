@@ -70,8 +70,23 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'MarkitDown ${{ github.ref_name }}'
-          releaseBody: 'See the assets to download this version and install.'
-          releaseDraft: true
+          releaseBody: |
+            ## 更新内容
+
+            - 左侧资源管理器升级为类 VS Code 的统一树状结构。
+            - 合并文件管理与文件夹管理，工作区文件夹和文件集中在同一资源管理器中展示。
+            - 修复打开文件后未出现在“打开的编辑器”列表的问题。
+            - 统一项目编辑器编码为 UTF-8，减少中文与跨平台文本显示问题。
+            - GitHub Actions 自动打包流程会在推送版本 tag 后生成各平台安装包。
+
+            ## 安装包说明
+
+            | 平台 | 安装包 | 说明 |
+            | --- | --- | --- |
+            | Windows | `.exe` / `.msi` | 适用于 Windows 10/11，推荐普通用户下载 `.exe` 安装包，也可使用 `.msi` 进行系统级部署。 |
+            | macOS | `.dmg` / `.app.tar.gz` | 适用于 macOS，Intel 芯片选择 x64，Apple Silicon 选择 arm64，推荐下载 `.dmg` 图形化安装包。 |
+            | Linux | `.deb` / `.rpm` / `.AppImage` | `.deb` 适用于 Debian/Ubuntu，`.rpm` 适用于 Fedora/openSUSE，`.AppImage` 可直接运行。 |
+          releaseDraft: false
           prerelease: false
           target: ${{ matrix.target }}
           args: --target ${{ matrix.target }}
