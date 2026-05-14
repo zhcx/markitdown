@@ -1,0 +1,75 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.platform }}
+    runs-on: ${{ matrix.platform }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - macos-latest
+          - ubuntu-22.04
+          - windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Linux dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build and publish installers
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: MarkitDown ${{ github.ref_name }}
+          releaseDraft: false
+          prerelease: false
+          releaseBody: |
+            ## 更新内容
+
+            - 左侧资源管理器升级为类 VS Code 的统一树状结构。
+            - 合并文件管理与文件夹管理，工作区文件夹和文件集中在同一资源管理器中展示。
+            - 修复打开文件后未出现在“打开的编辑器”列表的问题。
+            - 统一项目编辑器编码为 UTF-8，减少中文与跨平台文本显示问题。
+            - 新增 GitHub Actions 自动打包流程，推送版本 tag 后自动生成各平台安装包。
+
+            ## 安装包说明
+
+            | 平台 | 安装包 | 说明 |
+            | --- | --- | --- |
+            | Windows | `.exe` / `.msi` | 适用于 Windows 10/11，推荐普通用户下载 `.exe` 安装包，也可使用 `.msi` 进行系统级部署。 |
+            | macOS | `.dmg` / `.app.tar.gz` | 适用于 macOS，推荐下载 `.dmg` 图形化安装包。 |
+            | Linux | `.deb` / `.rpm` / `.AppImage` | `.deb` 适用于 Debian/Ubuntu，`.rpm` 适用于 Fedora/openSUSE，`.AppImage` 可直接运行。 |

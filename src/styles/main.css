@@ -2976,6 +2976,24 @@ select:focus-visible {
   overflow: hidden;
 }
 
+.explorer-tree {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 4px 0 8px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+.explorer-tree::-webkit-scrollbar {
+  width: 8px;
+}
+
+.explorer-tree::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 999px;
+}
+
 .explorer-section-title {
   display: flex;
   align-items: center;
@@ -3029,6 +3047,32 @@ select:focus-visible {
 .folder-section .file-tree::-webkit-scrollbar-thumb {
   background: var(--border-strong);
   border-radius: 999px;
+}
+
+.virtual-tree + .virtual-tree,
+.file-tree + .virtual-tree {
+  margin-top: 4px;
+  border-top: 1px solid var(--border-color);
+  padding-top: 4px;
+}
+
+.virtual-root {
+  color: var(--text-secondary);
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.virtual-icon {
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--surface-subtle);
+  color: var(--text-muted);
+  font-size: 9px;
+}
+
+.open-file-item .file-close,
+.recent-file .file-close {
+  margin-left: auto;
 }
 
 .explorer-file,

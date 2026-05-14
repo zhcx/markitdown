@@ -1,4 +1,4 @@
-﻿use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 use base64::{engine::general_purpose, Engine as _};
 use std::path::{Path, PathBuf};
 use std::time::Duration;

@@ -3,17 +3,19 @@ import { useAppStore } from '../../stores/appStore';
 import { open } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
 
-interface RecentFile {
-  path: string;
-  title: string;
-  last_opened: number;
-}
-
 interface FileNode {
   name: string;
   path: string;
   isDirectory: boolean;
   children?: FileNode[];
+}
+
+interface RawFileNode {
+  name: string;
+  path: string;
+  is_directory?: boolean;
+  isDirectory?: boolean;
+  children?: RawFileNode[];
 }
 
 interface SidebarProps {
@@ -24,86 +26,74 @@ type ContextMenuState = {
   x: number;
   y: number;
   path: string;
-  type: 'recent' | 'tree';
 } | null;
+
+const OPEN_EDITORS_ID = 'virtual:open-editors';
 
 const getFolderName = (path: string) => path.split(/[\\/]/).filter(Boolean).pop() || path;
 
+const normalizeNode = (node: RawFileNode): FileNode => ({
+  name: node.name,
+  path: node.path,
+  isDirectory: Boolean(node.isDirectory ?? node.is_directory),
+  children: node.children?.map(normalizeNode),
+});
+
 export function Sidebar({ style }: SidebarProps) {
   const { sidebarVisible, openFile, tabs, activeTabId, currentFile } = useAppStore();
-  const [recentFiles, setRecentFiles] = useState<RecentFile[]>([]);
-  const [hoveredFile, setHoveredFile] = useState<string | null>(null);
+  const [hoveredItem, setHoveredItem] = useState<string | null>(null);
   const [folderTree, setFolderTree] = useState<FileNode[]>([]);
   const [currentFolder, setCurrentFolder] = useState<string | null>(null);
-  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
+  const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set([OPEN_EDITORS_ID]));
   const [loadedFolders, setLoadedFolders] = useState<Set<string>>(new Set());
-  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
   const [contextMenu, setContextMenu] = useState<ContextMenuState>(null);
-  const [now, setNow] = useState(0);
 
-  const loadRecentFiles = useCallback(async () => {
+  const updateRecentFile = useCallback(async (path: string, title: string) => {
     try {
-      const files = await invoke<RecentFile[]>('get_recent_files');
-      setRecentFiles(files || []);
-    } catch (error) {
-      console.error('Failed to load recent files:', error);
-      setRecentFiles([]);
-    }
-  }, []);
-
-  const updateRecentFiles = useCallback(async (path: string, title: string) => {
-    try {
-      const updated = await invoke<RecentFile[]>('update_recent_file', { path, title });
-      setRecentFiles(updated || []);
+      await invoke('update_recent_file', { path, title });
     } catch (error) {
       console.error('Failed to update recent files:', error);
     }
   }, []);
 
-  useEffect(() => {
-    queueMicrotask(() => {
-      void loadRecentFiles();
-    });
-  }, [loadRecentFiles]);
+  const readFolder = useCallback(async (folderPath: string) => {
+    const tree = await invoke<RawFileNode[]>('read_folder', { path: folderPath });
+    return (tree || []).map(normalizeNode);
+  }, []);
+
+  const loadFolderContents = useCallback(async (folderPath: string) => {
+    try {
+      const tree = await readFolder(folderPath);
+      setFolderTree(tree);
+      setLoadedFolders(prev => new Set(prev).add(folderPath));
+      setExpandedNodes(prev => new Set(prev).add(folderPath));
+    } catch (error) {
+      console.error('Failed to load folder contents:', error);
+      setFolderTree([]);
+    }
+  }, [readFolder]);
 
   useEffect(() => {
     const activeTab = tabs.find(t => t.id === activeTabId);
     if (activeTab?.path) {
       queueMicrotask(() => {
-        void updateRecentFiles(activeTab.path, activeTab.title);
+        void updateRecentFile(activeTab.path, activeTab.title);
       });
     }
-  }, [activeTabId, tabs, updateRecentFiles]);
-
-  useEffect(() => {
-    const initialTimer = window.setTimeout(() => setNow(Date.now()), 0);
-    const timer = window.setInterval(() => setNow(Date.now()), 60000);
-    return () => {
-      window.clearTimeout(initialTimer);
-      window.clearInterval(timer);
-    };
-  }, []);
-
-  const loadFolderContents = useCallback(async (folderPath: string) => {
-    try {
-      const tree = await invoke<FileNode[]>('read_folder', { path: folderPath });
-      setFolderTree(tree || []);
-      setLoadedFolders(prev => new Set(prev).add(folderPath));
-      setExpandedFolders(prev => new Set(prev).add(folderPath));
-    } catch (error) {
-      console.error('Failed to load folder contents:', error);
-      setFolderTree([]);
-    }
-  }, []);
+  }, [activeTabId, tabs, updateRecentFile]);
 
   const handleOpenFile = async () => {
     try {
       const selected = await open({
         filters: [{ name: 'Markdown', extensions: ['md', 'txt', 'markdown'] }],
-        multiple: false,
+        multiple: true,
       });
       if (selected) {
-        void openFile(selected as string);
+        const paths = Array.isArray(selected) ? selected : [selected];
+        for (const path of paths) {
+          await openFile(path as string);
+        }
+        setExpandedNodes(prev => new Set(prev).add(OPEN_EDITORS_ID));
       }
     } catch (error) {
       console.error('Failed to open file:', error);
@@ -128,6 +118,7 @@ export function Sidebar({ style }: SidebarProps) {
 
   const handleNewFile = () => {
     useAppStore.getState().addTab();
+    setExpandedNodes(prev => new Set(prev).add(OPEN_EDITORS_ID));
   };
 
   const replaceNodeChildren = (nodes: FileNode[], path: string, children: FileNode[]): FileNode[] =>
@@ -141,24 +132,32 @@ export function Sidebar({ style }: SidebarProps) {
       return node;
     });
 
+  const toggleExpanded = (id: string) => {
+    setExpandedNodes(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
   const toggleFolder = async (node: FileNode) => {
-    const isExpanded = expandedFolders.has(node.path);
+    const isExpanded = expandedNodes.has(node.path);
 
     if (isExpanded) {
-      setExpandedFolders(prev => {
-        const next = new Set(prev);
-        next.delete(node.path);
-        return next;
-      });
+      toggleExpanded(node.path);
       return;
     }
 
-    setExpandedFolders(prev => new Set(prev).add(node.path));
+    setExpandedNodes(prev => new Set(prev).add(node.path));
 
     if (!loadedFolders.has(node.path)) {
       try {
-        const children = await invoke<FileNode[]>('read_folder', { path: node.path });
-        setFolderTree(currentTree => replaceNodeChildren(currentTree, node.path, children || []));
+        const children = await readFolder(node.path);
+        setFolderTree(currentTree => replaceNodeChildren(currentTree, node.path, children));
         setLoadedFolders(prev => new Set(prev).add(node.path));
       } catch (error) {
         console.error('Failed to load folder children:', error);
@@ -169,88 +168,44 @@ export function Sidebar({ style }: SidebarProps) {
   const toggleWorkspaceRoot = async () => {
     if (!currentFolder) return;
 
-    if (expandedFolders.has(currentFolder)) {
-      setExpandedFolders(prev => {
-        const next = new Set(prev);
-        next.delete(currentFolder);
-        return next;
-      });
+    if (expandedNodes.has(currentFolder)) {
+      toggleExpanded(currentFolder);
     } else {
-      setExpandedFolders(prev => new Set(prev).add(currentFolder));
+      setExpandedNodes(prev => new Set(prev).add(currentFolder));
       if (!loadedFolders.has(currentFolder)) {
         await loadFolderContents(currentFolder);
       }
     }
   };
 
-  const removeRecentFile = async (path: string) => {
-    try {
-      const updated = await invoke<RecentFile[]>('remove_recent_file', { path });
-      setRecentFiles(updated || []);
-    } catch (error) {
-      console.error('Failed to remove recent file:', error);
-    }
-  };
-
-  const handleContextMenu = (e: React.MouseEvent, path: string, type: 'recent' | 'tree') => {
+  const handleContextMenu = (e: React.MouseEvent, path: string) => {
     e.preventDefault();
     e.stopPropagation();
-    setContextMenu({ x: e.clientX, y: e.clientY, path, type });
+    setContextMenu({ x: e.clientX, y: e.clientY, path });
   };
 
   const closeContextMenu = useCallback(() => {
     setContextMenu(null);
   }, []);
 
-  const handleRemoveFromList = async () => {
-    if (contextMenu) {
-      await removeRecentFile(contextMenu.path);
-      closeContextMenu();
-    }
-  };
-
   useEffect(() => {
     document.addEventListener('click', closeContextMenu);
     return () => document.removeEventListener('click', closeContextMenu);
   }, [closeContextMenu]);
 
-  const toggleSection = (section: string) => {
-    setCollapsedSections(prev => {
-      const next = new Set(prev);
-      if (next.has(section)) {
-        next.delete(section);
-      } else {
-        next.add(section);
-      }
-      return next;
-    });
-  };
-
-  const formatTime = (timestamp: number) => {
-    const diff = now - timestamp;
-    const minutes = Math.floor(diff / 60000);
-    const hours = Math.floor(diff / 3600000);
-    const days = Math.floor(diff / 86400000);
-
-    if (minutes < 1) return '刚刚';
-    if (minutes < 60) return `${minutes}分钟前`;
-    if (hours < 24) return `${hours}小时前`;
-    if (days < 7) return `${days}天前`;
-    return new Date(timestamp).toLocaleDateString();
-  };
-
   const getFileIcon = (filename: string) => {
-    if (filename.endsWith('.md') || filename.endsWith('.markdown')) return 'M';
-    if (filename.endsWith('.txt')) return 'T';
-    if (filename.match(/\.(js|ts|jsx|tsx)$/)) return 'JS';
-    if (filename.match(/\.(json|yaml|yml)$/)) return '{}';
-    if (filename.match(/\.(html|css)$/)) return '<>';
-    return '•';
+    const lowerName = filename.toLowerCase();
+    if (lowerName.endsWith('.md') || lowerName.endsWith('.markdown')) return 'M';
+    if (lowerName.endsWith('.txt')) return 'T';
+    if (lowerName.match(/\.(js|ts|jsx|tsx)$/)) return 'TS';
+    if (lowerName.match(/\.(json|yaml|yml)$/)) return '{}';
+    if (lowerName.match(/\.(html|css)$/)) return '<>';
+    return '';
   };
 
   const renderFileTree = (nodes: FileNode[], depth = 0) => {
     return nodes.map(node => {
-      const isExpanded = expandedFolders.has(node.path);
+      const isExpanded = expandedNodes.has(node.path);
       const isActive = currentFile === node.path;
 
       return (
@@ -265,7 +220,7 @@ export function Sidebar({ style }: SidebarProps) {
                 void openFile(node.path);
               }
             }}
-            onContextMenu={(e) => !node.isDirectory && handleContextMenu(e, node.path, 'tree')}
+            onContextMenu={(e) => !node.isDirectory && handleContextMenu(e, node.path)}
             title={node.path}
           >
             <span className="expand-icon">{node.isDirectory ? (isExpanded ? '▾' : '▸') : ''}</span>
@@ -292,128 +247,94 @@ export function Sidebar({ style }: SidebarProps) {
 
   if (!sidebarVisible) return null;
 
-  const openEditorsCollapsed = collapsedSections.has('open-editors');
-  const workspaceCollapsed = collapsedSections.has('workspace');
-  const recentCollapsed = collapsedSections.has('recent');
-  const rootExpanded = currentFolder ? expandedFolders.has(currentFolder) : false;
+  const openEditorsExpanded = expandedNodes.has(OPEN_EDITORS_ID);
+  const rootExpanded = currentFolder ? expandedNodes.has(currentFolder) : false;
+  const hasExplorerContent = tabs.length > 0 || Boolean(currentFolder);
 
   return (
     <aside className="sidebar explorer-sidebar" style={style}>
       <div className="sidebar-header explorer-header">
-        <h3>资源浏览器</h3>
+        <h3>资源管理器</h3>
         <div className="sidebar-actions">
           <button className="sidebar-action-btn" onClick={handleNewFile} title="新建文件" aria-label="新建文件">
             <span className="sidebar-action-icon new-file-icon" aria-hidden="true" />
           </button>
-          <button className="sidebar-action-btn" onClick={handleOpenFile} title="打开文件" aria-label="打开文件">
+          <button className="sidebar-action-btn" onClick={() => void handleOpenFile()} title="打开文件" aria-label="打开文件">
             <span className="sidebar-action-icon open-file-icon" aria-hidden="true" />
           </button>
-          <button className="sidebar-action-btn" onClick={handleOpenFolder} title="打开文件夹" aria-label="打开文件夹">
+          <button className="sidebar-action-btn" onClick={() => void handleOpenFolder()} title="打开文件夹" aria-label="打开文件夹">
             <span className="sidebar-action-icon open-folder-icon" aria-hidden="true" />
           </button>
         </div>
       </div>
 
-      <section className="sidebar-section explorer-section">
-        <button className="sidebar-section-title explorer-section-title" onClick={() => toggleSection('open-editors')}>
-          <span className="section-caret">{openEditorsCollapsed ? '▸' : '▾'}</span>
-          <span>当前打开</span>
-        </button>
-        {!openEditorsCollapsed && (
-          <div className="sidebar-files explorer-list">
-            {tabs.map(tab => (
-              <div
-                key={tab.id}
-                className={`sidebar-file explorer-file ${tab.id === activeTabId ? 'active' : ''}`}
-                onClick={() => useAppStore.getState().setActiveTab(tab.id)}
-                onMouseEnter={() => setHoveredFile(tab.id)}
-                onMouseLeave={() => setHoveredFile(null)}
-                title={tab.path || tab.title}
-              >
-                <span className="file-icon-badge">{getFileIcon(tab.title)}</span>
-                <span className="file-name">{tab.title}</span>
-                {tab.modified && <span className="file-modified">●</span>}
-                {hoveredFile === tab.id && (
-                  <button
-                    className="file-close"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      useAppStore.getState().closeTab(tab.id);
-                    }}
-                    title="关闭"
-                  >
-                    ×
-                  </button>
-                )}
-              </div>
-            ))}
+      <div className="explorer-tree" role="tree" aria-label="资源管理器文件树">
+        <div className="file-tree open-editors-tree">
+          <div className="file-tree-item folder virtual-root" onClick={() => toggleExpanded(OPEN_EDITORS_ID)}>
+            <span className="expand-icon">{openEditorsExpanded ? '▾' : '▸'}</span>
+            <span className="tree-icon virtual-icon">O</span>
+            <span className="tree-name">打开的编辑器</span>
           </div>
-        )}
-      </section>
-
-      <section className="sidebar-section explorer-section folder-section">
-        <button className="sidebar-section-title explorer-section-title" onClick={() => toggleSection('workspace')}>
-          <span className="section-caret">{workspaceCollapsed ? '▸' : '▾'}</span>
-          <span>文件夹</span>
-        </button>
-        {!workspaceCollapsed && (
-          currentFolder ? (
-            <div className="file-tree">
-              <div className="file-tree-item folder root-folder" onClick={() => void toggleWorkspaceRoot()} title={currentFolder}>
-                <span className="expand-icon">{rootExpanded ? '▾' : '▸'}</span>
-                <span className="tree-icon folder-icon" />
-                <span className="tree-name">{getFolderName(currentFolder)}</span>
-              </div>
-              {rootExpanded && renderFileTree(folderTree, 1)}
-            </div>
-          ) : (
-            <div className="explorer-empty">
-              <span>未打开文件夹</span>
-              <small>点击顶部文件夹按钮选择工作目录</small>
-            </div>
-          )
-        )}
-      </section>
-
-      {recentFiles.length > 0 && (
-        <section className="sidebar-section explorer-section recent-section">
-          <button className="sidebar-section-title explorer-section-title" onClick={() => toggleSection('recent')}>
-            <span className="section-caret">{recentCollapsed ? '▸' : '▾'}</span>
-            <span>最近文档</span>
-          </button>
-          {!recentCollapsed && (
-            <div className="sidebar-files explorer-list">
-              {recentFiles.map(file => (
+          {openEditorsExpanded && (
+            tabs.length > 0 ? (
+              tabs.map(tab => (
                 <div
-                  key={file.path}
-                  className="sidebar-file explorer-file recent-file"
-                  onClick={() => void openFile(file.path)}
-                  onContextMenu={(e) => handleContextMenu(e, file.path, 'recent')}
-                  onMouseEnter={() => setHoveredFile(file.path)}
-                  onMouseLeave={() => setHoveredFile(null)}
-                  title={file.path}
+                  key={tab.id}
+                  className={`file-tree-item file open-file-item ${tab.id === activeTabId ? 'active' : ''}`}
+                  style={{ paddingLeft: 22 }}
+                  onClick={() => useAppStore.getState().setActiveTab(tab.id)}
+                  onContextMenu={(e) => tab.path && handleContextMenu(e, tab.path)}
+                  onMouseEnter={() => setHoveredItem(tab.id)}
+                  onMouseLeave={() => setHoveredItem(null)}
+                  title={tab.path || tab.title}
                 >
-                  <span className="file-icon-badge">{getFileIcon(file.title)}</span>
-                  <span className="file-name">{file.title}</span>
-                  <span className="file-time">{formatTime(file.last_opened)}</span>
-                  {hoveredFile === file.path && (
+                  <span className="expand-icon" />
+                  <span className="tree-icon file-icon-badge">{getFileIcon(tab.title)}</span>
+                  <span className="tree-name">{tab.title}</span>
+                  {tab.modified && <span className="file-modified">•</span>}
+                  {hoveredItem === tab.id && (
                     <button
                       className="file-close"
                       onClick={(e) => {
                         e.stopPropagation();
-                        void removeRecentFile(file.path);
+                        useAppStore.getState().closeTab(tab.id);
                       }}
-                      title="移除"
+                      title="关闭"
                     >
                       ×
                     </button>
                   )}
                 </div>
-              ))}
-            </div>
+              ))
+            ) : (
+              <div className="file-tree-empty" style={{ paddingLeft: 28 }}>
+                暂无打开的编辑器
+              </div>
+            )
           )}
-        </section>
-      )}
+        </div>
+
+        {currentFolder && (
+          <div className="file-tree workspace-tree">
+            <div className="file-tree-item folder root-folder" onClick={() => void toggleWorkspaceRoot()} title={currentFolder}>
+              <span className="expand-icon">{rootExpanded ? '▾' : '▸'}</span>
+              <span className="tree-icon folder-icon" />
+              <span className="tree-name">{getFolderName(currentFolder)}</span>
+            </div>
+            {rootExpanded && renderFileTree(folderTree, 1)}
+          </div>
+        )}
+
+        {!hasExplorerContent && (
+          <div className="explorer-empty">
+            <span>尚未打开文件夹</span>
+            <small>使用顶部按钮打开文件或文件夹，内容会显示在资源管理器中。</small>
+            <button className="open-folder-primary" onClick={() => void handleOpenFolder()}>
+              打开文件夹
+            </button>
+          </div>
+        )}
+      </div>
 
       {contextMenu && (
         <div
@@ -424,14 +345,6 @@ export function Sidebar({ style }: SidebarProps) {
           <div className="context-menu-item" onClick={() => void openFile(contextMenu.path)}>
             打开文件
           </div>
-          {contextMenu.type === 'recent' && (
-            <>
-              <div className="context-menu-divider" />
-              <div className="context-menu-item danger" onClick={handleRemoveFromList}>
-                从列表中移除
-              </div>
-            </>
-          )}
         </div>
       )}
     </aside>
