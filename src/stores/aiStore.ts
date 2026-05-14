@@ -48,6 +48,64 @@ export interface CompanionSuggestion {
 
 export type AIStatus = 'idle' | 'loading' | 'proofreading' | 'companion' | 'success' | 'error';
 
+let companionRequestSeq = 0;
+const companionCache = new Map<string, string[]>();
+const MAX_COMPANION_CACHE_SIZE = 20;
+
+function normalizeCompanionSuggestions(input: unknown): string[] {
+  const collectRawSuggestions = (value: unknown): string[] => {
+    if (typeof value === 'string') return [value];
+    if (Array.isArray(value)) return value.flatMap(collectRawSuggestions);
+    if (value && typeof value === 'object') {
+      const record = value as Record<string, unknown>;
+      return ['suggestions', 'data', 'items', 'results', 'text', 'content']
+        .flatMap(key => collectRawSuggestions(record[key]));
+    }
+    return [];
+  };
+
+  const rawSuggestions = collectRawSuggestions(input);
+
+  return rawSuggestions
+    .flatMap((item) => {
+      const trimmed = item.trim();
+      if (!trimmed) return [];
+
+      const lines = trimmed
+        .split(/\r?\n+/)
+        .map(line => line.replace(/^\s*(?:[-*]|\d+[.)]|[一二三四五六七八九十]+[、.])\s*/, '').trim())
+        .filter(Boolean);
+
+      return lines.length > 1 ? lines : [trimmed];
+    })
+    .filter((suggestion, index, suggestions) => suggestions.indexOf(suggestion) === index)
+    .slice(0, 5);
+}
+
+function getCompanionCacheKey(content: string): string {
+  const settings = useAppStore.getState().settings.ai;
+  return [
+    settings.provider,
+    settings.api_endpoint,
+    settings.model,
+    settings.writing_style,
+    settings.custom_style_prompt,
+    content,
+  ].join('\n---\n');
+}
+
+function cacheCompanionSuggestions(key: string, suggestions: string[]) {
+  if (suggestions.length === 0) return;
+  companionCache.delete(key);
+  companionCache.set(key, suggestions);
+
+  while (companionCache.size > MAX_COMPANION_CACHE_SIZE) {
+    const oldestKey = companionCache.keys().next().value;
+    if (!oldestKey) break;
+    companionCache.delete(oldestKey);
+  }
+}
+
 interface AIState {
   status: AIStatus;
   statusMessage: string;
@@ -173,25 +231,48 @@ export const useAIStore = create<AIState>((set, get) => ({
   },
 
   getCompanionSuggestion: async (content, context) => {
+    const requestSeq = ++companionRequestSeq;
     const settings = useAppStore.getState().settings;
     console.log('伴写设置:', settings.ai);
 
     if (!settings.ai.enabled) {
-      set({ status: 'error', statusMessage: 'AI功能未启用' });
+      set({ status: 'error', statusMessage: 'AI功能未启用', companionSuggestions: [] });
       return;
     }
 
     if (!settings.ai.api_key) {
-      set({ status: 'error', statusMessage: '请先配置API密钥' });
+      set({ status: 'error', statusMessage: '请先配置API密钥', companionSuggestions: [] });
       return;
     }
 
-    set({ status: 'loading', statusMessage: '正在生成建议...' });
+    const trimmedContent = content.trim();
+    if (!trimmedContent) {
+      set({ status: 'idle', statusMessage: '', companionSuggestions: [] });
+      return;
+    }
+
+    const cacheKey = getCompanionCacheKey(trimmedContent);
+    const cachedSuggestions = companionCache.get(cacheKey);
+    if (cachedSuggestions) {
+      set({
+        status: 'success',
+        statusMessage: '',
+        companionSuggestions: cachedSuggestions,
+        companionVisible: true,
+      });
+      return;
+    }
+
+    set({
+      status: 'companion',
+      statusMessage: '正在生成伴写建议...',
+      companionSuggestions: [],
+    });
 
     try {
       const requestData = {
         action: 'companion',
-        content,
+        content: trimmedContent,
         context: context || undefined,
         settings: settings.ai,
       };
@@ -202,14 +283,16 @@ export const useAIStore = create<AIState>((set, get) => ({
         data: { suggestions: string[] };
         message?: string;
       }>('ai_request', requestData, 60000);
-
-      console.log('伴写响应:', response);
+      if (requestSeq !== companionRequestSeq) return;
 
       if (response.success && response.data?.suggestions) {
+        const suggestions = normalizeCompanionSuggestions(response.data.suggestions);
+        cacheCompanionSuggestions(cacheKey, suggestions);
+
         set({
-          status: 'success',
-          statusMessage: '',
-          companionSuggestions: response.data.suggestions,
+          status: suggestions.length > 0 ? 'success' : 'error',
+          statusMessage: suggestions.length > 0 ? '' : 'AI未返回可用续写，请刷新重试',
+          companionSuggestions: suggestions,
           companionVisible: true,
         });
       } else {
@@ -217,6 +300,7 @@ export const useAIStore = create<AIState>((set, get) => ({
       }
     } catch (error) {
       console.error('伴写错误:', error);
+      if (requestSeq !== companionRequestSeq) return;
       set({ status: 'error', statusMessage: formatError(error) });
     }
   },

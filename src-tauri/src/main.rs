@@ -30,6 +30,7 @@ fn main() {
             commands::check_for_updates,
             ai::ai_request,
             ai::ai_streaming,
+            ai::fetch_ai_models,
             pdf::converter::export_pdf_direct,
         ])
         .setup(|_app| {

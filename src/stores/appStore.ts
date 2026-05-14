@@ -48,7 +48,7 @@ export interface Settings {
   };
   ai: {
     enabled: boolean;
-    provider: 'openai' | 'anthropic' | 'deepseek' | 'custom';
+    provider: 'openai' | 'anthropic' | 'deepseek' | 'siliconflow' | 'custom';
     api_key: string;
     api_endpoint: string;
     model: string;
@@ -57,6 +57,7 @@ export interface Settings {
     suggest_delay: number;
     writing_style: 'formal' | 'casual' | 'academic' | 'creative' | 'custom';
     custom_style_prompt: string;
+    provider_api_keys: string;
   };
 }
 
@@ -168,6 +169,7 @@ const defaultSettings: Settings = {
     suggest_delay: 2000,
     writing_style: 'formal',
     custom_style_prompt: '',
+    provider_api_keys: '{}',
   },
 };
 

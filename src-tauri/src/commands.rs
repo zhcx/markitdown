@@ -65,6 +65,7 @@ pub struct AISettings {
     pub api_endpoint: String, pub model: String, pub temperature: f32,
     pub auto_suggest: bool, pub suggest_delay: u32,
     pub writing_style: String, pub custom_style_prompt: String,
+    pub provider_api_keys: String,
 }
 
 impl Default for Settings {
@@ -80,7 +81,7 @@ impl Default for Settings {
                 local: LocalImageConfig { save_directory: "./assets/images".into(), naming_rule: "timestamp".into() },
             },
             export: ExportSettings { pdf_margin: 20.0, html_template: "default".into() },
-            ai: AISettings { enabled: false, provider: "openai".into(), api_key: String::new(), api_endpoint: "https://api.openai.com/v1".into(), model: "gpt-4o-mini".into(), temperature: 0.7, auto_suggest: false, suggest_delay: 2000, writing_style: "formal".into(), custom_style_prompt: String::new() },
+            ai: AISettings { enabled: false, provider: "openai".into(), api_key: String::new(), api_endpoint: "https://api.openai.com/v1".into(), model: "gpt-4o-mini".into(), temperature: 0.7, auto_suggest: false, suggest_delay: 2000, writing_style: "formal".into(), custom_style_prompt: String::new(), provider_api_keys: "{}".into() },
         }
     }
 }

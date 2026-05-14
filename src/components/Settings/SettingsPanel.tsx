@@ -1,13 +1,33 @@
 import { useState } from 'react';
 import { useAppStore } from '../../stores/appStore';
+import { invoke } from '@tauri-apps/api/core';
 
 export function SettingsPanel() {
   const { settings, saveSettings, setSettingsOpen } = useAppStore();
   const [localSettings, setLocalSettings] = useState(settings);
   const [activeTab, setActiveTab] = useState<'appearance' | 'editor' | 'image' | 'export' | 'ai'>('appearance');
+  const [apiKeyVisible, setApiKeyVisible] = useState(false);
+  const [models, setModels] = useState<string[]>([]);
+  const [fetchingModels, setFetchingModels] = useState(false);
+  const [fetchError, setFetchError] = useState('');
+
+  // 解析各服务商保存的 API KEY
+  const parseProviderKeys = (): Record<string, string> => {
+    try {
+      return JSON.parse(localSettings.ai.provider_api_keys || '{}');
+    } catch {
+      return {};
+    }
+  };
 
   const handleSave = async () => {
-    await saveSettings(localSettings);
+    // 保存前确保当前 API KEY 已记录到映射中
+    const keys = { ...parseProviderKeys(), [localSettings.ai.provider]: localSettings.ai.api_key };
+    const saveData = {
+      ...localSettings,
+      ai: { ...localSettings.ai, provider_api_keys: JSON.stringify(keys) },
+    };
+    await saveSettings(saveData);
     setSettingsOpen(false);
   };
 
@@ -514,63 +534,147 @@ export function SettingsPanel() {
                     <label>AI服务商</label>
                     <select
                       value={localSettings.ai.provider}
-                      onChange={(e) =>
+                      onChange={(e) => {
+                        const oldProvider = localSettings.ai.provider;
+                        const newProvider = e.target.value;
+
+                        // 先保存当前服务商的 API KEY
+                        const keys = { ...parseProviderKeys(), [oldProvider]: localSettings.ai.api_key };
+
+                        const defaults: Record<string, { endpoint: string; model: string }> = {
+                          openai: { endpoint: 'https://api.openai.com/v1', model: 'gpt-4o-mini' },
+                          anthropic: { endpoint: 'https://api.anthropic.com/v1', model: 'claude-sonnet-4-20250514' },
+                          deepseek: { endpoint: 'https://api.deepseek.com/v1', model: 'deepseek-chat' },
+                          siliconflow: { endpoint: 'https://api.siliconflow.cn/v1', model: 'Qwen/Qwen3-35B-A3B' },
+                          custom: { endpoint: localSettings.ai.api_endpoint || 'https://api.openai.com/v1', model: localSettings.ai.model },
+                        };
+                        const def = defaults[newProvider] || defaults.custom;
+                        // 取出该服务商之前保存的 KEY（如有）
+                        const savedKey = keys[newProvider] || '';
                         setLocalSettings({
                           ...localSettings,
-                          ai: { ...localSettings.ai, provider: e.target.value as 'openai' | 'anthropic' | 'deepseek' | 'custom' },
-                        })
-                      }
+                          ai: {
+                            ...localSettings.ai,
+                            provider: newProvider as 'openai' | 'anthropic' | 'deepseek' | 'siliconflow' | 'custom',
+                            api_key: savedKey,
+                            api_endpoint: def.endpoint,
+                            model: def.model,
+                            provider_api_keys: JSON.stringify(keys),
+                          },
+                        });
+                        setModels([]);
+                        setFetchError('');
+                      }}
                     >
                       <option value="openai">OpenAI</option>
                       <option value="anthropic">Anthropic (Claude)</option>
                       <option value="deepseek">DeepSeek</option>
+                      <option value="siliconflow">硅基流动 (SiliconFlow)</option>
                       <option value="custom">自定义</option>
                     </select>
                   </div>
+
                   <div className="setting-item">
                     <label>API密钥</label>
+                    <div className="input-with-toggle">
+                      <input
+                        type={apiKeyVisible ? 'text' : 'password'}
+                        value={localSettings.ai.api_key}
+                        onChange={(e) => {
+                          const newKey = e.target.value;
+                          const keys = { ...parseProviderKeys(), [localSettings.ai.provider]: newKey };
+                          setLocalSettings({
+                            ...localSettings,
+                            ai: {
+                              ...localSettings.ai,
+                              api_key: newKey,
+                              provider_api_keys: JSON.stringify(keys),
+                            },
+                          });
+                        }}
+                        placeholder="sk-..."
+                      />
+                      <button
+                        className="toggle-visibility-btn"
+                        onClick={() => setApiKeyVisible(!apiKeyVisible)}
+                        title={apiKeyVisible ? '隐藏' : '显示'}
+                      >
+                        {apiKeyVisible ? '🙈' : '👁'}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="setting-item">
+                    <label>API端点</label>
                     <input
-                      type="password"
-                      value={localSettings.ai.api_key}
+                      type="text"
+                      value={localSettings.ai.api_endpoint}
                       onChange={(e) =>
                         setLocalSettings({
                           ...localSettings,
-                          ai: { ...localSettings.ai, api_key: e.target.value },
+                          ai: { ...localSettings.ai, api_endpoint: e.target.value },
                         })
                       }
-                      placeholder="sk-..."
+                      placeholder="https://api.openai.com/v1"
                     />
                   </div>
-                  {localSettings.ai.provider === 'custom' && (
-                    <div className="setting-item">
-                      <label>API端点</label>
-                      <input
-                        type="text"
-                        value={localSettings.ai.api_endpoint}
+
+                  <div className="setting-item">
+                    <label>模型</label>
+                    <div className="model-select-row">
+                      <select
+                        className="model-select"
+                        value={localSettings.ai.model}
                         onChange={(e) =>
                           setLocalSettings({
                             ...localSettings,
-                            ai: { ...localSettings.ai, api_endpoint: e.target.value },
+                            ai: { ...localSettings.ai, model: e.target.value },
                           })
                         }
-                        placeholder="https://api.example.com/v1"
-                      />
+                      >
+                        {models.length > 0 ? (
+                          models.map((m) => (
+                            <option key={m} value={m}>{m}</option>
+                          ))
+                        ) : (
+                          <option value={localSettings.ai.model}>{localSettings.ai.model || '请输入模型名称'}</option>
+                        )}
+                      </select>
+                      <button
+                        className="fetch-models-btn"
+                        onClick={async () => {
+                          if (!localSettings.ai.api_key) {
+                            setFetchError('请先填写 API 密钥');
+                            return;
+                          }
+                          setFetchingModels(true);
+                          setFetchError('');
+                          try {
+                            const result = await invoke<string[]>('fetch_ai_models', {
+                              apiKey: localSettings.ai.api_key,
+                              apiEndpoint: localSettings.ai.api_endpoint,
+                            });
+                            setModels(result);
+                            if (result.length > 0) {
+                              setLocalSettings({
+                                ...localSettings,
+                                ai: { ...localSettings.ai, model: result[0] },
+                              });
+                            }
+                          } catch (err: any) {
+                            setFetchError(String(err));
+                          } finally {
+                            setFetchingModels(false);
+                          }
+                        }}
+                        disabled={fetchingModels}
+                      >
+                        {fetchingModels ? '获取中...' : '获取模型列表'}
+                      </button>
                     </div>
-                  )}
-                  <div className="setting-item">
-                    <label>模型</label>
-                    <input
-                      type="text"
-                      value={localSettings.ai.model}
-                      onChange={(e) =>
-                        setLocalSettings({
-                          ...localSettings,
-                          ai: { ...localSettings.ai, model: e.target.value },
-                        })
-                      }
-                      placeholder="gpt-4o-mini"
-                    />
+                    {fetchError && <div className="fetch-error">{fetchError}</div>}
                   </div>
+
                   <div className="setting-item">
                     <label>温度 (0-1)</label>
                     <input

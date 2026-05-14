@@ -73,17 +73,28 @@ jobs:
           releaseBody: |
             ## 更新内容
 
-            - 左侧资源管理器升级为类 VS Code 的统一树状结构。
-            - 合并文件管理与文件夹管理，工作区文件夹和文件集中在同一资源管理器中展示。
-            - 修复打开文件后未出现在“打开的编辑器”列表的问题。
+            ### AI 伴写功能修复
+            - 修复了「AI 未返回可用续写，请刷新重试」问题：优化了后端 JSON 数组解析逻辑，正确处理字符串内的方括号。
+
+            ### AI 设置增强
+            - 新增 **硅基流动 (SiliconFlow)** 服务商支持，自动填入默认 API 端点和模型。
+            - API 密钥输入框新增 👁 显示/隐藏切换按钮，方便确认输入。
+            - API 端点字段始终可见，切换服务商自动填入默认地址。
+            - 新增 **获取模型列表** 按钮，填写 API KEY 和端点后可从服务商拉取可用模型列表。
+            - 切换服务商时自动保存/恢复各家的 API KEY，无需重复填写。
+
+            ### 其他改进
+            - 后端新增 `anthropic` API 支持（带 `anthropic-version` 头部 /v1/messages 端点）。
+            - 后端新增 `fetch_ai_models` 命令，支持从 OpenAI 兼容 API 拉取模型列表。
 
             ## 安装包说明
 
-            | 平台 | 安装包 | 说明 |
+            | 平台 | 架构 | 安装包 |
             | --- | --- | --- |
-            | Windows | `.exe` / `.msi` | 适用于 Windows 10/11，推荐普通用户下载 `.exe` 安装包，也可使用 `.msi` 进行系统级部署。 |
-            | macOS | `.dmg` / `.app.tar.gz` | 适用于 macOS，Intel 芯片选择 x64，Apple Silicon 选择 arm64，推荐下载 `.dmg` 图形化安装包。 |
-            | Linux | `.deb` / `.rpm` / `.AppImage` | `.deb` 适用于 Debian/Ubuntu，`.rpm` 适用于 Fedora/openSUSE，`.AppImage` 可直接运行。 |
+            | Windows x64 | x86_64 | `.msi` / `.exe` |
+            | macOS Intel | x86_64 | `.dmg` / `.app.tar.gz` |
+            | macOS Apple Silicon | arm64 | `.dmg` / `.app.tar.gz` |
+            | Linux | x86_64 | `.deb` / `.rpm` / `.AppImage` |
           releaseDraft: false
           prerelease: false
           target: ${{ matrix.target }}

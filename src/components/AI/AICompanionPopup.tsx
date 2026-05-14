@@ -7,6 +7,8 @@ export function AICompanionPopup() {
     companionPosition,
     companionSuggestions,
     currentStyle,
+    status,
+    statusMessage,
     setCompanionVisible,
     applySuggestion,
     getCompanionSuggestion,
@@ -16,6 +18,12 @@ export function AICompanionPopup() {
   useAppStore();
 
   if (!companionVisible || !companionPosition) return null;
+
+  const isLoading = status === 'companion' || status === 'loading';
+  const isError = status === 'error';
+  const suggestions = companionSuggestions
+    .map(suggestion => suggestion.trim())
+    .filter(Boolean);
 
   const handleApply = (suggestion: string) => {
     applySuggestion(suggestion);
@@ -37,34 +45,49 @@ export function AICompanionPopup() {
 
   // 计算弹出框位置，确保不超出屏幕
   const popupStyle: React.CSSProperties = {
-    left: Math.min(companionPosition.x, window.innerWidth - 420),
-    top: Math.min(companionPosition.y + 20, window.innerHeight - 350),
+    left: Math.min(companionPosition.x, window.innerWidth - 460),
+    top: Math.min(companionPosition.y + 14, window.innerHeight - 380),
   };
 
   return (
     <div className="ai-companion-popup" style={popupStyle}>
       <div className="ai-companion-header">
-        <span>AI伴写建议</span>
+        <div>
+          <div className="ai-companion-title">AI伴写</div>
+          <div className="ai-companion-subtitle">根据光标前文自动续写</div>
+        </div>
         <span className="style-badge">{getStyleLabel(currentStyle)}</span>
       </div>
       <div className="ai-suggestion-list">
-        {companionSuggestions.length > 0 ? (
-          companionSuggestions.map((suggestion, index) => (
-            <div
+        {isLoading ? (
+          <div className="ai-suggestion-state">
+            <span className="ai-spinner"></span>
+            <span>正在生成更贴合上下文的续写...</span>
+          </div>
+        ) : isError ? (
+          <div className="ai-suggestion-state error">
+            {statusMessage || '生成伴写建议失败，请检查 AI 配置后重试'}
+          </div>
+        ) : suggestions.length > 0 ? (
+          suggestions.map((suggestion, index) => (
+            <button
               key={index}
               className="ai-suggestion-item"
               onClick={() => handleApply(suggestion)}
             >
-              {suggestion}
-            </div>
+              <span className="ai-suggestion-index">{index + 1}</span>
+              <span className="ai-suggestion-content">{suggestion}</span>
+              <span className="ai-suggestion-action">采用</span>
+            </button>
           ))
         ) : (
-          <div className="ai-suggestion-item" style={{ color: 'var(--text-muted)', cursor: 'default' }}>
-            暂无建议
+          <div className="ai-suggestion-state muted">
+            暂无可用建议，试着多写一点上下文后刷新
           </div>
         )}
       </div>
       <div className="ai-companion-footer">
+        <span className="ai-companion-tip">点击任一建议插入到当前光标处</span>
         <button className="ai-companion-btn refresh" onClick={handleRefresh}>
           刷新
         </button>

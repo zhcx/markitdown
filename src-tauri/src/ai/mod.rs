@@ -50,3 +50,15 @@ pub async fn ai_streaming(
 
     client::streaming_request(&action, &content, &settings, window).await
 }
+
+#[tauri::command]
+pub async fn fetch_ai_models(api_key: String, api_endpoint: String) -> Result<Vec<String>, String> {
+    if api_key.is_empty() {
+        return Err("API密钥不能为空".to_string());
+    }
+    if api_endpoint.is_empty() {
+        return Err("API端点不能为空".to_string());
+    }
+
+    client::fetch_models(&api_key, &api_endpoint).await
+}
