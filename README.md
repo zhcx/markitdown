@@ -19,11 +19,11 @@
 ## 🌟 关于这个项目
 
 > **这是我第一个使用 Claude Code 通过「Vibe Coding」方式创建的项目。**
-> 
+>
 > 没有繁琐的需求文档，没有刻板的开发计划。我只是告诉 Claude：「我想做一个像 Typora 那样的 Markdown 编辑器」，然后我们开始了一场编码对话——我描述想法，Claude 实现代码，我调整方向，Claude 优化细节。
-> 
+>
 > 这不是传统的软件开发流程，更像是一场人与 AI 的即兴合奏。每一次「试试这样」的念头，都在几秒钟内变成了真实的代码。这种感觉，就像用吉他即兴演奏——你不需要提前写好谱子，旋律在指尖自然流淌。
-> 
+>
 > 这个项目诞生于一个下午的灵感碰撞，见证了 AI 辅助创作的无限可能。
 
 ---
@@ -56,14 +56,34 @@
 ### 🖼️ 图片上传
 - **多图床支持** - Cloudinary、PicGo、S3、本地存储
 
-### 🤖 AI 智能助手 (v0.1.2 新增)
+### 🤖 AI 智能助手
+- **AI 对话面板** — 侧边栏自由对话，支持流式输出与思维链展示
 - **智能校对** - 自动检测错别字、语法错误、标点问题
 - **伴写建议** - 根据上下文提供写作建议
 - **文本重写** - 一键改写选中内容
 - **智能翻译** - 支持多语言翻译
 - **摘要生成** - 自动生成文档摘要
 - **大纲生成** - 智能提取文档大纲
-- **风格切换** - 正式/活泼/学术/创意等多种写作风格
+- **思维链展示** — DeepSeek/硅基流动模型思考过程实时流式显示
+- **思考模式** — 关闭/快速/均衡/深度，灵活控制 AI 推理强度
+- **关联文档** — 一键将当前编辑文档作为对话上下文
+- **附件上传** — 图片和文本文件上传，与对话一起发送
+
+### 🤖 AI 服务商支持
+
+| 服务商 | 状态 |
+| --- | --- |
+| OpenAI | 支持 |
+| DeepSeek | 支持（含思维链） |
+| 硅基流动 (SiliconFlow) | 支持（含思维链） |
+| Anthropic | 支持 |
+| 自定义 OpenAI 兼容 | 支持 |
+
+### 🔄 自动更新
+
+- 菜单 → 帮助 → 检查更新
+- 自动检测 GitHub Release 最新版本
+- 一键下载安装包，实时进度显示
 
 ### 💾 导出功能
 - **HTML 导出** - 自定义模板
@@ -77,15 +97,12 @@
 
 从 [Releases](https://github.com/zhcx/markitdown/releases) 页面下载适合您系统的安装包：
 
-| 平台 | 推荐下载 | 说明 |
-|------|----------|------|
-| Windows | `MarkitDown_0.1.2_x64-setup.exe` | NSIS安装包，推荐下载 |
-| Windows | `MarkitDown_0.1.2_x64_en-US.msi` | MSI安装包 |
-| macOS (Apple Silicon) | `MarkitDown_0.1.2_aarch64.dmg` | Apple M1/M2/M3 芯片 |
-| macOS (Intel) | `MarkitDown_0.1.2_x64.dmg` | Intel 芯片 |
-| Linux | `MarkitDown_0.1.2_amd64.AppImage` | 通用Linux包 |
-
-> **注意**：v0.1.2 版本新增 AI 智能助手功能，需要在设置中配置 API 密钥后使用。
+| 平台 | 架构 | 推荐下载 | 安装包格式 |
+|------|------|----------|-----------|
+| Windows | x86_64 | `.exe` (NSIS) | `.msi` / `.exe` |
+| macOS Intel | x86_64 | `.dmg` | `.dmg` / `.app.tar.gz` |
+| macOS Apple Silicon | arm64 | `.dmg` | `.dmg` / `.app.tar.gz` |
+| Linux | x86_64 | `.AppImage` | `.deb` / `.rpm` / `.AppImage` |
 
 ### 本地构建
 
@@ -104,17 +121,22 @@ npm run tauri dev
 npm run tauri build
 ```
 
+**环境要求：**
+- Node.js >= 18
+- Rust >= 1.70
+
 ---
 
 ## 🛠️ 技术栈
 
 | 层级 | 技术 |
 |------|------|
-| 前端框架 | React 18 + TypeScript |
+| 前端框架 | React 19 + TypeScript |
 | 编辑器引擎 | CodeMirror 6 |
 | Markdown 渲染 | markdown-it + KaTeX + Mermaid |
 | 状态管理 | Zustand |
 | 后端框架 | Tauri 2.0 (Rust) |
+| HTTP 客户端 | Reqwest |
 | 样式方案 | 纯 CSS + CSS Variables |
 
 ---
@@ -125,11 +147,13 @@ npm run tauri build
 markitdown/
 ├── src/                    # React 前端
 │   ├── components/         # UI 组件
+│   │   ├── Chatbot/        # AI 对话面板
 │   │   ├── Editor/         # CodeMirror 编辑器
 │   │   ├── Preview/        # Markdown 渲染预览
 │   │   ├── Toolbar/        # 工具栏按钮
 │   │   ├── Sidebar/        # 文件管理侧边栏
 │   │   ├── MenuBar/        # 顶部菜单栏
+│   │   ├── Export/         # 导出功能
 │   │   └── Settings/       # 设置面板
 │   ├── stores/             # Zustand 状态管理
 │   └── styles/             # CSS 样式
@@ -137,7 +161,9 @@ markitdown/
 │   ├── src/
 │   │   ├── main.rs         # Tauri 入口
 │   │   ├── commands.rs     # IPC 命令
-│   │   └── image/          # 图床模块
+│   │   ├── ai/             # AI API 客户端
+│   │   ├── image/          # 图床模块
+│   │   └── pdf/            # PDF 导出
 │   └── Cargo.toml
 └── .github/workflows/      # CI/CD 配置
 ```

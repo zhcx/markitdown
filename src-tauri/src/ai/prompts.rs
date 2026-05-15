@@ -8,6 +8,7 @@ pub enum PromptAction {
     Translate,
     Summarize,
     Outline,
+    Chat,
 }
 
 fn get_style_prompt(settings: &AISettings) -> String {
@@ -105,5 +106,14 @@ pub fn get_prompt(
 {}"#,
             content
         ),
+        PromptAction::Chat => {
+            let style = get_style_prompt(settings);
+            format!(
+                r#"{}。你是一个有用的 AI 助手，帮助用户进行写作、编辑和讨论 Markdown 文档。
+请根据对话历史自然地回复用户的最新消息。
+直接输出你的回复，不要添加额外的前缀或格式标记。"#,
+                style
+            )
+        }
     }
 }

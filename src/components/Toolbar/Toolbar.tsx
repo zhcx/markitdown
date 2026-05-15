@@ -109,6 +109,8 @@ export function Toolbar() {
     generateOutline,
     currentStyle,
     setCurrentStyle,
+    toggleChatbot,
+    chatbotVisible,
   } = useAIStore();
 
   const getSelectedText = () => {
@@ -371,6 +373,7 @@ export function Toolbar() {
       { label: '🌐', title: '翻译选中', action: handleTranslate },
       { label: '📋', title: '生成摘要', action: handleSummarize },
       { label: '💡', title: '生成大纲', action: handleOutline },
+      { label: '💬', title: chatbotVisible ? '关闭AI对话' : 'AI对话', action: () => toggleChatbot() },
     ],
   } : null;
 

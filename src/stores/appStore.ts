@@ -193,7 +193,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   sidebarWidth: 220,
   settingsOpen: false,
   isSaving: false,
-  wordCount: '0 words, 0 chars',
+  wordCount: '0 字, 0 字符',
   activeImageService: 'local',
   editorView: null,
   tabs: [initialTab],

@@ -11,6 +11,7 @@ import { StatusBar } from './components/StatusBar/StatusBar';
 import { Sidebar } from './components/Sidebar/Sidebar';
 import { AICompanionPopup } from './components/AI/AICompanionPopup';
 import { AITranslationPopup } from './components/AI/AITranslationPopup';
+import { AIChatbotPanel } from './components/Chatbot/AIChatbotPanel';
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 import './styles/main.css';
 
@@ -32,15 +33,18 @@ function App() {
     setSidebarWidth,
     openFile
   } = useAppStore();
-  const { proofreadResults, setProofreadPanelVisible, translationPosition, translationOriginal, translationResult, setTranslationVisible } = useAIStore();
+  const { proofreadResults, setProofreadPanelVisible, translationPosition, translationOriginal, translationResult, setTranslationVisible, chatbotVisible } = useAIStore();
 
   const dividerRef = useRef<HTMLDivElement>(null);
   const sidebarDividerRef = useRef<HTMLDivElement>(null);
   const proofreadDividerRef = useRef<HTMLDivElement>(null);
+  const chatbotDividerRef = useRef<HTMLDivElement>(null);
   const isDragging = useRef(false);
   const isDraggingSidebar = useRef(false);
   const isDraggingProofread = useRef(false);
+  const isDraggingChatbot = useRef(false);
   const [proofreadPanelWidth, setProofreadPanelWidth] = useState(280);
+  const [chatbotPanelWidth, setChatbotPanelWidth] = useState(340);
 
   useEffect(() => {
     loadSettings();
@@ -122,6 +126,24 @@ function App() {
     setProofreadPanelWidth(Math.max(200, Math.min(500, newWidth)));
   }, []);
 
+  const handleChatbotMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    isDraggingChatbot.current = true;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  }, []);
+
+  const handleChatbotMouseMove = useCallback((e: MouseEvent) => {
+    if (!isDraggingChatbot.current) return;
+
+    const container = chatbotDividerRef.current?.parentElement;
+    if (!container) return;
+
+    const rect = container.getBoundingClientRect();
+    const newWidth = rect.right - e.clientX;
+    setChatbotPanelWidth(Math.max(200, Math.min(500, newWidth)));
+  }, []);
+
   const handleMouseUp = useCallback(() => {
     if (isDragging.current) {
       isDragging.current = false;
@@ -138,20 +160,27 @@ function App() {
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
     }
+    if (isDraggingChatbot.current) {
+      isDraggingChatbot.current = false;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    }
   }, []);
 
   useEffect(() => {
     document.addEventListener('mousemove', handleSplitMouseMove);
     document.addEventListener('mousemove', handleSidebarMouseMove);
     document.addEventListener('mousemove', handleProofreadMouseMove);
+    document.addEventListener('mousemove', handleChatbotMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
     return () => {
       document.removeEventListener('mousemove', handleSplitMouseMove);
       document.removeEventListener('mousemove', handleSidebarMouseMove);
       document.removeEventListener('mousemove', handleProofreadMouseMove);
+      document.removeEventListener('mousemove', handleChatbotMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [handleSplitMouseMove, handleSidebarMouseMove, handleProofreadMouseMove, handleMouseUp]);
+  }, [handleSplitMouseMove, handleSidebarMouseMove, handleProofreadMouseMove, handleChatbotMouseMove, handleMouseUp]);
 
   return (
     <div className="app">
@@ -240,6 +269,18 @@ function App() {
             <Preview className="immersive-preview" />
           )}
         </main>
+        {chatbotVisible && (
+          <>
+            <div
+              ref={chatbotDividerRef}
+              className="chatbot-divider resizable"
+              onMouseDown={handleChatbotMouseDown}
+            />
+            <div className="chatbot-side-panel" style={{ width: chatbotPanelWidth }}>
+              <AIChatbotPanel />
+            </div>
+          </>
+        )}
       </div>
       <StatusBar />
       {settingsOpen && <SettingsPanel />}

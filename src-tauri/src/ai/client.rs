@@ -54,6 +54,8 @@ pub struct AIResponse {
 struct ChatMessage {
     role: String,
     content: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reasoning_content: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -64,6 +66,14 @@ struct ChatRequest {
     stream: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     max_tokens: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    thinking: Option<ThinkingConfig>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ThinkingConfig {
+    #[serde(rename = "type")]
+    type_: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -122,102 +132,113 @@ fn is_anthropic(settings: &AISettings) -> bool {
     settings.provider == "anthropic"
 }
 
+async fn send_request(
+    client: &Client,
+    url: &str,
+    settings: &AISettings,
+    body: &serde_json::Value,
+) -> Result<reqwest::Response, String> {
+    let mut last_error = String::new();
+
+    for attempt in 0..3 {
+        let mut req = client.post(url).header("Content-Type", "application/json");
+
+        if is_anthropic(settings) {
+            req = req.header("x-api-key", &settings.api_key).header("anthropic-version", "2023-06-01");
+        } else {
+            req = req.header("Authorization", format!("Bearer {}", settings.api_key));
+        }
+
+        let send_result = req.json(body).send().await;
+
+        match send_result {
+            Ok(response) => {
+                let status = response.status();
+                if status.is_success() || !is_retryable_status(status) || attempt == 2 {
+                    return Ok(response);
+                }
+                let body_text = response.text().await.unwrap_or_default();
+                last_error = format!("API错误 ({}): {}", status, trim_error_body(&body_text));
+            }
+            Err(error) => {
+                last_error = format!("API请求失败: {}", error);
+                if attempt == 2 {
+                    return Err(last_error);
+                }
+            }
+        }
+
+        sleep(Duration::from_millis(350 * (attempt + 1) as u64)).await;
+    }
+
+    Err(if last_error.is_empty() {
+        "API请求失败，请稍后重试".to_string()
+    } else {
+        last_error
+    })
+}
+
 async fn call_api(
     prompt: String,
     settings: &AISettings,
     max_tokens: Option<u32>,
     temperature: Option<f32>,
 ) -> Result<String, String> {
+    let messages = vec![ChatMessage {
+        role: "user".to_string(),
+        content: prompt,
+        reasoning_content: None,
+    }];
+    call_api_with_messages(messages, settings, Some("你是一位专业的写作助手，擅长中文内容创作和编辑。"), max_tokens, temperature, false).await
+}
+
+async fn call_api_with_messages(
+    messages: Vec<ChatMessage>,
+    settings: &AISettings,
+    system_prompt: Option<&str>,
+    max_tokens: Option<u32>,
+    temperature: Option<f32>,
+    enable_thinking: bool,
+) -> Result<String, String> {
     let client = get_client()?;
     let endpoint = get_api_endpoint(settings);
     let temperature = temperature.unwrap_or(settings.temperature);
 
-    // 检测是否为 Anthropic API，需要特殊处理
     if is_anthropic(settings) {
-        return call_anthropic_api(&client, &endpoint, &prompt, settings, max_tokens, temperature).await;
+        return call_anthropic_with_messages(&client, &endpoint, messages, system_prompt, settings, max_tokens, temperature).await;
     }
 
-    // OpenAI/DeepSeek/Custom 兼容的处理方式
     let url = format!("{}/chat/completions", endpoint);
+    let mut full_messages = messages;
+    if let Some(sp) = system_prompt {
+        full_messages.insert(0, ChatMessage { role: "system".to_string(), content: sp.to_string(), reasoning_content: None });
+    }
 
     let request = ChatRequest {
         model: settings.model.clone(),
-        messages: vec![
-            ChatMessage {
-                role: "system".to_string(),
-                content: "你是一位专业的写作助手，擅长中文内容创作和编辑。".to_string(),
-            },
-            ChatMessage {
-                role: "user".to_string(),
-                content: prompt,
-            },
-        ],
+        messages: full_messages,
         temperature,
         stream: false,
         max_tokens,
+        thinking: enable_thinking.then(|| ThinkingConfig { type_: "enabled".into() }),
     };
 
-    let mut last_error = String::new();
-    let response = {
-        let mut final_response = None;
-
-        for attempt in 0..3 {
-            let send_result = client
-                .post(&url)
-                .header("Authorization", format!("Bearer {}", settings.api_key))
-                .header("Content-Type", "application/json")
-                .json(&request)
-                .send()
-                .await;
-
-            match send_result {
-                Ok(response) => {
-                    let status = response.status();
-                    if response.status().is_success() || !is_retryable_status(status) || attempt == 2 {
-                        final_response = Some(response);
-                        break;
-                    }
-
-                    let body = response.text().await.unwrap_or_default();
-                    last_error = format!("API错误 ({}): {}", status, trim_error_body(&body));
-                }
-                Err(error) => {
-                    last_error = format!("API请求失败: {}", error);
-                    if attempt == 2 {
-                        return Err(last_error);
-                    }
-                }
-            }
-
-            sleep(Duration::from_millis(350 * (attempt + 1) as u64)).await;
-        }
-
-        final_response.ok_or_else(|| {
-            if last_error.is_empty() {
-                "API请求失败，请稍后重试".to_string()
-            } else {
-                last_error
-            }
-        })?
-    };
+    let body = serde_json::to_value(&request).map_err(|e| format!("序列化请求失败: {}", e))?;
+    let response = send_request(&client, &url, settings, &body).await?;
 
     if !response.status().is_success() {
         let status = response.status();
-        let body = response.text().await.unwrap_or_default();
-        return Err(format!("API错误 ({}): {}", status, trim_error_body(&body)));
+        let body_text = response.text().await.unwrap_or_default();
+        return Err(format!("API错误 ({}): {}", status, trim_error_body(&body_text)));
     }
 
-    let chat_response: ChatResponse = response
-        .json()
-        .await
-        .map_err(|e| format!("解析响应失败: {}", e))?;
+    let chat_response: ChatResponse = response.json().await.map_err(|e| format!("解析响应失败: {}", e))?;
 
     if chat_response.choices.is_empty() {
         return Err("API返回空响应".to_string());
     }
 
     let content = &chat_response.choices[0].message.content;
-
     if content.is_empty() {
         return Err("API返回空内容".to_string());
     }
@@ -225,10 +246,68 @@ async fn call_api(
     Ok(content.clone())
 }
 
-async fn call_anthropic_api(
+/// Like call_api_with_messages but also extracts reasoning_content (DeepSeek/OpenAI o1/etc.)
+async fn call_chat_api(
+    messages: Vec<ChatMessage>,
+    settings: &AISettings,
+    system_prompt: Option<&str>,
+    max_tokens: Option<u32>,
+    temperature: Option<f32>,
+    enable_thinking: bool,
+) -> Result<(String, Option<String>), String> {
+    let client = get_client()?;
+    let endpoint = get_api_endpoint(settings);
+    let temperature = temperature.unwrap_or(settings.temperature);
+
+    if is_anthropic(settings) {
+        let text = call_anthropic_with_messages(&client, &endpoint, messages, system_prompt, settings, max_tokens, temperature).await?;
+        return Ok((text, None));
+    }
+
+    let url = format!("{}/chat/completions", endpoint);
+    let mut full_messages = messages;
+    if let Some(sp) = system_prompt {
+        full_messages.insert(0, ChatMessage { role: "system".to_string(), content: sp.to_string(), reasoning_content: None });
+    }
+
+    let request = ChatRequest {
+        model: settings.model.clone(),
+        messages: full_messages,
+        temperature,
+        stream: false,
+        max_tokens,
+        thinking: enable_thinking.then(|| ThinkingConfig { type_: "enabled".into() }),
+    };
+
+    let body = serde_json::to_value(&request).map_err(|e| format!("序列化请求失败: {}", e))?;
+    let response = send_request(&client, &url, settings, &body).await?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body_text = response.text().await.unwrap_or_default();
+        return Err(format!("API错误 ({}): {}", status, trim_error_body(&body_text)));
+    }
+
+    let chat_response: ChatResponse = response.json().await.map_err(|e| format!("解析响应失败: {}", e))?;
+
+    if chat_response.choices.is_empty() {
+        return Err("API返回空响应".to_string());
+    }
+
+    let msg = &chat_response.choices[0].message;
+    let content = &msg.content;
+    if content.is_empty() {
+        return Err("API返回空内容".to_string());
+    }
+
+    Ok((content.clone(), msg.reasoning_content.clone().filter(|r| !r.is_empty())))
+}
+
+async fn call_anthropic_with_messages(
     client: &Client,
     endpoint: &str,
-    prompt: &str,
+    messages: Vec<ChatMessage>,
+    system_prompt: Option<&str>,
     settings: &AISettings,
     max_tokens: Option<u32>,
     temperature: f32,
@@ -236,78 +315,25 @@ async fn call_anthropic_api(
     let url = format!("{}/messages", endpoint);
     let max_tokens = max_tokens.unwrap_or(1024);
 
-    // 将 prompt 分割成 system 和 user 部分
-    // prompt 格式是: "你是一位专业的写作助手...请根据..."
-    // 我们把第一行作为 system message，之后的作为 user message
-    let lines: Vec<&str> = prompt.lines().collect();
-    let (system_msg, user_msg) = if lines.len() > 1 {
-        (lines[0].to_string(), lines[1..].join("\n"))
-    } else {
-        ("你是一位专业的写作助手，擅长中文内容创作和编辑。".to_string(), prompt.to_string())
-    };
+    let anthropic_messages: Vec<AnthropicMessage> = messages.into_iter()
+        .map(|m| AnthropicMessage { role: m.role, content: m.content })
+        .collect();
 
     let request = AnthropicRequest {
         model: settings.model.clone(),
-        messages: vec![
-            AnthropicMessage {
-                role: "user".to_string(),
-                content: user_msg,
-            },
-        ],
+        messages: anthropic_messages,
         max_tokens,
         temperature,
-        system: Some(system_msg),
+        system: system_prompt.map(|s| s.to_string()),
     };
 
-    let mut last_error = String::new();
-    let response = {
-        let mut final_response = None;
-
-        for attempt in 0..3 {
-            let send_result = client
-                .post(&url)
-                .header("x-api-key", &settings.api_key)
-                .header("anthropic-version", "2023-06-01")
-                .header("Content-Type", "application/json")
-                .json(&request)
-                .send()
-                .await;
-
-            match send_result {
-                Ok(response) => {
-                    let status = response.status();
-                    if response.status().is_success() || !is_retryable_status(status) || attempt == 2 {
-                        final_response = Some(response);
-                        break;
-                    }
-
-                    let body = response.text().await.unwrap_or_default();
-                    last_error = format!("Anthropic API错误 ({}): {}", status, trim_error_body(&body));
-                }
-                Err(error) => {
-                    last_error = format!("Anthropic API请求失败: {}", error);
-                    if attempt == 2 {
-                        return Err(last_error);
-                    }
-                }
-            }
-
-            sleep(Duration::from_millis(350 * (attempt + 1) as u64)).await;
-        }
-
-        final_response.ok_or_else(|| {
-            if last_error.is_empty() {
-                "Anthropic API请求失败，请稍后重试".to_string()
-            } else {
-                last_error
-            }
-        })?
-    };
+    let body = serde_json::to_value(&request).map_err(|e| format!("序列化请求失败: {}", e))?;
+    let response = send_request(client, &url, settings, &body).await?;
 
     if !response.status().is_success() {
         let status = response.status();
-        let body = response.text().await.unwrap_or_default();
-        return Err(format!("Anthropic API错误 ({}): {}", status, trim_error_body(&body)));
+        let body_text = response.text().await.unwrap_or_default();
+        return Err(format!("Anthropic API错误 ({}): {}", status, trim_error_body(&body_text)));
     }
 
     let anthropic_response: AnthropicResponse = response
@@ -319,7 +345,6 @@ async fn call_anthropic_api(
         return Err("Anthropic API返回空响应".to_string());
     }
 
-    // 提取第一个 content block 中的 text
     for content in anthropic_response.content {
         if let Some(text) = content.text {
             if !text.is_empty() {
@@ -586,6 +611,264 @@ pub async fn outline(content: &str, settings: &AISettings) -> Result<AIResponse,
     })
 }
 
+pub async fn chat(
+    content: &str,
+    context: Option<&str>,
+    settings: &AISettings,
+    temperature: Option<f32>,
+    max_tokens: Option<u32>,
+    doc_context: Option<String>,
+    doc_title: Option<String>,
+    enable_thinking: bool,
+) -> Result<AIResponse, String> {
+    let system_prompt = get_prompt(PromptAction::Chat, "", None, settings);
+
+    let mut messages = Vec::new();
+
+    if let Some(ref doc_content) = doc_context {
+        let title = doc_title.as_deref().unwrap_or("未命名文档");
+        messages.push(ChatMessage {
+            role: "system".to_string(),
+            content: format!("以下是用户当前正在编辑的文档《{}》的完整内容，请基于此文档内容回答用户的问题：\n\n{}", title, doc_content),
+            reasoning_content: None,
+        });
+    }
+
+    if let Some(ctx) = context {
+        if let Ok(history) = serde_json::from_str::<Vec<ChatMessage>>(ctx) {
+            messages.extend(history);
+        }
+    }
+
+    messages.push(ChatMessage {
+        role: "user".to_string(),
+        content: content.to_string(),
+        reasoning_content: None,
+    });
+
+    let result = call_chat_api(messages, settings, Some(&system_prompt), max_tokens, temperature, enable_thinking).await;
+
+    match result {
+        Ok((text, reasoning)) => Ok(AIResponse {
+            success: true,
+            data: serde_json::json!({ "response": text, "reasoning": reasoning }),
+            message: None,
+        }),
+        Err(e) => Ok(AIResponse {
+            success: false,
+            data: serde_json::json!({}),
+            message: Some(e),
+        }),
+    }
+}
+
+/// Builds the messages array for chat, shared between streaming and non-streaming.
+fn build_chat_messages(
+    content: &str,
+    context: Option<&str>,
+    doc_context: Option<&str>,
+    doc_title: Option<&str>,
+    system_prompt: &str,
+) -> Vec<ChatMessage> {
+    let mut messages = Vec::new();
+
+    if let Some(doc_content) = doc_context {
+        let title = doc_title.unwrap_or("未命名文档");
+        messages.push(ChatMessage {
+            role: "system".to_string(),
+            content: format!("以下是用户当前正在编辑的文档《{}》的完整内容，请基于此文档内容回答用户的问题：\n\n{}", title, doc_content),
+            reasoning_content: None,
+        });
+    }
+
+    if let Some(ctx) = context {
+        if let Ok(history) = serde_json::from_str::<Vec<ChatMessage>>(ctx) {
+            messages.extend(history);
+        }
+    }
+
+    messages.push(ChatMessage {
+        role: "user".to_string(),
+        content: content.to_string(),
+        reasoning_content: None,
+    });
+
+    // Prepend system prompt as first message
+    messages.insert(0, ChatMessage {
+        role: "system".to_string(),
+        content: system_prompt.to_string(),
+        reasoning_content: None,
+    });
+
+    messages
+}
+
+pub async fn chat_streaming(
+    content: &str,
+    context: Option<&str>,
+    settings: &AISettings,
+    temperature: Option<f32>,
+    max_tokens: Option<u32>,
+    doc_context: Option<String>,
+    doc_title: Option<String>,
+    enable_thinking: bool,
+    window: WebviewWindow,
+) -> Result<(), String> {
+    let system_prompt = get_prompt(PromptAction::Chat, "", None, settings);
+    let messages = build_chat_messages(
+        content,
+        context,
+        doc_context.as_deref(),
+        doc_title.as_deref(),
+        &system_prompt,
+    );
+    let temperature = temperature.unwrap_or(settings.temperature);
+
+    // Anthropic: fall back to non-streaming (no reasoning_content support)
+    if is_anthropic(settings) {
+        return chat_streaming_anthropic_fallback(messages, settings, max_tokens, temperature, &window).await;
+    }
+
+    let client = get_client()?;
+    let endpoint = get_api_endpoint(settings);
+    let url = format!("{}/chat/completions", endpoint);
+
+    let request = ChatRequest {
+        model: settings.model.clone(),
+        messages,
+        temperature,
+        stream: true,
+        max_tokens,
+        thinking: enable_thinking.then(|| ThinkingConfig { type_: "enabled".into() }),
+    };
+
+    let body = serde_json::to_value(&request).map_err(|e| format!("序列化请求失败: {}", e))?;
+
+    let mut response = client
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", settings.api_key))
+        .header("Content-Type", "application/json")
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("API请求失败: {}", e))?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body_text = response.text().await.unwrap_or_default();
+        let err_msg = format!("API错误 ({}): {}", status, trim_error_body(&body_text));
+        window.emit("ai-chat-error", serde_json::json!({ "message": &err_msg })).ok();
+        return Err(err_msg);
+    }
+
+    let mut buffer = String::new();
+    let mut reasoning_done = false;
+
+    loop {
+        let chunk = response
+            .chunk()
+            .await
+            .map_err(|e| format!("流读取失败: {}", e))?;
+
+        match chunk {
+            Some(bytes) => {
+                let text = String::from_utf8_lossy(&bytes);
+                buffer.push_str(&text);
+
+                while let Some(pos) = buffer.find("\n\n") {
+                    let event_str = buffer[..pos].to_string();
+                    buffer = buffer[pos + 2..].to_string();
+
+                    for line in event_str.lines() {
+                        if let Some(data) = line.strip_prefix("data: ") {
+                            if data == "[DONE]" {
+                                break;
+                            }
+                            if let Ok(chunk_data) = serde_json::from_str::<serde_json::Value>(data) {
+                                if let Some(choices) = chunk_data["choices"].as_array() {
+                                    if let Some(choice) = choices.first() {
+                                        let delta = &choice["delta"];
+
+                                        if let Some(rc) = delta["reasoning_content"].as_str() {
+                                            if !rc.is_empty() {
+                                                window.emit("ai-chat-reasoning-chunk", serde_json::json!({ "content": rc })).ok();
+                                            }
+                                        }
+
+                                        if let Some(c) = delta["content"].as_str() {
+                                            if !c.is_empty() {
+                                                if !reasoning_done {
+                                                    reasoning_done = true;
+                                                    window.emit("ai-chat-reasoning-done", serde_json::json!({})).ok();
+                                                }
+                                                window.emit("ai-chat-content-chunk", serde_json::json!({ "content": c })).ok();
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            None => break,
+        }
+    }
+
+    if !reasoning_done {
+        window.emit("ai-chat-reasoning-done", serde_json::json!({})).ok();
+    }
+    window.emit("ai-chat-done", serde_json::json!({})).ok();
+
+    Ok(())
+}
+
+/// Non-streaming fallback for Anthropic — emits the full response as events.
+async fn chat_streaming_anthropic_fallback(
+    messages: Vec<ChatMessage>,
+    settings: &AISettings,
+    max_tokens: Option<u32>,
+    temperature: f32,
+    window: &WebviewWindow,
+) -> Result<(), String> {
+    let client = get_client()?;
+    let endpoint = get_api_endpoint(settings);
+
+    // Separate system messages from conversation messages
+    let system_msgs: Vec<&str> = messages
+        .iter()
+        .filter(|m| m.role == "system")
+        .map(|m| m.content.as_str())
+        .collect();
+    let system_prompt = if system_msgs.is_empty() {
+        None
+    } else {
+        Some(system_msgs.join("\n\n"))
+    };
+
+    let conv_msgs: Vec<ChatMessage> = messages
+        .into_iter()
+        .filter(|m| m.role != "system")
+        .collect();
+
+    let text = call_anthropic_with_messages(
+        &client,
+        &endpoint,
+        conv_msgs,
+        system_prompt.as_deref(),
+        settings,
+        max_tokens,
+        temperature,
+    )
+    .await?;
+
+    window.emit("ai-chat-reasoning-done", serde_json::json!({})).ok();
+    window.emit("ai-chat-content-chunk", serde_json::json!({ "content": &text })).ok();
+    window.emit("ai-chat-done", serde_json::json!({})).ok();
+
+    Ok(())
+}
+
 pub async fn streaming_request(
     action: &str,
     content: &str,
@@ -599,6 +882,7 @@ pub async fn streaming_request(
         "translate" => PromptAction::Translate,
         "summarize" => PromptAction::Summarize,
         "outline" => PromptAction::Outline,
+        "chat" => PromptAction::Chat,
         _ => return Err(format!("未知的AI操作: {}", action)),
     };
 
@@ -613,15 +897,18 @@ pub async fn streaming_request(
             ChatMessage {
                 role: "system".to_string(),
                 content: "你是一位专业的写作助手，擅长中文内容创作和编辑。".to_string(),
+                reasoning_content: None,
             },
             ChatMessage {
                 role: "user".to_string(),
                 content: prompt,
+                reasoning_content: None,
             },
         ],
         temperature: settings.temperature,
         stream: true,
         max_tokens: None,
+        thinking: None,
     };
 
     let response = client

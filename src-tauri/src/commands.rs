@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use base64::{engine::general_purpose, Engine as _};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 use crate::image::{self, ImageService, CloudinaryConfig, PicGoConfig, S3Config, LocalImageConfig};
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -13,6 +13,9 @@ pub struct UpdateInfo {
     pub current_version: String,
     pub latest_version: String,
     pub download_url: String,
+    pub asset_download_url: String,
+    pub asset_name: String,
+    pub asset_size: u64,
     pub release_notes: String,
     pub published_at: String,
 }
@@ -256,6 +259,14 @@ fn write_utf8_text_file(path: &str, content: &str) -> Result<(), String> {
 }
 
 #[tauri::command] pub async fn get_file_content(path: String) -> Result<String, String> { read_utf8_text_file(&path) }
+
+#[tauri::command]
+pub async fn read_file_base64(path: String) -> Result<String, String> {
+    let data = std::fs::read(&path).map_err(|e| format!("读取文件失败: {}", e))?;
+    let mime = guess_mime(Path::new(&path));
+    let b64 = general_purpose::STANDARD.encode(&data);
+    Ok(format!("data:{};base64,{}", mime, b64))
+}
 #[tauri::command] pub async fn save_file_content(path: String, content: String) -> Result<(), String> { write_utf8_text_file(&path, &content) }
 
 fn get_recent_files_path(app: &AppHandle) -> PathBuf {
@@ -309,7 +320,37 @@ fn get_recent_files_path(app: &AppHandle) -> PathBuf {
     let latest = rel["tag_name"].as_str().unwrap_or("v0.0.0").trim_start_matches('v').to_string();
     let current = VERSION.to_string();
     let has_update = compare_versions(&latest, &current)?;
-    Ok(UpdateInfo { has_update, current_version: current, latest_version: latest, download_url: rel["html_url"].as_str().unwrap_or("https://github.com/zhcx/markitdown/releases").into(), release_notes: rel["body"].as_str().unwrap_or("暂无更新说明").into(), published_at: rel["published_at"].as_str().unwrap_or("").into() })
+
+    // Find the NSIS installer asset (.exe)
+    let mut asset_download_url = String::new();
+    let mut asset_name = String::new();
+    let mut asset_size: u64 = 0;
+    if let Some(assets) = rel["assets"].as_array() {
+        for asset in assets {
+            let name = asset["name"].as_str().unwrap_or("");
+            if name.ends_with(".exe") || name.ends_with(".msi") {
+                asset_download_url = asset["browser_download_url"].as_str().unwrap_or("").to_string();
+                asset_name = name.to_string();
+                asset_size = asset["size"].as_u64().unwrap_or(0);
+                // Prefer .exe (NSIS) over .msi
+                if name.ends_with(".exe") {
+                    break;
+                }
+            }
+        }
+    }
+
+    Ok(UpdateInfo {
+        has_update,
+        current_version: current,
+        latest_version: latest,
+        download_url: rel["html_url"].as_str().unwrap_or("https://github.com/zhcx/markitdown/releases").into(),
+        asset_download_url,
+        asset_name,
+        asset_size,
+        release_notes: rel["body"].as_str().unwrap_or("暂无更新说明").into(),
+        published_at: rel["published_at"].as_str().unwrap_or("").into(),
+    })
 }
 
 fn compare_versions(latest: &str, current: &str) -> Result<bool, String> {
@@ -318,4 +359,76 @@ fn compare_versions(latest: &str, current: &str) -> Result<bool, String> {
     while lp.len() < cp.len() { lp.push(0); } while cp.len() < lp.len() { cp.push(0); }
     for (l, c) in lp.iter().zip(cp.iter()) { if l > c { return Ok(true); } else if l < c { return Ok(false); } }
     Ok(false)
+}
+
+#[tauri::command]
+pub async fn download_and_install_update(app: AppHandle, download_url: String, file_name: String) -> Result<(), String> {
+    let temp_dir = std::env::temp_dir().join("markitdown_update");
+    std::fs::create_dir_all(&temp_dir).map_err(|e| format!("创建临时目录失败: {}", e))?;
+    let installer_path = temp_dir.join(&file_name);
+
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(600))
+        .connect_timeout(Duration::from_secs(15))
+        .build()
+        .map_err(|e| format!("HTTP: {}", e))?;
+
+    let resp = client
+        .get(&download_url)
+        .header("User-Agent", "MarkitDown")
+        .send()
+        .await
+        .map_err(|e| format!("下载请求失败: {}", e))?;
+
+    if !resp.status().is_success() {
+        return Err(format!("下载失败: HTTP {}", resp.status()));
+    }
+
+    let total_size = resp.content_length().unwrap_or(0);
+
+    let mut downloaded: u64 = 0;
+    let mut file = std::fs::File::create(&installer_path).map_err(|e| format!("创建文件失败: {}", e))?;
+
+    let mut stream = resp.bytes_stream();
+    use futures_util::StreamExt;
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|e| format!("下载数据失败: {}", e))?;
+        std::io::Write::write_all(&mut file, &chunk).map_err(|e| format!("写入文件失败: {}", e))?;
+        downloaded += chunk.len() as u64;
+
+        let progress = if total_size > 0 {
+            ((downloaded as f64 / total_size as f64) * 100.0) as u32
+        } else {
+            0
+        };
+
+        app.emit("update-download-progress", serde_json::json!({
+            "downloaded": downloaded,
+            "total": total_size,
+            "progress": progress,
+        }))
+        .ok();
+    }
+
+    drop(file);
+
+    // Launch installer and quit app
+    let installer = installer_path.to_string_lossy().to_string();
+    app.emit("update-download-complete", serde_json::json!({ "path": &installer })).ok();
+
+    // Use cmd /c start to launch installer independently
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("cmd")
+            .args(["/C", "start", "", &installer])
+            .spawn()
+            .map_err(|e| format!("启动安装程序失败: {}", e))?;
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        return Err("自动安装仅支持 Windows".to_string());
+    }
+
+    // Exit the app so the installer can replace files
+    std::process::exit(0);
 }

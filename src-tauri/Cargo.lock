@@ -1958,6 +1958,7 @@ version = "0.1.7"
 dependencies = [
  "base64 0.22.1",
  "chrono",
+ "futures-util",
  "headless_chrome",
  "hex",
  "hmac",

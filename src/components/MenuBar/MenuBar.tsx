@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useAppStore } from '../../stores/appStore';
 import { open as openDialog, save } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import { open } from '@tauri-apps/plugin-shell';
 import MarkdownIt from 'markdown-it';
 import hljs from 'highlight.js';
@@ -24,13 +25,25 @@ interface UpdateInfo {
   current_version: string;
   latest_version: string;
   download_url: string;
+  asset_download_url: string;
+  asset_name: string;
+  asset_size: number;
   release_notes: string;
   published_at: string;
+}
+
+interface DownloadProgress {
+  downloaded: number;
+  total: number;
+  progress: number;
 }
 
 interface HelpModalProps {
   type: 'shortcuts' | 'syntax' | 'about' | 'update';
   updateInfo?: UpdateInfo | null;
+  downloadProgress?: DownloadProgress | null;
+  downloadDone?: boolean;
+  onDownloadAndInstall?: () => void;
   onClose: () => void;
 }
 
@@ -51,7 +64,7 @@ const md = new MarkdownIt({
   },
 });
 
-function HelpModal({ type, updateInfo, onClose }: HelpModalProps) {
+function HelpModal({ type, updateInfo, downloadProgress, downloadDone, onDownloadAndInstall, onClose }: HelpModalProps) {
   const content = {
     shortcuts: {
       title: '快捷键说明',
@@ -166,6 +179,12 @@ https://github.com/zhcx/markitdown
     }
   };
 
+  const formatSize = (bytes: number) => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content" onClick={(e) => e.stopPropagation()}>
@@ -192,14 +211,41 @@ https://github.com/zhcx/markitdown
                         dangerouslySetInnerHTML={{ __html: md.render(updateInfo.release_notes || '暂无更新说明') }}
                       />
                     </div>
-                    <div className="update-actions">
-                      <button className="update-download-btn" onClick={() => open(updateInfo.download_url)}>
-                        前往下载
-                      </button>
-                      <button className="update-cancel-btn" onClick={onClose}>
-                        稍后提醒
-                      </button>
-                    </div>
+                    {downloadProgress ? (
+                      <div className="update-download-progress">
+                        <div className="update-progress-bar">
+                          <div
+                            className="update-progress-fill"
+                            style={{ width: `${downloadProgress!.progress}%` }}
+                          />
+                        </div>
+                        <p className="update-progress-text">
+                          {downloadDone
+                            ? '下载完成，启动安装程序…'
+                            : `正在下载 ${formatSize(downloadProgress!.downloaded)} / ${formatSize(downloadProgress!.total)} (${downloadProgress!.progress}%)`}
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="update-actions">
+                        <button
+                          className="update-download-btn"
+                          onClick={onDownloadAndInstall}
+                          disabled={!updateInfo.asset_download_url}
+                        >
+                          {updateInfo.asset_download_url ? '下载并安装' : '前往下载'}
+                        </button>
+                        {updateInfo.asset_download_url && (
+                          <button className="update-cancel-btn" onClick={onClose}>
+                            稍后提醒
+                          </button>
+                        )}
+                        {!updateInfo.asset_download_url && (
+                          <button className="update-cancel-btn" onClick={() => open(updateInfo.download_url)}>
+                            前往 GitHub Release
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </>
                 ) : (
                   <>
@@ -248,6 +294,8 @@ export function MenuBar() {
   const [helpModal, setHelpModal] = useState<'shortcuts' | 'syntax' | 'about' | 'update' | null>(null);
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
   const [pdfExportOpen, setPdfExportOpen] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState<DownloadProgress | null>(null);
+  const [downloadDone, setDownloadDone] = useState(false);
   const menubarRef = useRef<HTMLDivElement>(null);
   const mouseOverMenuRef = useRef(false);
 
@@ -269,9 +317,39 @@ export function MenuBar() {
         current_version: '0.1.2',
         latest_version: '0.1.2',
         download_url: 'https://github.com/zhcx/markitdown/releases',
+        asset_download_url: '',
+        asset_name: '',
+        asset_size: 0,
         release_notes: '检查更新失败，请稍后重试',
         published_at: ''
       });
+    }
+  };
+
+  const handleDownloadAndInstall = async () => {
+    if (!updateInfo?.asset_download_url) return;
+    setDownloadProgress({ downloaded: 0, total: updateInfo.asset_size, progress: 0 });
+    setDownloadDone(false);
+
+    // Set up progress listener
+    const unlistenProgress = await listen<DownloadProgress>('update-download-progress', (event) => {
+      setDownloadProgress(event.payload);
+    });
+    const unlistenComplete = await listen('update-download-complete', () => {
+      setDownloadDone(true);
+    });
+
+    try {
+      await invoke('download_and_install_update', {
+        downloadUrl: updateInfo.asset_download_url,
+        fileName: updateInfo.asset_name,
+      });
+    } catch (error) {
+      console.error('下载更新失败:', error);
+      setDownloadProgress(null);
+    } finally {
+      unlistenProgress();
+      unlistenComplete();
     }
   };
 
@@ -502,7 +580,14 @@ export function MenuBar() {
         ))}
       </div>
       {helpModal && (
-        <HelpModal type={helpModal} updateInfo={helpModal === 'update' ? updateInfo : undefined} onClose={() => setHelpModal(null)} />
+        <HelpModal
+          type={helpModal}
+          updateInfo={helpModal === 'update' ? updateInfo : undefined}
+          downloadProgress={helpModal === 'update' ? downloadProgress : null}
+          downloadDone={helpModal === 'update' ? downloadDone : false}
+          onDownloadAndInstall={helpModal === 'update' ? handleDownloadAndInstall : undefined}
+          onClose={() => setHelpModal(null)}
+        />
       )}
       {pdfExportOpen && (
         <PdfExportDialog

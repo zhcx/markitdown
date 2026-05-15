@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import { useAppStore } from './appStore';
 
 export interface ProofreadResult {
@@ -45,6 +46,24 @@ export interface CompanionSuggestion {
   text: string;
   style: string;
 }
+
+export interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: number;
+  attachments?: ChatMessageAttachment[];
+  reasoning?: string;
+}
+
+export interface ChatMessageAttachment {
+  type: 'image' | 'text' | 'file';
+  name: string;
+  dataUrl?: string;
+  content?: string;
+}
+
+export type ReasoningEffort = 'off' | 'fast' | 'balanced' | 'deep';
 
 export type AIStatus = 'idle' | 'loading' | 'proofreading' | 'companion' | 'success' | 'error';
 
@@ -127,6 +146,14 @@ interface AIState {
   translationOriginal: string;
   translationResult: string;
 
+  // 聊天
+  chatbotVisible: boolean;
+  chatbotMessages: ChatMessage[];
+  chatbotLoading: boolean;
+  chatbotStreamingPhase: 'reasoning' | 'content' | null;
+  reasoningEffort: ReasoningEffort;
+  linkedDocument: { title: string; content: string } | null;
+
   // 操作
   setStatus: (status: AIStatus, message?: string) => void;
   checkProofread: (content: string, baseOffset?: number) => Promise<void>;
@@ -138,6 +165,13 @@ interface AIState {
 
   // UI控制
   setProofreadPanelVisible: (visible: boolean) => void;
+  setChatbotVisible: (visible: boolean) => void;
+  toggleChatbot: () => void;
+  sendChatMessage: (content: string, attachments?: ChatMessageAttachment[]) => Promise<void>;
+  clearChatHistory: () => void;
+  setReasoningEffort: (effort: ReasoningEffort) => void;
+  toggleLinkDocument: () => void;
+  setLinkedDocument: (doc: { title: string; content: string } | null) => void;
   setCompanionVisible: (visible: boolean, position?: { x: number; y: number }) => void;
   setCurrentStyle: (style: 'formal' | 'casual' | 'academic' | 'creative' | 'custom') => void;
   setTranslationVisible: (visible: boolean, position?: { x: number; y: number }, original?: string, result?: string) => void;
@@ -161,6 +195,12 @@ export const useAIStore = create<AIState>((set, get) => ({
   translationPosition: null,
   translationOriginal: '',
   translationResult: '',
+  chatbotVisible: false,
+  chatbotMessages: [],
+  chatbotLoading: false,
+  chatbotStreamingPhase: null,
+  reasoningEffort: 'balanced',
+  linkedDocument: null,
 
   setStatus: (status, message = '') => {
     set({ status, statusMessage: message });
@@ -485,6 +525,203 @@ export const useAIStore = create<AIState>((set, get) => ({
       set({ status: 'error', statusMessage: formatError(error) });
       return '';
     }
+  },
+
+  setChatbotVisible: (visible) => {
+    set({ chatbotVisible: visible });
+  },
+
+  toggleChatbot: () => {
+    set((state) => ({ chatbotVisible: !state.chatbotVisible }));
+  },
+
+  sendChatMessage: async (content, attachments) => {
+    const settings = useAppStore.getState().settings;
+
+    if (!settings.ai.enabled) {
+      set({ status: 'error', statusMessage: 'AI功能未启用' });
+      return;
+    }
+
+    if (!settings.ai.api_key) {
+      set({ status: 'error', statusMessage: '请先配置API密钥' });
+      return;
+    }
+
+    // Build message content with attachments embedded
+    let messageContent = content;
+    if (attachments && attachments.length > 0) {
+      const attachmentTexts = attachments.map((att) => {
+        if (att.type === 'image' && att.dataUrl) {
+          return `![${att.name}](${att.dataUrl})`;
+        }
+        if (att.type === 'text' && att.content) {
+          return `> **附件: ${att.name}**\n> \`\`\`\n${att.content}\n> \`\`\`\n`;
+        }
+        return `> 附件: ${att.name}\n`;
+      });
+      messageContent = attachmentTexts.join('\n') + (content ? '\n' + content : '');
+    }
+
+    const userMessage: ChatMessage = {
+      id: Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
+      role: 'user',
+      content: messageContent,
+      timestamp: Date.now(),
+      attachments: attachments ? attachments.map((a) => ({ type: a.type, name: a.name })) : undefined,
+    };
+
+    const prevMessages = get().chatbotMessages;
+    const assistantId = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+    const assistantPlaceholder: ChatMessage = {
+      id: assistantId,
+      role: 'assistant',
+      content: '',
+      timestamp: Date.now(),
+    };
+    set({
+      chatbotMessages: [...prevMessages, userMessage, assistantPlaceholder],
+      chatbotLoading: true,
+      chatbotStreamingPhase: 'reasoning',
+    });
+
+    const effort = get().reasoningEffort;
+    const effortConfig: Record<string, { temperature: number; max_tokens: number }> = {
+      fast: { temperature: 0.9, max_tokens: 800 },
+      balanced: { temperature: 0.7, max_tokens: 2000 },
+      deep: { temperature: 0.3, max_tokens: 4000 },
+    };
+
+    // Only enable thinking for providers that support it (DeepSeek, SiliconFlow)
+    const provider = settings.ai.provider;
+    const supportsThinking = provider === 'deepseek' || provider === 'siliconflow';
+
+    // Set up event listeners before invoking the streaming command
+    const unlisteners: (() => void)[] = [];
+
+    try {
+      const history = prevMessages.map((m) => ({
+        role: m.role,
+        content: m.content,
+      }));
+
+      const linkedDoc = get().linkedDocument;
+      const requestArgs: Record<string, unknown> = {
+        content: messageContent,
+        context: JSON.stringify(history),
+        settings: settings.ai,
+        enableThinking: supportsThinking && effort !== 'off',
+      };
+
+      if (linkedDoc) {
+        requestArgs.doc_context = linkedDoc.content;
+        requestArgs.doc_title = linkedDoc.title;
+      }
+      if (effort !== 'off') {
+        const config = effortConfig[effort];
+        requestArgs.temperature = config.temperature;
+        requestArgs.max_tokens = config.max_tokens;
+      }
+
+      // Listen for reasoning chunks
+      const unlistenReasoning = await listen<{ content: string }>('ai-chat-reasoning-chunk', (event) => {
+        set((state) => ({
+          chatbotMessages: state.chatbotMessages.map((m) =>
+            m.id === assistantId
+              ? { ...m, reasoning: (m.reasoning || '') + event.payload.content }
+              : m,
+          ),
+        }));
+      });
+      unlisteners.push(unlistenReasoning);
+
+      // Listen for reasoning done
+      const unlistenReasoningDone = await listen('ai-chat-reasoning-done', () => {
+        set({ chatbotStreamingPhase: 'content' });
+      });
+      unlisteners.push(unlistenReasoningDone);
+
+      // Listen for content chunks
+      const unlistenContent = await listen<{ content: string }>('ai-chat-content-chunk', (event) => {
+        set((state) => ({
+          chatbotMessages: state.chatbotMessages.map((m) =>
+            m.id === assistantId
+              ? { ...m, content: m.content + event.payload.content }
+              : m,
+          ),
+        }));
+      });
+      unlisteners.push(unlistenContent);
+
+      // Listen for stream error
+      const unlistenError = await listen<{ message: string }>('ai-chat-error', (event) => {
+        set((state) => ({
+          chatbotMessages: state.chatbotMessages.map((m) =>
+            m.id === assistantId
+              ? { ...m, content: m.content || `**错误:** ${event.payload.message}` }
+              : m,
+          ),
+          chatbotLoading: false,
+          chatbotStreamingPhase: null,
+        }));
+      });
+      unlisteners.push(unlistenError);
+
+      // Listen for stream done
+      const unlistenDone = await listen('ai-chat-done', () => {
+        set({ chatbotLoading: false, chatbotStreamingPhase: null });
+      });
+      unlisteners.push(unlistenDone);
+
+      // Start streaming
+      await invoke('ai_chat_streaming', requestArgs);
+    } catch (error) {
+      console.error('Chat streaming error:', error);
+      set((state) => ({
+        chatbotMessages: state.chatbotMessages.map((m) =>
+          m.id === assistantId
+            ? { ...m, content: m.content || `**错误:** ${String(error)}` }
+            : m,
+        ),
+        chatbotLoading: false,
+        chatbotStreamingPhase: null,
+      }));
+    } finally {
+      // Clean up all listeners
+      for (const unlisten of unlisteners) {
+        unlisten();
+      }
+    }
+  },
+
+  clearChatHistory: () => {
+    set({ chatbotMessages: [] });
+  },
+
+  setReasoningEffort: (effort) => {
+    set({ reasoningEffort: effort });
+  },
+
+  toggleLinkDocument: () => {
+    const current = get().linkedDocument;
+    if (current) {
+      set({ linkedDocument: null });
+    } else {
+      const appState = useAppStore.getState();
+      const activeTab = appState.getActiveTab();
+      if (activeTab && activeTab.content.trim()) {
+        set({
+          linkedDocument: {
+            title: activeTab.title,
+            content: activeTab.content,
+          },
+        });
+      }
+    }
+  },
+
+  setLinkedDocument: (doc) => {
+    set({ linkedDocument: doc });
   },
 
   setProofreadPanelVisible: (visible) => {
