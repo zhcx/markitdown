@@ -138,7 +138,7 @@ graph TD
     about: {
       title: '关于 MarkitDown',
       body: `
-**MarkitDown v0.1.4**
+**MarkitDown v0.2.0**
 
 一款现代化的 Markdown 编辑器
 
@@ -185,6 +185,24 @@ https://github.com/zhcx/markitdown
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
+  const getInstallerType = (fileName: string) => {
+    const lower = fileName.toLowerCase();
+    if (lower.endsWith('.exe')) return 'Windows 安装程序（推荐）';
+    if (lower.endsWith('.msi')) return 'Windows MSI 安装包';
+    return '安装包';
+  };
+
+  const getInstallerSummary = (fileName: string) => {
+    const lower = fileName.toLowerCase();
+    if (lower.endsWith('.exe')) {
+      return '下载完成后会自动启动安装程序。安装前请保存当前文档，应用会退出以便完成更新。';
+    }
+    if (lower.endsWith('.msi')) {
+      return '适合需要使用 Windows Installer 或企业分发场景的安装包。';
+    }
+    return '可从 GitHub Release 页面手动下载并安装。';
+  };
+
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content" onClick={(e) => e.stopPropagation()}>
@@ -210,6 +228,21 @@ https://github.com/zhcx/markitdown
                         className="update-notes-content"
                         dangerouslySetInnerHTML={{ __html: md.render(updateInfo.release_notes || '暂无更新说明') }}
                       />
+                    </div>
+                    <div className="update-installer-info">
+                      <h4>安装包简介</h4>
+                      {updateInfo.asset_download_url ? (
+                        <>
+                          <p><span>文件名</span><strong>{updateInfo.asset_name}</strong></p>
+                          <p><span>类型</span>{getInstallerType(updateInfo.asset_name)}</p>
+                          <p><span>大小</span>{formatSize(updateInfo.asset_size)}</p>
+                          <p className="update-installer-summary">{getInstallerSummary(updateInfo.asset_name)}</p>
+                        </>
+                      ) : (
+                        <p className="update-installer-summary">
+                          本次 Release 暂未提供可自动安装的 Windows 安装包，可前往 GitHub Release 页面手动查看下载项。
+                        </p>
+                      )}
                     </div>
                     {downloadProgress ? (
                       <div className="update-download-progress">

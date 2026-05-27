@@ -244,7 +244,7 @@ export const useAIStore = create<AIState>((set, get) => ({
         success: boolean;
         data: ProofreadResult[];
         message?: string;
-      }>('ai_request', requestData, 45000);
+      }>('ai_request', requestData, 90000);
 
       if (response.success) {
         const results = Array.isArray(response.data)

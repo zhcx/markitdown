@@ -1,3 +1,4 @@
+use futures_util::stream::{self, StreamExt};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;
@@ -5,10 +6,20 @@ use std::time::Duration;
 use tauri::{Emitter, WebviewWindow};
 use tokio::time::sleep;
 
-use crate::commands::AISettings;
 use super::prompts::{get_prompt, PromptAction};
+use crate::commands::AISettings;
 
 static HTTP_CLIENT: OnceLock<Client> = OnceLock::new();
+const PROOFREAD_CHUNK_THRESHOLD_UTF16: usize = 3200;
+const PROOFREAD_CHUNK_TARGET_UTF16: usize = 2400;
+const PROOFREAD_CHUNK_HARD_LIMIT_UTF16: usize = 3800;
+const PROOFREAD_CONCURRENCY: usize = 2;
+
+#[derive(Debug, Clone)]
+struct ProofreadChunk {
+    text: String,
+    offset_utf16: usize,
+}
 
 fn get_client() -> Result<Client, String> {
     if let Some(client) = HTTP_CLIENT.get() {
@@ -144,7 +155,9 @@ async fn send_request(
         let mut req = client.post(url).header("Content-Type", "application/json");
 
         if is_anthropic(settings) {
-            req = req.header("x-api-key", &settings.api_key).header("anthropic-version", "2023-06-01");
+            req = req
+                .header("x-api-key", &settings.api_key)
+                .header("anthropic-version", "2023-06-01");
         } else {
             req = req.header("Authorization", format!("Bearer {}", settings.api_key));
         }
@@ -189,7 +202,15 @@ async fn call_api(
         content: prompt,
         reasoning_content: None,
     }];
-    call_api_with_messages(messages, settings, Some("你是一位专业的写作助手，擅长中文内容创作和编辑。"), max_tokens, temperature, false).await
+    call_api_with_messages(
+        messages,
+        settings,
+        Some("你是一位专业的写作助手，擅长中文内容创作和编辑。"),
+        max_tokens,
+        temperature,
+        false,
+    )
+    .await
 }
 
 async fn call_api_with_messages(
@@ -205,13 +226,29 @@ async fn call_api_with_messages(
     let temperature = temperature.unwrap_or(settings.temperature);
 
     if is_anthropic(settings) {
-        return call_anthropic_with_messages(&client, &endpoint, messages, system_prompt, settings, max_tokens, temperature).await;
+        return call_anthropic_with_messages(
+            &client,
+            &endpoint,
+            messages,
+            system_prompt,
+            settings,
+            max_tokens,
+            temperature,
+        )
+        .await;
     }
 
     let url = format!("{}/chat/completions", endpoint);
     let mut full_messages = messages;
     if let Some(sp) = system_prompt {
-        full_messages.insert(0, ChatMessage { role: "system".to_string(), content: sp.to_string(), reasoning_content: None });
+        full_messages.insert(
+            0,
+            ChatMessage {
+                role: "system".to_string(),
+                content: sp.to_string(),
+                reasoning_content: None,
+            },
+        );
     }
 
     let request = ChatRequest {
@@ -220,7 +257,9 @@ async fn call_api_with_messages(
         temperature,
         stream: false,
         max_tokens,
-        thinking: enable_thinking.then(|| ThinkingConfig { type_: "enabled".into() }),
+        thinking: enable_thinking.then(|| ThinkingConfig {
+            type_: "enabled".into(),
+        }),
     };
 
     let body = serde_json::to_value(&request).map_err(|e| format!("序列化请求失败: {}", e))?;
@@ -229,10 +268,17 @@ async fn call_api_with_messages(
     if !response.status().is_success() {
         let status = response.status();
         let body_text = response.text().await.unwrap_or_default();
-        return Err(format!("API错误 ({}): {}", status, trim_error_body(&body_text)));
+        return Err(format!(
+            "API错误 ({}): {}",
+            status,
+            trim_error_body(&body_text)
+        ));
     }
 
-    let chat_response: ChatResponse = response.json().await.map_err(|e| format!("解析响应失败: {}", e))?;
+    let chat_response: ChatResponse = response
+        .json()
+        .await
+        .map_err(|e| format!("解析响应失败: {}", e))?;
 
     if chat_response.choices.is_empty() {
         return Err("API返回空响应".to_string());
@@ -260,14 +306,30 @@ async fn call_chat_api(
     let temperature = temperature.unwrap_or(settings.temperature);
 
     if is_anthropic(settings) {
-        let text = call_anthropic_with_messages(&client, &endpoint, messages, system_prompt, settings, max_tokens, temperature).await?;
+        let text = call_anthropic_with_messages(
+            &client,
+            &endpoint,
+            messages,
+            system_prompt,
+            settings,
+            max_tokens,
+            temperature,
+        )
+        .await?;
         return Ok((text, None));
     }
 
     let url = format!("{}/chat/completions", endpoint);
     let mut full_messages = messages;
     if let Some(sp) = system_prompt {
-        full_messages.insert(0, ChatMessage { role: "system".to_string(), content: sp.to_string(), reasoning_content: None });
+        full_messages.insert(
+            0,
+            ChatMessage {
+                role: "system".to_string(),
+                content: sp.to_string(),
+                reasoning_content: None,
+            },
+        );
     }
 
     let request = ChatRequest {
@@ -276,7 +338,9 @@ async fn call_chat_api(
         temperature,
         stream: false,
         max_tokens,
-        thinking: enable_thinking.then(|| ThinkingConfig { type_: "enabled".into() }),
+        thinking: enable_thinking.then(|| ThinkingConfig {
+            type_: "enabled".into(),
+        }),
     };
 
     let body = serde_json::to_value(&request).map_err(|e| format!("序列化请求失败: {}", e))?;
@@ -285,10 +349,17 @@ async fn call_chat_api(
     if !response.status().is_success() {
         let status = response.status();
         let body_text = response.text().await.unwrap_or_default();
-        return Err(format!("API错误 ({}): {}", status, trim_error_body(&body_text)));
+        return Err(format!(
+            "API错误 ({}): {}",
+            status,
+            trim_error_body(&body_text)
+        ));
     }
 
-    let chat_response: ChatResponse = response.json().await.map_err(|e| format!("解析响应失败: {}", e))?;
+    let chat_response: ChatResponse = response
+        .json()
+        .await
+        .map_err(|e| format!("解析响应失败: {}", e))?;
 
     if chat_response.choices.is_empty() {
         return Err("API返回空响应".to_string());
@@ -300,7 +371,10 @@ async fn call_chat_api(
         return Err("API返回空内容".to_string());
     }
 
-    Ok((content.clone(), msg.reasoning_content.clone().filter(|r| !r.is_empty())))
+    Ok((
+        content.clone(),
+        msg.reasoning_content.clone().filter(|r| !r.is_empty()),
+    ))
 }
 
 async fn call_anthropic_with_messages(
@@ -315,8 +389,12 @@ async fn call_anthropic_with_messages(
     let url = format!("{}/messages", endpoint);
     let max_tokens = max_tokens.unwrap_or(1024);
 
-    let anthropic_messages: Vec<AnthropicMessage> = messages.into_iter()
-        .map(|m| AnthropicMessage { role: m.role, content: m.content })
+    let anthropic_messages: Vec<AnthropicMessage> = messages
+        .into_iter()
+        .map(|m| AnthropicMessage {
+            role: m.role,
+            content: m.content,
+        })
         .collect();
 
     let request = AnthropicRequest {
@@ -333,7 +411,11 @@ async fn call_anthropic_with_messages(
     if !response.status().is_success() {
         let status = response.status();
         let body_text = response.text().await.unwrap_or_default();
-        return Err(format!("Anthropic API错误 ({}): {}", status, trim_error_body(&body_text)));
+        return Err(format!(
+            "Anthropic API错误 ({}): {}",
+            status,
+            trim_error_body(&body_text)
+        ));
     }
 
     let anthropic_response: AnthropicResponse = response
@@ -357,27 +439,245 @@ async fn call_anthropic_with_messages(
 }
 
 pub async fn proofread(content: &str, settings: &AISettings) -> Result<AIResponse, String> {
-    let prompt = get_prompt(PromptAction::Proofread, content, None, settings);
-    let max_tokens = Some(((content.chars().count() / 8) as u32).clamp(800, 3000));
-    let result = call_api(prompt, settings, max_tokens, Some(0.1)).await?;
-
-    // Extract JSON from response (handle markdown code blocks and extra text)
-    let json_str = extract_json_array(&result);
-
-    // Clean up the response - remove trailing commas before ] or }
-    let cleaned = json_str
-        .replace(",]", "]")
-        .replace(",}", "}");
-
-    // Parse JSON result
-    let data: serde_json::Value = serde_json::from_str(&cleaned)
-        .map_err(|e| format!("解析校对结果失败: {}. 原始响应: {}", e, result))?;
+    let chunks = split_proofread_chunks(content);
+    let data = if chunks.len() <= 1 {
+        serde_json::Value::Array(proofread_chunk(content, settings).await?)
+    } else {
+        let results = match proofread_chunks_concurrently(chunks.clone(), settings).await {
+            Ok(results) => results,
+            Err(error) if is_transient_ai_error(&error) => {
+                proofread_chunks_sequentially(chunks, settings).await?
+            }
+            Err(error) => return Err(error),
+        };
+        serde_json::Value::Array(results)
+    };
 
     Ok(AIResponse {
         success: true,
         data,
         message: None,
     })
+}
+
+async fn proofread_chunks_concurrently(
+    chunks: Vec<ProofreadChunk>,
+    settings: &AISettings,
+) -> Result<Vec<serde_json::Value>, String> {
+    let settings = settings.clone();
+    let chunk_results = stream::iter(chunks.into_iter().map(|chunk| {
+        let settings = settings.clone();
+        async move { proofread_shifted_chunk(&chunk, &settings).await }
+    }))
+    .buffer_unordered(PROOFREAD_CONCURRENCY)
+    .collect::<Vec<_>>()
+    .await;
+
+    let mut merged = Vec::new();
+    for result in chunk_results {
+        merged.extend(result?);
+    }
+    sort_proofread_items(&mut merged);
+    Ok(merged)
+}
+
+async fn proofread_chunks_sequentially(
+    chunks: Vec<ProofreadChunk>,
+    settings: &AISettings,
+) -> Result<Vec<serde_json::Value>, String> {
+    let mut merged = Vec::new();
+    for chunk in chunks {
+        merged.extend(proofread_shifted_chunk(&chunk, settings).await?);
+        sleep(Duration::from_millis(180)).await;
+    }
+    sort_proofread_items(&mut merged);
+    Ok(merged)
+}
+
+async fn proofread_shifted_chunk(
+    chunk: &ProofreadChunk,
+    settings: &AISettings,
+) -> Result<Vec<serde_json::Value>, String> {
+    let mut items = proofread_chunk(&chunk.text, settings).await?;
+    offset_proofread_items(&mut items, chunk.offset_utf16);
+    Ok(items)
+}
+
+fn is_transient_ai_error(error: &str) -> bool {
+    let error = error.to_lowercase();
+    [
+        "connection",
+        "network",
+        "timeout",
+        "timed out",
+        "reset",
+        "closed",
+        "too many requests",
+        "429",
+        "502",
+        "503",
+        "504",
+    ]
+    .iter()
+    .any(|pattern| error.contains(pattern))
+}
+
+async fn proofread_chunk(
+    content: &str,
+    settings: &AISettings,
+) -> Result<Vec<serde_json::Value>, String> {
+    let prompt = get_prompt(PromptAction::Proofread, content, None, settings);
+    let max_tokens = Some(((content.chars().count() / 8) as u32).clamp(800, 1800));
+    let result = call_api(prompt, settings, max_tokens, Some(0.1)).await?;
+
+    parse_proofread_result(&result)
+}
+
+fn parse_proofread_result(result: &str) -> Result<Vec<serde_json::Value>, String> {
+    let json_str = extract_json_array(result);
+
+    let cleaned = json_str.replace(",]", "]").replace(",}", "}");
+
+    let data: serde_json::Value = serde_json::from_str(&cleaned)
+        .map_err(|e| format!("解析校对结果失败: {}. 原始响应: {}", e, result))?;
+
+    match data {
+        serde_json::Value::Array(items) => Ok(items),
+        _ => Err(format!(
+            "AI proofread result must be a JSON array. Raw response: {}",
+            result
+        )),
+    }
+}
+
+fn split_proofread_chunks(content: &str) -> Vec<ProofreadChunk> {
+    if content.encode_utf16().count() <= PROOFREAD_CHUNK_THRESHOLD_UTF16 {
+        return vec![ProofreadChunk {
+            text: content.to_string(),
+            offset_utf16: 0,
+        }];
+    }
+
+    let mut chunks = Vec::new();
+    let mut total_utf16 = 0usize;
+    let mut current_start_byte = 0usize;
+    let mut current_start_utf16 = 0usize;
+    let mut last_boundary_byte = 0usize;
+    let mut last_boundary_utf16 = 0usize;
+
+    for (byte_idx, ch) in content.char_indices() {
+        total_utf16 += ch.len_utf16();
+        let next_byte = byte_idx + ch.len_utf8();
+
+        if is_proofread_chunk_boundary(ch) {
+            last_boundary_byte = next_byte;
+            last_boundary_utf16 = total_utf16;
+        }
+
+        let current_len = total_utf16.saturating_sub(current_start_utf16);
+        let split_at_boundary =
+            current_len >= PROOFREAD_CHUNK_TARGET_UTF16 && is_proofread_chunk_boundary(ch);
+        let split_at_hard_limit = current_len >= PROOFREAD_CHUNK_HARD_LIMIT_UTF16;
+
+        if split_at_boundary || split_at_hard_limit {
+            let (split_byte, split_utf16) =
+                if split_at_hard_limit && last_boundary_byte > current_start_byte {
+                    (last_boundary_byte, last_boundary_utf16)
+                } else {
+                    (next_byte, total_utf16)
+                };
+
+            push_proofread_chunk(
+                content,
+                current_start_byte,
+                split_byte,
+                current_start_utf16,
+                &mut chunks,
+            );
+            current_start_byte = split_byte;
+            current_start_utf16 = split_utf16;
+            last_boundary_byte = split_byte;
+            last_boundary_utf16 = split_utf16;
+        }
+    }
+
+    push_proofread_chunk(
+        content,
+        current_start_byte,
+        content.len(),
+        current_start_utf16,
+        &mut chunks,
+    );
+
+    chunks
+}
+
+fn is_proofread_chunk_boundary(ch: char) -> bool {
+    matches!(
+        ch,
+        '\n'
+            | '\u{3002}'
+            | '\u{ff01}'
+            | '\u{ff1f}'
+            | '\u{ff1b}'
+            | '.'
+            | '!'
+            | '?'
+            | ';'
+    )
+}
+
+fn push_proofread_chunk(
+    content: &str,
+    start_byte: usize,
+    end_byte: usize,
+    start_utf16: usize,
+    chunks: &mut Vec<ProofreadChunk>,
+) {
+    if start_byte >= end_byte {
+        return;
+    }
+
+    let raw = &content[start_byte..end_byte];
+    let leading_utf16: usize = raw
+        .chars()
+        .take_while(|ch| ch.is_whitespace())
+        .map(|ch| ch.len_utf16())
+        .sum();
+    let trimmed = raw.trim();
+
+    if !trimmed.is_empty() {
+        chunks.push(ProofreadChunk {
+            text: trimmed.to_string(),
+            offset_utf16: start_utf16 + leading_utf16,
+        });
+    }
+}
+
+fn offset_proofread_items(items: &mut [serde_json::Value], offset_utf16: usize) {
+    if offset_utf16 == 0 {
+        return;
+    }
+
+    for item in items {
+        if let Some(object) = item.as_object_mut() {
+            for key in ["from", "to"] {
+                if let Some(value) = object.get_mut(key) {
+                    if let Some(position) = value.as_u64() {
+                        *value = serde_json::Value::Number((position + offset_utf16 as u64).into());
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn sort_proofread_items(items: &mut [serde_json::Value]) {
+    items.sort_by_key(|item| {
+        item.get("from")
+            .and_then(|value| value.as_u64())
+            .unwrap_or(u64::MAX)
+    });
 }
 
 fn extract_json_array(text: &str) -> String {
@@ -542,8 +842,7 @@ fn clean_companion_line(line: &str) -> Option<String> {
         .trim_matches(',')
         .trim_matches('"')
         .trim_start_matches(|c: char| {
-            c.is_ascii_digit()
-                || matches!(c, '.' | ')' | '-' | '*' | '、' | ' ' | '\t')
+            c.is_ascii_digit() || matches!(c, '.' | ')' | '-' | '*' | '、' | ' ' | '\t')
         })
         .trim()
         .to_string();
@@ -646,7 +945,15 @@ pub async fn chat(
         reasoning_content: None,
     });
 
-    let result = call_chat_api(messages, settings, Some(&system_prompt), max_tokens, temperature, enable_thinking).await;
+    let result = call_chat_api(
+        messages,
+        settings,
+        Some(&system_prompt),
+        max_tokens,
+        temperature,
+        enable_thinking,
+    )
+    .await;
 
     match result {
         Ok((text, reasoning)) => Ok(AIResponse {
@@ -694,11 +1001,14 @@ fn build_chat_messages(
     });
 
     // Prepend system prompt as first message
-    messages.insert(0, ChatMessage {
-        role: "system".to_string(),
-        content: system_prompt.to_string(),
-        reasoning_content: None,
-    });
+    messages.insert(
+        0,
+        ChatMessage {
+            role: "system".to_string(),
+            content: system_prompt.to_string(),
+            reasoning_content: None,
+        },
+    );
 
     messages
 }
@@ -726,7 +1036,14 @@ pub async fn chat_streaming(
 
     // Anthropic: fall back to non-streaming (no reasoning_content support)
     if is_anthropic(settings) {
-        return chat_streaming_anthropic_fallback(messages, settings, max_tokens, temperature, &window).await;
+        return chat_streaming_anthropic_fallback(
+            messages,
+            settings,
+            max_tokens,
+            temperature,
+            &window,
+        )
+        .await;
     }
 
     let client = get_client()?;
@@ -739,7 +1056,9 @@ pub async fn chat_streaming(
         temperature,
         stream: true,
         max_tokens,
-        thinking: enable_thinking.then(|| ThinkingConfig { type_: "enabled".into() }),
+        thinking: enable_thinking.then(|| ThinkingConfig {
+            type_: "enabled".into(),
+        }),
     };
 
     let body = serde_json::to_value(&request).map_err(|e| format!("序列化请求失败: {}", e))?;
@@ -757,7 +1076,9 @@ pub async fn chat_streaming(
         let status = response.status();
         let body_text = response.text().await.unwrap_or_default();
         let err_msg = format!("API错误 ({}): {}", status, trim_error_body(&body_text));
-        window.emit("ai-chat-error", serde_json::json!({ "message": &err_msg })).ok();
+        window
+            .emit("ai-chat-error", serde_json::json!({ "message": &err_msg }))
+            .ok();
         return Err(err_msg);
     }
 
@@ -784,14 +1105,20 @@ pub async fn chat_streaming(
                             if data == "[DONE]" {
                                 break;
                             }
-                            if let Ok(chunk_data) = serde_json::from_str::<serde_json::Value>(data) {
+                            if let Ok(chunk_data) = serde_json::from_str::<serde_json::Value>(data)
+                            {
                                 if let Some(choices) = chunk_data["choices"].as_array() {
                                     if let Some(choice) = choices.first() {
                                         let delta = &choice["delta"];
 
                                         if let Some(rc) = delta["reasoning_content"].as_str() {
                                             if !rc.is_empty() {
-                                                window.emit("ai-chat-reasoning-chunk", serde_json::json!({ "content": rc })).ok();
+                                                window
+                                                    .emit(
+                                                        "ai-chat-reasoning-chunk",
+                                                        serde_json::json!({ "content": rc }),
+                                                    )
+                                                    .ok();
                                             }
                                         }
 
@@ -799,9 +1126,19 @@ pub async fn chat_streaming(
                                             if !c.is_empty() {
                                                 if !reasoning_done {
                                                     reasoning_done = true;
-                                                    window.emit("ai-chat-reasoning-done", serde_json::json!({})).ok();
+                                                    window
+                                                        .emit(
+                                                            "ai-chat-reasoning-done",
+                                                            serde_json::json!({}),
+                                                        )
+                                                        .ok();
                                                 }
-                                                window.emit("ai-chat-content-chunk", serde_json::json!({ "content": c })).ok();
+                                                window
+                                                    .emit(
+                                                        "ai-chat-content-chunk",
+                                                        serde_json::json!({ "content": c }),
+                                                    )
+                                                    .ok();
                                             }
                                         }
                                     }
@@ -816,7 +1153,9 @@ pub async fn chat_streaming(
     }
 
     if !reasoning_done {
-        window.emit("ai-chat-reasoning-done", serde_json::json!({})).ok();
+        window
+            .emit("ai-chat-reasoning-done", serde_json::json!({}))
+            .ok();
     }
     window.emit("ai-chat-done", serde_json::json!({})).ok();
 
@@ -862,8 +1201,15 @@ async fn chat_streaming_anthropic_fallback(
     )
     .await?;
 
-    window.emit("ai-chat-reasoning-done", serde_json::json!({})).ok();
-    window.emit("ai-chat-content-chunk", serde_json::json!({ "content": &text })).ok();
+    window
+        .emit("ai-chat-reasoning-done", serde_json::json!({}))
+        .ok();
+    window
+        .emit(
+            "ai-chat-content-chunk",
+            serde_json::json!({ "content": &text }),
+        )
+        .ok();
     window.emit("ai-chat-done", serde_json::json!({})).ok();
 
     Ok(())
@@ -927,7 +1273,10 @@ pub async fn streaming_request(
 
     // For simplicity, collect all chunks and emit final result
     // In production, this would process SSE stream properly
-    let full_text = response.text().await.map_err(|e| format!("读取响应失败: {}", e))?;
+    let full_text = response
+        .text()
+        .await
+        .map_err(|e| format!("读取响应失败: {}", e))?;
 
     window
         .emit("ai-stream-complete", &full_text)
@@ -962,7 +1311,11 @@ pub async fn fetch_models(api_key: &str, api_endpoint: &str) -> Result<Vec<Strin
     if !response.status().is_success() {
         let status = response.status();
         let body = response.text().await.unwrap_or_default();
-        return Err(format!("获取模型列表失败 ({}): {}", status, trim_error_body(&body)));
+        return Err(format!(
+            "获取模型列表失败 ({}): {}",
+            status,
+            trim_error_body(&body)
+        ));
     }
 
     let list: ModelListResponse = response
