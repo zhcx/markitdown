@@ -69,7 +69,6 @@ jobs:
       - name: Rust cache
         uses: swatinem/rust-cache@v2
         with:
-          target: ${{ matrix.target }}
           workspaces: './src-tauri -> target'
 
       - name: Install frontend dependencies
@@ -101,5 +100,4 @@ jobs:
             | Linux | x86_64 | `.deb` / `.rpm` / `.AppImage` |
           releaseDraft: false
           prerelease: false
-          target: ${{ matrix.target }}
           args: --target ${{ matrix.target }}
