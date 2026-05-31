@@ -20,6 +20,22 @@ function formatError(error: unknown): string {
   if (errorMsg.includes('connection') || errorMsg.includes('网络')) {
     return '网络连接失败，请检查网络设置';
   }
+  if (errorMsg.includes('429') || errorMsg.includes('too many requests')) {
+    return 'API请求过于频繁，请稍后重试';
+  }
+  if (errorMsg.includes('502') || errorMsg.includes('503') || errorMsg.includes('504')) {
+    return 'AI服务暂时不可用，请稍后重试';
+  }
+  if (errorMsg.includes('401') || errorMsg.includes('unauthorized')) {
+    return 'API密钥无效，请检查设置';
+  }
+  if (errorMsg.includes('解析校对结果失败') || errorMsg.includes('JSON')) {
+    return 'AI返回格式异常，正在重试...';
+  }
+  // 截断过长的错误信息
+  if (errorMsg.length > 200) {
+    return errorMsg.substring(0, 200) + '...';
+  }
   return errorMsg;
 }
 
@@ -66,6 +82,10 @@ export interface ChatMessageAttachment {
 export type ReasoningEffort = 'off' | 'fast' | 'balanced' | 'deep';
 
 export type AIStatus = 'idle' | 'loading' | 'proofreading' | 'companion' | 'success' | 'error';
+
+// 校对重试配置
+const PROOFREAD_MAX_RETRIES = 2;
+const PROOFREAD_RETRY_DELAY_MS = 1000;
 
 let companionRequestSeq = 0;
 const companionCache = new Map<string, string[]>();
@@ -233,40 +253,71 @@ export const useAIStore = create<AIState>((set, get) => ({
       statusMessage: baseOffset > 0 ? '正在校对选中文本...' : '正在校对全文...',
     });
 
-    try {
-      const requestData = {
-        action: 'proofread',
-        content: trimmedContent,
-        settings: settings.ai,
-      };
+    // 带重试的校对请求
+    let lastError: unknown = null;
+    for (let attempt = 0; attempt <= PROOFREAD_MAX_RETRIES; attempt++) {
+      try {
+        if (attempt > 0) {
+          set({ statusMessage: `校对重试中 (${attempt}/${PROOFREAD_MAX_RETRIES})...` });
+          await new Promise(resolve => setTimeout(resolve, PROOFREAD_RETRY_DELAY_MS));
+        }
 
-      const response = await invokeWithTimeout<{
-        success: boolean;
-        data: ProofreadResult[];
-        message?: string;
-      }>('ai_request', requestData, 90000);
+        const requestData = {
+          action: 'proofread',
+          content: trimmedContent,
+          settings: settings.ai,
+        };
 
-      if (response.success) {
-        const results = Array.isArray(response.data)
-          ? response.data.map(result => ({
-              ...result,
-              from: result.from + resultOffset,
-              to: result.to + resultOffset,
-            }))
-          : [];
-        set({
-          status: 'success',
-          statusMessage: results.length > 0 ? `发现 ${results.length} 处问题` : '校对完成，未发现问题',
-          proofreadResults: results,
-          errorCount: results.length,
-          proofreadPanelVisible: results.length > 0,
-        });
-      } else {
-        set({ status: 'error', statusMessage: response.message || '校对失败' });
+        const response = await invokeWithTimeout<{
+          success: boolean;
+          data: ProofreadResult[];
+          message?: string;
+        }>('ai_request', requestData, 300000);
+
+        if (response.success) {
+          const results = Array.isArray(response.data)
+            ? response.data.map(result => ({
+                ...result,
+                from: result.from + resultOffset,
+                to: result.to + resultOffset,
+              }))
+            : [];
+          set({
+            status: 'success',
+            statusMessage: results.length > 0 ? `发现 ${results.length} 处问题` : '校对完成，未发现问题',
+            proofreadResults: results,
+            errorCount: results.length,
+            proofreadPanelVisible: results.length > 0,
+          });
+          return; // 成功，退出重试循环
+        } else {
+          // API返回失败（非网络错误），不再重试
+          set({ status: 'error', statusMessage: response.message || '校对失败' });
+          return;
+        }
+      } catch (error) {
+        lastError = error;
+        console.error(`AI proofreading failed (attempt ${attempt + 1}):`, error);
+
+        // 判断是否为可重试的错误（网络/超时相关）
+        const errorMsg = String(error).toLowerCase();
+        const isRetryable = ['timeout', 'timed out', 'connection', 'network', 'reset', 'closed', '429', '502', '503', '504'].some(
+          pattern => errorMsg.includes(pattern)
+        );
+
+        if (isRetryable && attempt < PROOFREAD_MAX_RETRIES) {
+          continue; // 继续重试
+        }
+
+        // 不可重试或已达最大重试次数
+        set({ status: 'error', statusMessage: formatError(error) });
+        return;
       }
-    } catch (error) {
-      console.error('AI proofreading failed:', error);
-      set({ status: 'error', statusMessage: formatError(error) });
+    }
+
+    // 所有重试都失败
+    if (lastError) {
+      set({ status: 'error', statusMessage: `校对失败（已重试${PROOFREAD_MAX_RETRIES}次）: ${formatError(lastError)}` });
     }
   },
 

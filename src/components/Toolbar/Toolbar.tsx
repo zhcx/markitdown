@@ -366,6 +366,7 @@ export function Toolbar() {
   const aiGroup = settings.ai.enabled ? {
     title: 'AI',
     buttons: [
+      { label: '💬', title: chatbotVisible ? '关闭AI对话' : 'AI对话', action: () => toggleChatbot() },
       { label: '✓', title: '校对文字', action: handleProofread },
       { label: '✨', title: '伴写建议', action: handleCompanion },
       { label: '🎨', title: `风格: ${styleNames[currentStyle] || currentStyle}`, action: handleStyleChange },
@@ -373,7 +374,6 @@ export function Toolbar() {
       { label: '🌐', title: '翻译选中', action: handleTranslate },
       { label: '📋', title: '生成摘要', action: handleSummarize },
       { label: '💡', title: '生成大纲', action: handleOutline },
-      { label: '💬', title: chatbotVisible ? '关闭AI对话' : 'AI对话', action: () => toggleChatbot() },
     ],
   } : null;
 

@@ -13,7 +13,7 @@ static HTTP_CLIENT: OnceLock<Client> = OnceLock::new();
 const PROOFREAD_CHUNK_THRESHOLD_UTF16: usize = 3200;
 const PROOFREAD_CHUNK_TARGET_UTF16: usize = 2400;
 const PROOFREAD_CHUNK_HARD_LIMIT_UTF16: usize = 3800;
-const PROOFREAD_CONCURRENCY: usize = 2;
+const PROOFREAD_CONCURRENCY: usize = 4;
 
 #[derive(Debug, Clone)]
 struct ProofreadChunk {
@@ -27,9 +27,9 @@ fn get_client() -> Result<Client, String> {
     }
 
     let client = Client::builder()
-        .timeout(Duration::from_secs(60))
-        .connect_timeout(Duration::from_secs(6))
-        .pool_idle_timeout(Duration::from_secs(90))
+        .timeout(Duration::from_secs(120))
+        .connect_timeout(Duration::from_secs(10))
+        .pool_idle_timeout(Duration::from_secs(180))
         .tcp_nodelay(true)
         .build()
         .map_err(|e| format!("创建HTTP客户端失败: {}", e))?;
@@ -64,6 +64,7 @@ pub struct AIResponse {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ChatMessage {
     role: String,
+    #[serde(default)]
     content: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     reasoning_content: Option<String>,
@@ -286,7 +287,13 @@ async fn call_api_with_messages(
 
     let content = &chat_response.choices[0].message.content;
     if content.is_empty() {
-        return Err("API返回空内容".to_string());
+        // 有些模型把内容放在 reasoning_content 中
+        if let Some(reasoning) = &chat_response.choices[0].message.reasoning_content {
+            if !reasoning.is_empty() {
+                return Ok(reasoning.clone());
+            }
+        }
+        return Err("API返回空内容，请尝试更换模型或检查API配置".to_string());
     }
 
     Ok(content.clone())
@@ -507,11 +514,14 @@ fn is_transient_ai_error(error: &str) -> bool {
     let error = error.to_lowercase();
     [
         "connection",
+        "connect",
         "network",
         "timeout",
         "timed out",
         "reset",
         "closed",
+        "broken pipe",
+        "eof",
         "too many requests",
         "429",
         "502",
@@ -527,8 +537,21 @@ async fn proofread_chunk(
     settings: &AISettings,
 ) -> Result<Vec<serde_json::Value>, String> {
     let prompt = get_prompt(PromptAction::Proofread, content, None, settings);
-    let max_tokens = Some(((content.chars().count() / 8) as u32).clamp(800, 1800));
-    let result = call_api(prompt, settings, max_tokens, Some(0.1)).await?;
+    let max_tokens = Some(((content.chars().count() / 6) as u32).clamp(1024, 2048));
+    let result = match call_api(prompt, settings, max_tokens, Some(0.1)).await {
+        Ok(r) => r,
+        Err(e) => {
+            // 空内容视为无问题
+            if e.contains("空内容") || e.contains("空响应") || e.contains("empty") {
+                return Ok(Vec::new());
+            }
+            return Err(e);
+        }
+    };
+
+    if result.trim().is_empty() {
+        return Ok(Vec::new());
+    }
 
     parse_proofread_result(&result)
 }
@@ -536,18 +559,81 @@ async fn proofread_chunk(
 fn parse_proofread_result(result: &str) -> Result<Vec<serde_json::Value>, String> {
     let json_str = extract_json_array(result);
 
-    let cleaned = json_str.replace(",]", "]").replace(",}", "}");
+    // 清理常见 JSON 格式问题
+    let cleaned = json_str
+        .replace(",]", "]")
+        .replace(",}", "}")
+        .replace("\n", "")
+        .replace("\r", "")
+        .replace('\t', "")
+        // 移除 JSON 字符串值中可能导致解析失败的控制字符
+        .replace("\\n", "\\n")
+        .replace("\\r", "\\r");
 
-    let data: serde_json::Value = serde_json::from_str(&cleaned)
-        .map_err(|e| format!("解析校对结果失败: {}. 原始响应: {}", e, result))?;
+    let data: serde_json::Value = match serde_json::from_str(&cleaned) {
+        Ok(val) => val,
+        Err(e) => {
+            // 尝试用更宽松的方式解析：逐行查找 JSON 数组
+            eprintln!("JSON解析失败 ({}), 尝试宽松解析...", e);
+            parse_proofread_fallback(result)?
+        }
+    };
 
     match data {
-        serde_json::Value::Array(items) => Ok(items),
+        serde_json::Value::Array(items) => {
+            // 验证每个校对结果项的完整性
+            let valid_items: Vec<serde_json::Value> = items
+                .into_iter()
+                .filter(|item| {
+                    item.get("from").is_some()
+                        && item.get("to").is_some()
+                        && item.get("suggestion").is_some()
+                })
+                .collect();
+            Ok(valid_items)
+        }
         _ => Err(format!(
             "AI proofread result must be a JSON array. Raw response: {}",
             result
         )),
     }
+}
+
+/// 宽松解析：当标准 JSON 解析失败时，尝试多种策略提取有效数据
+fn parse_proofread_fallback(result: &str) -> Result<serde_json::Value, String> {
+    // 策略1：尝试在每一行中找到 JSON 对象，拼接成数组
+    let mut items = Vec::new();
+    for line in result.lines() {
+        let line = line.trim();
+        if line.starts_with('{') && line.ends_with('}') {
+            if let Ok(obj) = serde_json::from_str::<serde_json::Value>(line) {
+                if obj.get("from").is_some() && obj.get("to").is_some() {
+                    items.push(obj);
+                }
+            }
+        }
+    }
+    if !items.is_empty() {
+        return Ok(serde_json::Value::Array(items));
+    }
+
+    // 策略2：去掉所有非JSON内容，只保留 [ ] 之间的部分
+    if let Some(start) = result.find('[') {
+        if let Some(end) = result.rfind(']') {
+            if end > start {
+                let bracket_content = &result[start..=end];
+                let cleaned = bracket_content
+                    .replace(",]", "]")
+                    .replace(",}", "}");
+                if let Ok(val) = serde_json::from_str(&cleaned) {
+                    return Ok(val);
+                }
+            }
+        }
+    }
+
+    // 策略3：如果什么都没解析出来，返回空数组而非报错
+    Ok(serde_json::Value::Array(Vec::new()))
 }
 
 fn split_proofread_chunks(content: &str) -> Vec<ProofreadChunk> {
@@ -722,6 +808,8 @@ fn extract_json_array(text: &str) -> String {
             // Extract content between code blocks more carefully
             if let Some(start_idx) = cleaned.find(pattern) {
                 let after_start = &cleaned[start_idx + pattern.len()..];
+                // 跳过可能的换行
+                let after_start = after_start.trim_start_matches('\n').trim_start_matches('\r');
                 if let Some(end_idx) = after_start.find("```") {
                     cleaned = after_start[..end_idx].to_string();
                     break;
@@ -736,6 +824,13 @@ fn extract_json_array(text: &str) -> String {
     // Try to find [ anywhere in the text
     if let Some(start) = text.find('[') {
         let remaining = &text[start..];
+        return extract_json_array(remaining);
+    }
+
+    // 如果文本中包含中文提示但无JSON，尝试从最后的 [ 开始提取
+    // （有些AI会在解释后附上JSON）
+    if let Some(last_bracket) = text.rfind('[') {
+        let remaining = &text[last_bracket..];
         return extract_json_array(remaining);
     }
 

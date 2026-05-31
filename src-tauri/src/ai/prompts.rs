@@ -33,17 +33,17 @@ pub fn get_prompt(
 ) -> String {
     match action {
         PromptAction::Proofread => format!(
-            r#"请校对下面的 Markdown 文本，只检查真实问题，避免把作者风格当成错误。
+            r#"你是一个文本校对助手。校对下面的文本，只找真实的拼写、语法、标点错误。
 
-要求：
-1. 只返回 JSON 数组，不要返回解释、Markdown 代码块或额外文字。
-2. 无问题时返回 []。
-3. from/to 必须是原文中的 JavaScript 字符串索引（UTF-16 code unit），from 从 0 开始，to 为结束位置。
-4. type 只能是 spelling、grammar、punctuation、style、markdown、layout 之一。
-5. suggestion 只给可直接替换 original 的文本。
+规则：
+- 只输出 JSON 数组，不要任何其他文字
+- 没问题时输出：[]
+- from/to 是字符位置索引（从0开始），to不包含
+- type 只能是：spelling、grammar、punctuation、style、markdown、layout
+- 每次只改最小范围（1-10个字符）
 
-返回格式：
-[{{"from":0,"to":2,"original":"原文","suggestion":"建议","type":"spelling","explanation":"简短说明"}}]
+示例：
+[{{"from":5,"to":7,"original":"的","suggestion":"地","type":"grammar","explanation":"副词后应用地"}}]
 
 文本：
 {}"#,
