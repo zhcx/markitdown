@@ -79,6 +79,7 @@ interface AppState {
   settings: Settings;
   sidebarVisible: boolean;
   sidebarWidth: number;
+  outlineVisible: boolean;
   settingsOpen: boolean;
   isSaving: boolean;
   wordCount: string;
@@ -97,6 +98,7 @@ interface AppState {
   setSettings: (settings: Settings) => void;
   setSidebarVisible: (visible: boolean) => void;
   setSidebarWidth: (width: number) => void;
+  setOutlineVisible: (visible: boolean) => void;
   setSettingsOpen: (open: boolean) => void;
   setActiveImageService: (service: 'cloudinary' | 'picgo' | 's3' | 'local') => void;
   setEditorView: (view: EditorView | null) => void;
@@ -191,6 +193,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   settings: defaultSettings,
   sidebarVisible: true,
   sidebarWidth: 220,
+  outlineVisible: false,
   settingsOpen: false,
   isSaving: false,
   wordCount: '0 字, 0 字符',
@@ -229,6 +232,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   setSidebarVisible: (visible) => set({ sidebarVisible: visible }),
   setSidebarWidth: (width) => set({ sidebarWidth: Math.max(150, Math.min(400, width)) }),
+  setOutlineVisible: (visible) => set({ outlineVisible: visible }),
 
   setSettingsOpen: (open) => set({ settingsOpen: open }),
 

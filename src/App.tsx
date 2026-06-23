@@ -1,7 +1,6 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { useAppStore } from './stores/appStore';
 import { useAIStore } from './stores/aiStore';
-import { MenuBar } from './components/MenuBar/MenuBar';
 import { TabsBar } from './components/TabsBar/TabsBar';
 import { Toolbar } from './components/Toolbar/Toolbar';
 import { Editor } from './components/Editor/Editor';
@@ -12,6 +11,8 @@ import { Sidebar } from './components/Sidebar/Sidebar';
 import { AICompanionPopup } from './components/AI/AICompanionPopup';
 import { AITranslationPopup } from './components/AI/AITranslationPopup';
 import { AIChatbotPanel } from './components/Chatbot/AIChatbotPanel';
+import { OutlinePanel } from './components/Outline/OutlinePanel';
+import { TitleBar } from './components/TitleBar/TitleBar';
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 import './styles/main.css';
 
@@ -26,6 +27,7 @@ function App() {
     settingsOpen,
     sidebarVisible,
     sidebarWidth,
+    outlineVisible,
     loadSettings,
     settings,
     splitRatio,
@@ -51,11 +53,38 @@ function App() {
   }, [loadSettings]);
 
   useEffect(() => {
-    document.documentElement.setAttribute('data-theme', settings.appearance.theme);
+    const preference = settings.appearance.theme;
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+
+    const applyTheme = () => {
+      let resolvedTheme = preference === 'system'
+        ? (mediaQuery.matches ? 'dark' : 'light')
+        : preference;
+
+      // Keep older saved themes working, but never leave the UI without a
+      // complete token set when a malformed value makes it into settings.
+      if (!['light', 'dark'].includes(resolvedTheme)) {
+        resolvedTheme = 'light';
+      }
+
+      document.documentElement.setAttribute('data-theme', resolvedTheme);
+      document.documentElement.style.colorScheme = resolvedTheme === 'dark' ? 'dark' : 'light';
+      window.dispatchEvent(new CustomEvent('markitdown-theme-change', { detail: resolvedTheme }));
+    };
+
+    applyTheme();
+
+    if (preference !== 'system') return undefined;
+    mediaQuery.addEventListener('change', applyTheme);
+    return () => mediaQuery.removeEventListener('change', applyTheme);
   }, [settings.appearance.theme]);
 
   // Listen for Tauri file drop events using webview window
   useEffect(() => {
+    // Keep the native drag-and-drop integration out of plain browser previews.
+    // Tauri injects this internal bridge for every desktop webview.
+    if (!('__TAURI_INTERNALS__' in window)) return undefined;
+
     const webview = getCurrentWebviewWindow();
 
     const unlisten = webview.listen<DragDropPayload>('tauri://drag-drop', async (event) => {
@@ -184,13 +213,16 @@ function App() {
 
   return (
     <div className="app">
-      <MenuBar />
-      <TabsBar />
-      <Toolbar />
+      <TitleBar />
+      <header className="app-chrome">
+        <div className="app-tabs-row"><TabsBar /></div>
+        <div className="app-toolbar-row"><Toolbar /></div>
+      </header>
       <div className="app-body">
-        {sidebarVisible && (
+        {(sidebarVisible || outlineVisible) && (
           <>
-            <Sidebar style={{ width: sidebarWidth }} />
+            {outlineVisible && <OutlinePanel style={{ width: sidebarWidth }} />}
+            {!outlineVisible && sidebarVisible && <Sidebar style={{ width: sidebarWidth }} />}
             <div
               ref={sidebarDividerRef}
               className="sidebar-divider resizable"
@@ -198,6 +230,7 @@ function App() {
             />
           </>
         )}
+        <div className="workspace-shell">
         <main className={`main-content ${mode}`}>
           {mode === 'split' ? (
             <>
@@ -269,6 +302,7 @@ function App() {
             <Preview className="immersive-preview" />
           )}
         </main>
+        </div>
         {chatbotVisible && (
           <>
             <div

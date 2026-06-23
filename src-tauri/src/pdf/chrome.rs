@@ -1,8 +1,8 @@
 use base64::Engine;
 use headless_chrome::types::PrintToPdfOptions;
 use serde::{Deserialize, Serialize};
-use std::path::Path;
-use std::time::Duration;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use tauri::{Emitter, WebviewWindow};
 
 use super::browser_pool;
@@ -47,7 +47,8 @@ impl ChromeEngine {
         window: &WebviewWindow,
     ) -> PdfResult<Vec<u8>> {
         let html_with_images = embed_images(&input.html_body, input.file_path.as_deref());
-        let full_html = wrap_html_with_fonts(&html_with_images, options.margin_mm, &self.font_config);
+        let full_html =
+            wrap_html_with_fonts(&html_with_images, options.margin_mm, &self.font_config);
         generate_pdf_via_chrome(&full_html, options, Some(window))
     }
 }
@@ -56,6 +57,10 @@ impl ChromeEngine {
 fn embed_images(html: &str, md_file_path: Option<&str>) -> String {
     let mut result = String::with_capacity(html.len());
     let mut rest = html;
+    let base_dir = md_file_path
+        .and_then(|md| Path::new(md).parent())
+        .map(Path::to_path_buf);
+    let mut image_cache: HashMap<PathBuf, Option<String>> = HashMap::new();
 
     loop {
         let tag_start = match rest.find("<img") {
@@ -68,22 +73,6 @@ fn embed_images(html: &str, md_file_path: Option<&str>) -> String {
         result.push_str(&rest[..tag_start]);
         let after_tag = &rest[tag_start..];
 
-        let src_key = match after_tag.find("src=\"") {
-            Some(i) => i + 5,
-            None => {
-                result.push_str(after_tag);
-                break;
-            }
-        };
-        let src_end = match after_tag[src_key..].find('"') {
-            Some(i) => src_key + i,
-            None => {
-                result.push_str(after_tag);
-                break;
-            }
-        };
-        let src_val = &after_tag[src_key..src_end];
-
         let tag_end = match after_tag.find('>') {
             Some(i) => i + 1,
             None => {
@@ -91,13 +80,21 @@ fn embed_images(html: &str, md_file_path: Option<&str>) -> String {
                 break;
             }
         };
+        let tag = &after_tag[..tag_end];
 
-        if let Some(data_url) = resolve_image_src(md_file_path, src_val) {
-            result.push_str(&after_tag[..src_key]);
-            result.push_str(&data_url);
-            result.push_str(&after_tag[src_end..tag_end]);
+        if let Some((src_key, src_end)) = find_img_src_range(tag) {
+            let src_val = &tag[src_key..src_end];
+            if let Some(data_url) =
+                resolve_image_src(base_dir.as_deref(), src_val, &mut image_cache)
+            {
+                result.push_str(&tag[..src_key]);
+                result.push_str(&data_url);
+                result.push_str(&tag[src_end..]);
+            } else {
+                result.push_str(tag);
+            }
         } else {
-            result.push_str(&after_tag[..tag_end]);
+            result.push_str(tag);
         }
 
         rest = &after_tag[tag_end..];
@@ -105,7 +102,25 @@ fn embed_images(html: &str, md_file_path: Option<&str>) -> String {
     result
 }
 
-fn resolve_image_src(md_file_path: Option<&str>, src: &str) -> Option<String> {
+fn find_img_src_range(tag: &str) -> Option<(usize, usize)> {
+    for quote in ['"', '\''] {
+        let pattern = if quote == '"' { "src=\"" } else { "src='" };
+        if let Some(start) = tag.find(pattern) {
+            let value_start = start + pattern.len();
+            let value_end = tag[value_start..]
+                .find(quote)
+                .map(|index| value_start + index)?;
+            return Some((value_start, value_end));
+        }
+    }
+    None
+}
+
+fn resolve_image_src(
+    base_dir: Option<&Path>,
+    src: &str,
+    image_cache: &mut HashMap<PathBuf, Option<String>>,
+) -> Option<String> {
     if src.starts_with("http://") || src.starts_with("https://") || src.starts_with("data:") {
         return None;
     }
@@ -113,26 +128,37 @@ fn resolve_image_src(md_file_path: Option<&str>, src: &str) -> Option<String> {
     let p = std::path::Path::new(src);
     let resolved = if p.is_absolute() {
         p.to_path_buf()
-    } else if let Some(md) = md_file_path {
-        std::path::Path::new(md)
-            .parent()
-            .map(|d| d.join(p))
-            .unwrap_or(p.to_path_buf())
+    } else if let Some(base_dir) = base_dir {
+        base_dir.join(p)
     } else {
         return None;
     };
+    let cache_key = std::fs::canonicalize(&resolved).unwrap_or(resolved);
 
-    if !resolved.exists() {
+    if let Some(cached) = image_cache.get(&cache_key) {
+        return cached.clone();
+    }
+
+    if !cache_key.exists() {
+        image_cache.insert(cache_key, None);
         return None;
     }
 
-    let data = std::fs::read(&resolved).ok()?;
-    let mime = guess_mime(&resolved);
-    Some(format!(
+    let data = match std::fs::read(&cache_key) {
+        Ok(data) => data,
+        Err(_) => {
+            image_cache.insert(cache_key, None);
+            return None;
+        }
+    };
+    let mime = guess_mime(&cache_key);
+    let data_url = format!(
         "data:{};base64,{}",
         mime,
         base64::engine::general_purpose::STANDARD.encode(&data)
-    ))
+    );
+    image_cache.insert(cache_key, Some(data_url.clone()));
+    Some(data_url)
 }
 
 fn guess_mime(p: &Path) -> &'static str {
@@ -233,11 +259,9 @@ fn generate_pdf_via_chrome(
         .new_tab()
         .map_err(|e| PdfError::ChromeInit(e.to_string()))?;
 
-    let data_url = format!(
-        "data:text/html;base64,{}",
-        base64::engine::general_purpose::STANDARD.encode(html)
-    );
-    tab.navigate_to(&data_url)
+    let temp_html = TempHtmlFile::new(html)?;
+    let file_url = temp_html.file_url();
+    tab.navigate_to(&file_url)
         .map_err(|e| PdfError::Navigation(e.to_string()))?;
 
     tab.wait_until_navigated()
@@ -253,7 +277,7 @@ fn generate_pdf_via_chrome(
         if obj.as_bool().unwrap_or(false) {
             // 文档已就绪
         } else {
-            std::thread::sleep(Duration::from_millis(100));
+            std::thread::sleep(std::time::Duration::from_millis(100));
         }
     }
 
@@ -261,7 +285,10 @@ fn generate_pdf_via_chrome(
     emit_progress(window, "render", 60, "渲染页面...");
 
     let pdf_options = PrintToPdfOptions {
-        landscape: Some(matches!(options.orientation, super::PageOrientation::Landscape)),
+        landscape: Some(matches!(
+            options.orientation,
+            super::PageOrientation::Landscape
+        )),
         display_header_footer: Some(options.include_header_footer),
         print_background: Some(true),
         scale: Some(1.0),
@@ -288,4 +315,79 @@ fn generate_pdf_via_chrome(
     emit_progress(window, "complete", 100, "导出完成");
 
     Ok(pdf_data)
+}
+
+struct TempHtmlFile {
+    path: PathBuf,
+}
+
+impl TempHtmlFile {
+    fn new(html: &str) -> PdfResult<Self> {
+        let path =
+            std::env::temp_dir().join(format!("markitdown_export_{}.html", uuid::Uuid::new_v4()));
+        std::fs::write(&path, html.as_bytes())?;
+        Ok(Self { path })
+    }
+
+    fn file_url(&self) -> String {
+        file_url_from_path(&self.path)
+    }
+}
+
+impl Drop for TempHtmlFile {
+    fn drop(&mut self) {
+        std::fs::remove_file(&self.path).ok();
+    }
+}
+
+fn file_url_from_path(path: &Path) -> String {
+    let mut path = path.to_string_lossy().replace('\\', "/");
+    if !path.starts_with('/') {
+        path = format!("/{path}");
+    }
+    format!("file://{}", encode_file_url_path(&path))
+}
+
+fn encode_file_url_path(path: &str) -> String {
+    let mut encoded = String::with_capacity(path.len());
+    for byte in path.bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'/' | b':' | b'-' | b'_' | b'.' | b'~' => {
+                encoded.push(byte as char)
+            }
+            _ => encoded.push_str(&format!("%{byte:02X}")),
+        }
+    }
+    encoded
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn file_url_from_path_encodes_spaces_and_unicode() {
+        let url = file_url_from_path(Path::new(r"C:\Temp Dir\中文.html"));
+
+        assert_eq!(url, "file:///C:/Temp%20Dir/%E4%B8%AD%E6%96%87.html");
+    }
+
+    #[test]
+    fn embed_images_continues_after_img_without_src() {
+        let temp_dir =
+            std::env::temp_dir().join(format!("markitdown_pdf_test_{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&temp_dir).unwrap();
+        let image_path = temp_dir.join("image.png");
+        std::fs::write(&image_path, [0_u8, 1, 2, 3]).unwrap();
+
+        let md_path = temp_dir.join("doc.md");
+        let html = r#"<p>A</p><img alt="cover"><p>B</p><img src="image.png"><p>C</p>"#;
+        let output = embed_images(html, Some(&md_path.to_string_lossy()));
+
+        assert!(output.contains(r#"<img alt="cover">"#));
+        assert!(output.contains("data:image/png;base64,AAECAw=="));
+        assert!(output.contains("<p>C</p>"));
+
+        std::fs::remove_dir_all(temp_dir).ok();
+    }
 }

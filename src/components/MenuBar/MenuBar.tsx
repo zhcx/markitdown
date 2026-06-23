@@ -13,6 +13,7 @@ interface MenuItem {
   action?: () => void;
   shortcut?: string;
   divider?: boolean;
+  children?: MenuItem[];
 }
 
 interface MenuGroup {
@@ -445,7 +446,7 @@ export function MenuBar() {
     return md.render(text);
   };
 
-  const handleExport = async (format: 'pdf' | 'html') => {
+  const handleExport = async (format: 'pdf' | 'html' | 'word') => {
     try {
       const activeTab = getActiveTab();
       const filePath = activeTab?.path || null;
@@ -466,6 +467,20 @@ export function MenuBar() {
             filePath
           });
           await invoke('save_file_content', { path: selected, content: fullHtml });
+        }
+      } else if (format === 'word') {
+        const defaultFilename = getExportFilename('doc');
+        const selected = await save({
+          filters: [{ name: 'Word', extensions: ['doc'] }],
+          defaultPath: defaultFilename,
+        });
+        if (selected) {
+          const wordDocument = await invoke<string>('export_word', {
+            htmlBody,
+            settings: settings.export,
+            filePath
+          });
+          await invoke('save_file_content', { path: selected, content: wordDocument });
         }
       } else if (format === 'pdf') {
         // 使用新的直接 PDF 导出功能
@@ -488,6 +503,7 @@ export function MenuBar() {
       console.error('Failed to export:', error);
     }
     setActiveMenu(null);
+    setMenuOpen(false);
   };
 
   const menus: MenuGroup[] = [
@@ -499,6 +515,14 @@ export function MenuBar() {
         { label: '保存', action: handleSaveFile, shortcut: 'Ctrl+S' },
         { label: '另存为', action: handleSaveAs, shortcut: 'Ctrl+Shift+S' },
         { divider: true, label: '' },
+        {
+          label: '导出',
+          children: [
+            { label: '导出为 HTML', action: () => handleExport('html') },
+            { label: '导出为 PDF...', action: () => { setPdfExportOpen(true); setActiveMenu(null); setMenuOpen(false); } },
+            { label: '导出为 Word', action: () => handleExport('word') },
+          ],
+        },
         { label: '导出为 HTML', action: () => handleExport('html') },
         { label: '导出为 PDF...', action: () => { setPdfExportOpen(true); setActiveMenu(null); } },
       ],
@@ -530,10 +554,6 @@ export function MenuBar() {
           setSettings({ ...settings, appearance: { ...settings.appearance, theme: 'dark' } });
           setActiveMenu(null);
         }},
-        { label: 'Solarized主题', action: () => {
-          setSettings({ ...settings, appearance: { ...settings.appearance, theme: 'solarized' } });
-          setActiveMenu(null);
-        }},
         { divider: true, label: '' },
         { label: '设置', action: () => setSettingsOpen(true) },
       ],
@@ -562,6 +582,10 @@ export function MenuBar() {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  const shouldHideLegacyExportItem = (item: MenuItem) => {
+    return !item.children && !item.divider && (item.label.includes('HTML') || item.label.includes('PDF'));
+  };
 
   return (
     <>
@@ -597,9 +621,28 @@ export function MenuBar() {
             </button>
             {menuOpen && activeMenu === menu.label && (
               <div className="menu-dropdown">
-                {menu.items.map((item, index) => (
+                {menu.items.filter(item => !shouldHideLegacyExportItem(item)).map((item, index) => (
                   item.divider ? (
                     <div key={index} className="menu-divider" />
+                  ) : item.children ? (
+                    <div key={index} className="menu-option-wrapper">
+                      <button className="menu-option submenu-trigger" type="button">
+                        <span>{item.label}</span>
+                        <span className="submenu-arrow">›</span>
+                      </button>
+                      <div className="submenu-dropdown">
+                        {item.children.map((child, childIndex) => (
+                          child.divider ? (
+                            <div key={childIndex} className="menu-divider" />
+                          ) : (
+                            <button key={childIndex} className="menu-option" onClick={child.action}>
+                              <span>{child.label}</span>
+                              {child.shortcut && <span className="shortcut">{child.shortcut}</span>}
+                            </button>
+                          )
+                        ))}
+                      </div>
+                    </div>
                   ) : (
                     <button key={index} className="menu-option" onClick={item.action}>
                       <span>{item.label}</span>

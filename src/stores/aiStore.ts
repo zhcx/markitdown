@@ -227,6 +227,12 @@ export const useAIStore = create<AIState>((set, get) => ({
   },
 
   checkProofread: async (content, baseOffset = 0) => {
+    // 防止并发校对：如果正在校对中，忽略新的请求
+    if (get().status === 'proofreading') {
+      console.warn('[proofread] 校对进行中，忽略重复请求');
+      return;
+    }
+
     const settings = useAppStore.getState().settings;
 
     if (!settings.ai.enabled) {
@@ -275,13 +281,20 @@ export const useAIStore = create<AIState>((set, get) => ({
         }>('ai_request', requestData, 300000);
 
         if (response.success) {
-          const results = Array.isArray(response.data)
-            ? response.data.map(result => ({
-                ...result,
-                from: result.from + resultOffset,
-                to: result.to + resultOffset,
-              }))
-            : [];
+          const raw = Array.isArray(response.data) ? response.data : [];
+          // 严格过滤：from/to 必须为数字，from < to，非 NaN
+          const results: ProofreadResult[] = raw
+            .filter(r =>
+              typeof r.from === 'number' && typeof r.to === 'number' &&
+              !isNaN(r.from) && !isNaN(r.to) &&
+              r.from >= 0 && r.to > r.from &&
+              typeof r.suggestion === 'string' && r.suggestion.length > 0
+            )
+            .map(r => ({
+              ...r,
+              from: r.from + resultOffset,
+              to: r.to + resultOffset,
+            }));
           set({
             status: 'success',
             statusMessage: results.length > 0 ? `发现 ${results.length} 处问题` : '校对完成，未发现问题',
@@ -824,14 +837,24 @@ export const useAIStore = create<AIState>((set, get) => ({
     const { editorView } = useAppStore.getState();
     if (!editorView) return;
 
-    const transaction = editorView.state.update({
-      changes: {
-        from: result.from,
-        to: result.to,
-        insert: result.suggestion,
-      },
-    });
-    editorView.dispatch(transaction);
+    try {
+      const docLen = editorView.state.doc.length;
+      // 防御性校验：范围必须合法
+      if (result.from < 0 || result.to > docLen || result.from >= result.to) {
+        console.warn('[proofread] 忽略非法范围:', result.from, result.to, '文档长度:', docLen);
+      } else {
+        const transaction = editorView.state.update({
+          changes: {
+            from: result.from,
+            to: result.to,
+            insert: result.suggestion,
+          },
+        });
+        editorView.dispatch(transaction);
+      }
+    } catch (err) {
+      console.error('[proofread] 应用修复失败:', err);
+    }
     editorView.focus();
 
     // Remove this result from the list

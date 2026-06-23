@@ -82,8 +82,9 @@ export function SettingsPanel() {
                     })
                   }
                 >
-                  <option value="light">浅色</option>
-                  <option value="dark">深色</option>
+                  <option value="light">浅色（暖白）</option>
+                  <option value="dark">深色（暖黑）</option>
+                  <option value="system">跟随系统</option>
                 </select>
               </div>
               <div className="setting-item">
@@ -661,7 +662,7 @@ export function SettingsPanel() {
                                 ai: { ...localSettings.ai, model: result[0] },
                               });
                             }
-                          } catch (err: any) {
+                          } catch (err: unknown) {
                             setFetchError(String(err));
                           } finally {
                             setFetchingModels(false);

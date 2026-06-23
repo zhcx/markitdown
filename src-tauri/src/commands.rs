@@ -95,6 +95,19 @@ fn get_settings_path(app: &AppHandle) -> PathBuf {
     config_dir.join("settings.json")
 }
 
+/// 写一行日志到系统临时目录下的 markitdown_crash.log，用于诊断崩溃
+pub fn log_to_file(msg: &str) {
+    let log_path = std::env::temp_dir().join("markitdown_crash.log");
+    use std::io::Write;
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log_path)
+    {
+        let _ = writeln!(f, "[{}] {}", chrono::Local::now().format("%Y-%m-%d %H:%M:%S"), msg);
+    }
+}
+
 #[tauri::command] pub async fn get_settings(app: AppHandle) -> Result<Settings, String> {
     let path = get_settings_path(&app);
     if path.exists() { Ok(serde_json::from_str(&std::fs::read_to_string(path).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?) }
@@ -225,12 +238,66 @@ a:hover {{ text-decoration: underline; }}
 </html>"##, margin=margin_mm, body=body)
 }
 
+fn wrap_word_page(body: &str, margin_mm: f32) -> String {
+    format!(r##"<!DOCTYPE html>
+<html xmlns:o="urn:schemas-microsoft-com:office:office"
+      xmlns:w="urn:schemas-microsoft-com:office:word"
+      xmlns="http://www.w3.org/TR/REC-html40">
+<head>
+<meta charset="UTF-8">
+<meta name="ProgId" content="Word.Document">
+<meta name="Generator" content="MarkitDown">
+<meta name="Originator" content="MarkitDown">
+<title>MarkitDown Export</title>
+<!--[if gte mso 9]>
+<xml>
+  <w:WordDocument>
+    <w:View>Print</w:View>
+    <w:Zoom>100</w:Zoom>
+    <w:DoNotOptimizeForBrowser/>
+  </w:WordDocument>
+</xml>
+<![endif]-->
+<style>
+@page Section1 {{ margin: {margin}mm; }}
+div.Section1 {{ page: Section1; }}
+body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Microsoft YaHei", sans-serif; font-size: 12pt; line-height: 1.6; color: #333; }}
+h1, h2, h3, h4, h5, h6 {{ margin-top: 18pt; margin-bottom: 10pt; font-weight: 600; line-height: 1.25; }}
+h1 {{ font-size: 22pt; border-bottom: 1px solid #eaecef; padding-bottom: 4pt; }}
+h2 {{ font-size: 18pt; border-bottom: 1px solid #eaecef; padding-bottom: 4pt; }}
+h3 {{ font-size: 15pt; }}
+p {{ margin-top: 0; margin-bottom: 10pt; }}
+code {{ background-color: #f6f8fa; font-family: Consolas, "Courier New", monospace; font-size: 10pt; }}
+pre {{ background-color: #f6f8fa; border: 1px solid #dfe2e5; padding: 10pt; white-space: pre-wrap; word-wrap: break-word; font-family: Consolas, "Courier New", monospace; font-size: 10pt; }}
+blockquote {{ border-left: 3pt solid #dfe2e5; color: #6a737d; margin: 0 0 10pt 0; padding: 0 0 0 10pt; }}
+table {{ border-collapse: collapse; width: 100%; margin-bottom: 10pt; }}
+table th, table td {{ border: 1px solid #dfe2e5; padding: 5pt 8pt; }}
+table tr:nth-child(2n) {{ background-color: #f6f8fa; }}
+img {{ max-width: 100%; height: auto; }}
+ul, ol {{ margin-bottom: 10pt; }}
+a {{ color: #0366d6; text-decoration: none; }}
+</style>
+</head>
+<body>
+<div class="Section1">
+{body}
+</div>
+</body>
+</html>"##, margin=margin_mm, body=body)
+}
+
 // ── Commands ───────────────────────────────────────────
 
 #[tauri::command]
 pub async fn export_html(html_body: String, settings: ExportSettings, file_path: Option<String>) -> Result<String, String> {
     let with_images = embed_images(&html_body, file_path.as_deref());
     Ok(wrap_html_page(&with_images, settings.pdf_margin))
+}
+
+#[tauri::command]
+pub async fn export_word(html_body: String, settings: ExportSettings, file_path: Option<String>) -> Result<String, String> {
+    let with_images = embed_images(&html_body, file_path.as_deref());
+    Ok(wrap_word_page(&with_images, settings.pdf_margin))
 }
 
 #[tauri::command]

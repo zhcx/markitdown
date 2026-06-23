@@ -96,7 +96,7 @@ function ImageOptionsModal({ onClose, onInsert }: { onClose: () => void; onInser
 }
 
 export function Toolbar() {
-  const { mode, setMode, editorView, setContent, content, sidebarVisible, setSidebarVisible, settings } = useAppStore();
+  const { mode, setMode, editorView, setContent, content, sidebarVisible, setSidebarVisible, outlineVisible, setOutlineVisible, settings } = useAppStore();
   const [showImageModal, setShowImageModal] = useState(false);
   const toolbarWheelDeltaRef = useRef(0);
   const toolbarWheelFrameRef = useRef<number | null>(null);
@@ -418,26 +418,35 @@ export function Toolbar() {
 
   return (
     <div className="toolbar">
-      <div className="toolbar-left" onWheel={handleToolbarWheel}>
-        {toolbarGroups.map((group) => (
-          <div className="toolbar-group" key={group.title}>
-            <span className="toolbar-group-title">{group.title}</span>
-            <div className="toolbar-buttons">
-              {group.buttons.map((btn) => (
-                <button
-                  key={btn.title}
-                  className="toolbar-btn"
-                  title={btn.title}
-                  onClick={btn.action}
-                >
-                  {btn.label}
-                </button>
-              ))}
+      <div className="toolbar-scroll-area" onWheel={handleToolbarWheel}>
+        <div className="toolbar-left">
+          {toolbarGroups.map((group) => (
+            <div className="toolbar-group" key={group.title}>
+              <span className="toolbar-group-title">{group.title}</span>
+              <div className="toolbar-buttons">
+                {group.buttons.map((btn) => (
+                  <button
+                    key={btn.title}
+                    className="toolbar-btn"
+                    title={btn.title}
+                    onClick={btn.action}
+                  >
+                    {btn.label}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
       <div className="toolbar-right">
+        <button
+          className={`toolbar-btn ${outlineVisible ? 'active' : ''}`}
+          title={outlineVisible ? '隐藏大纲' : '显示大纲'}
+          onClick={() => setOutlineVisible(!outlineVisible)}
+        >
+          📑
+        </button>
         <button
           className="toolbar-btn"
           title={sidebarVisible ? '隐藏侧边栏' : '显示侧边栏'}

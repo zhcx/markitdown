@@ -253,27 +253,40 @@ export function Sidebar({ style }: SidebarProps) {
 
   return (
     <aside className="sidebar explorer-sidebar" style={style}>
-      <div className="sidebar-header explorer-header">
-        <h3>资源管理器</h3>
-        <div className="sidebar-actions">
-          <button className="sidebar-action-btn" onClick={handleNewFile} title="新建文件" aria-label="新建文件">
-            <span className="sidebar-action-icon new-file-icon" aria-hidden="true" />
-          </button>
-          <button className="sidebar-action-btn" onClick={() => void handleOpenFile()} title="打开文件" aria-label="打开文件">
-            <span className="sidebar-action-icon open-file-icon" aria-hidden="true" />
-          </button>
-          <button className="sidebar-action-btn" onClick={() => void handleOpenFolder()} title="打开文件夹" aria-label="打开文件夹">
-            <span className="sidebar-action-icon open-folder-icon" aria-hidden="true" />
-          </button>
+      <div className="sidebar-surface">
+        <div className="sidebar-header explorer-header">
+          <div className="sidebar-title-group">
+            <h3>资源管理器</h3>
+          </div>
+          <div className="sidebar-actions">
+            <button className="sidebar-action-btn" onClick={handleNewFile} title="新建文件" aria-label="新建文件">
+              <svg className="sidebar-action-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
+                <path d="M8 3v10M3 8h10"/>
+              </svg>
+            </button>
+            <button className="sidebar-action-btn" onClick={() => void handleOpenFile()} title="打开文件" aria-label="打开文件">
+              <svg className="sidebar-action-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M2 5.5V13a1 1 0 001 1h10a1 1 0 001-1V5.5"/>
+                <path d="M2 4.5L5.5 2h5L14 4.5v1H2v-1z"/>
+                <path d="M5.5 2v3.5h5V2"/>
+              </svg>
+            </button>
+            <button className="sidebar-action-btn" onClick={() => void handleOpenFolder()} title="打开文件夹" aria-label="打开文件夹">
+              <svg className="sidebar-action-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
+                <path d="M2 5v7a1 1 0 001 1h10a1 1 0 001-1V6a1 1 0 00-1-1H7.5L6.3 3.8a.5.5 0 00-.35-.13H3a1 1 0 00-1 1z"/>
+                <path d="M2 5.5h12"/>
+              </svg>
+            </button>
+          </div>
         </div>
-      </div>
 
-      <div className="explorer-tree" role="tree" aria-label="资源管理器文件树">
+        <div className="explorer-tree" role="tree" aria-label="资源管理器文件树">
         <div className="file-tree open-editors-tree">
           <div className="file-tree-item folder virtual-root" onClick={() => toggleExpanded(OPEN_EDITORS_ID)}>
             <span className="expand-icon">{openEditorsExpanded ? '▾' : '▸'}</span>
             <span className="tree-icon virtual-icon">O</span>
             <span className="tree-name">打开的编辑器</span>
+            <span className="open-editors-count">{tabs.length}</span>
           </div>
           {openEditorsExpanded && (
             tabs.length > 0 ? (
@@ -334,6 +347,7 @@ export function Sidebar({ style }: SidebarProps) {
             </button>
           </div>
         )}
+        </div>
       </div>
 
       {contextMenu && (

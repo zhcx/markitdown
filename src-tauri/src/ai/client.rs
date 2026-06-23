@@ -34,8 +34,11 @@ fn get_client() -> Result<Client, String> {
         .build()
         .map_err(|e| format!("创建HTTP客户端失败: {}", e))?;
 
+    // set() returns an Err if already set; we have already checked above
+    // that it is empty, but guard against a race by ignoring the result.
     let _ = HTTP_CLIENT.set(client);
-    Ok(HTTP_CLIENT.get().expect("HTTP client initialized").clone())
+    // get() must succeed after set() succeeds.
+    HTTP_CLIENT.get().cloned().ok_or_else(|| "HTTP 客户端未初始化".to_string())
 }
 
 fn is_retryable_status(status: reqwest::StatusCode) -> bool {
@@ -447,13 +450,31 @@ async fn call_anthropic_with_messages(
 
 pub async fn proofread(content: &str, settings: &AISettings) -> Result<AIResponse, String> {
     let chunks = split_proofread_chunks(content);
-    let data = if chunks.len() <= 1 {
-        serde_json::Value::Array(proofread_chunk(content, settings).await?)
+    let data: serde_json::Value = if chunks.len() <= 1 {
+        let result = match proofread_chunk(content, settings).await {
+            Ok(items) => items,
+            Err(error) if is_transient_ai_error(&error) => {
+                // transient errors → empty array (no results displayed)
+                eprintln!("proofread: transient error, returning empty array: {error}");
+                Vec::new()
+            }
+            Err(error) => return Err(error),
+        };
+        serde_json::Value::Array(result)
     } else {
         let results = match proofread_chunks_concurrently(chunks.clone(), settings).await {
             Ok(results) => results,
             Err(error) if is_transient_ai_error(&error) => {
-                proofread_chunks_sequentially(chunks, settings).await?
+                // concurrent chunked proofread transient failure → fall back sequentially
+                eprintln!("proofread: concurrent chunked failed ({error}), trying sequential fallback…");
+                match proofread_chunks_sequentially(chunks, settings).await {
+                    Ok(results) => results,
+                    Err(error2) if is_transient_ai_error(&error2) => {
+                        eprintln!("proofread: sequential fallback also failed ({error2}), returning empty array");
+                        Vec::new()
+                    }
+                    Err(error2) => return Err(error2),
+                }
             }
             Err(error) => return Err(error),
         };
@@ -481,8 +502,18 @@ async fn proofread_chunks_concurrently(
     .await;
 
     let mut merged = Vec::new();
+    let mut chunk_errors = 0usize;
     for result in chunk_results {
-        merged.extend(result?);
+        match result {
+            Ok(items) => merged.extend(items),
+            Err(e) => {
+                eprintln!("[proofread concurrent] 分块失败: {e}");
+                chunk_errors += 1;
+            }
+        }
+    }
+    if merged.is_empty() && chunk_errors > 0 {
+        return Err(format!("所有并发校对分块均失败（共 {} 个）", chunk_errors));
     }
     sort_proofread_items(&mut merged);
     Ok(merged)
@@ -493,9 +524,20 @@ async fn proofread_chunks_sequentially(
     settings: &AISettings,
 ) -> Result<Vec<serde_json::Value>, String> {
     let mut merged = Vec::new();
+    let mut chunk_errors = 0usize;
     for chunk in chunks {
-        merged.extend(proofread_shifted_chunk(&chunk, settings).await?);
+        match proofread_shifted_chunk(&chunk, settings).await {
+            Ok(items) => merged.extend(items),
+            Err(e) => {
+                eprintln!("[proofread sequential] 分块失败: {e}");
+                chunk_errors += 1;
+                // 继续处理剩余分块，不终止整个校对
+            }
+        }
         sleep(Duration::from_millis(180)).await;
+    }
+    if merged.is_empty() && chunk_errors > 0 {
+        return Err(format!("所有校对分块均失败（共 {} 个）", chunk_errors));
     }
     sort_proofread_items(&mut merged);
     Ok(merged)
@@ -541,8 +583,12 @@ async fn proofread_chunk(
     let result = match call_api(prompt, settings, max_tokens, Some(0.1)).await {
         Ok(r) => r,
         Err(e) => {
-            // 空内容视为无问题
-            if e.contains("空内容") || e.contains("空响应") || e.contains("empty") {
+            // Empty content / timeout / network → no results, not a hard error
+            if is_transient_ai_error(&e)
+                || e.contains("空内容")
+                || e.contains("空响应")
+                || e.contains("empty")
+            {
                 return Ok(Vec::new());
             }
             return Err(e);
@@ -581,13 +627,24 @@ fn parse_proofread_result(result: &str) -> Result<Vec<serde_json::Value>, String
 
     match data {
         serde_json::Value::Array(items) => {
-            // 验证每个校对结果项的完整性
+            // 验证每个校对结果项的完整性和范围合法性
             let valid_items: Vec<serde_json::Value> = items
                 .into_iter()
                 .filter(|item| {
-                    item.get("from").is_some()
+                    // 必须有 from/to/suggestion 字段
+                    if !(item.get("from").is_some()
                         && item.get("to").is_some()
-                        && item.get("suggestion").is_some()
+                        && item.get("suggestion").is_some())
+                    {
+                        return false;
+                    }
+                    // from/to 必须为非负整数且 from < to
+                    let from_val = item.get("from").and_then(|v| v.as_u64());
+                    let to_val = item.get("to").and_then(|v| v.as_u64());
+                    match (from_val, to_val) {
+                        (Some(f), Some(t)) => f < t,
+                        _ => false,
+                    }
                 })
                 .collect();
             Ok(valid_items)

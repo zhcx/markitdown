@@ -9,7 +9,30 @@ mod commands;
 mod image;
 mod pdf;
 
+// Prevent Tauri commands from panicking across the FFI boundary.
+// Replace any remaining unwrap/expect in hot paths with proper error propagation.
+// clippy::unwrap_used is not enabled globally; this is a targeted hardening.
+
 fn main() {
+    // Install a global panic hook that writes to stderr instead of
+    // crashing the process immediately — the Tauri runtime handles the
+    // error gracefully and the window stays open.
+    std::panic::set_hook(Box::new(|info| {
+        let msg = info.to_string();
+        let location = info
+            .location()
+            .map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column()))
+            .unwrap_or_else(|| "unknown location".to_string());
+        let full = format!("[MARKITDOWN PANIC] {location}: {msg}");
+        eprintln!("{}", full);
+        // 同时写入文件，方便 Windows GUI 模式下诊断
+        let log_path = std::env::temp_dir().join("markitdown_crash.log");
+        use std::io::Write;
+        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&log_path) {
+            let _ = writeln!(f, "[PANIC] {}", full);
+        }
+    }));
+
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
@@ -20,6 +43,7 @@ fn main() {
             commands::upload_image,
             commands::export_pdf,
             commands::export_html,
+            commands::export_word,
             commands::cleanup_export_file,
             commands::get_file_content,
             commands::save_file_content,

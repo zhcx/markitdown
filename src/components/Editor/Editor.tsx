@@ -18,15 +18,30 @@ const proofreadErrorMark = Decoration.mark({
   attributes: { 'data-error': 'true' }
 });
 
-// 创建装饰函数
+// 创建装饰函数 — 对所有范围做防御性校验，防止 CodeMirror panic
 const createProofreadDecorations = (results: ProofreadResult[]) => {
   return EditorView.decorations.of((view) => {
     const builder = new RangeSetBuilder<Decoration>();
     const doc = view.state.doc;
+    const docLen = doc.length;
 
-    for (const result of results) {
-      if (result.from <= doc.length && result.to <= doc.length && result.from < result.to) {
-        builder.add(result.from, result.to, proofreadErrorMark);
+    // 按 from 升序排列，确保 RangeSetBuilder 不会因乱序而崩溃
+    const sorted = [...results]
+      .filter(r => typeof r.from === 'number' && typeof r.to === 'number' && !isNaN(r.from) && !isNaN(r.to))
+      .sort((a, b) => a.from - b.from);
+
+    for (const result of sorted) {
+      const from = result.from;
+      const to = result.to;
+      // 严格校验：from >= 0, to <= docLen, from < to（合法范围）
+      if (from < 0 || from >= docLen || to <= 0 || to > docLen || from >= to) {
+        continue;
+      }
+      try {
+        builder.add(from, to, proofreadErrorMark);
+      } catch {
+        // 单个装饰失败不应导致整个面板崩溃
+        continue;
       }
     }
 
@@ -257,20 +272,25 @@ export function Editor({ className, style }: EditorProps) {
     }
   }, [content]);
 
-  // 更新校对高亮
+  // 更新校对高亮 — 外层 try-catch 防止任何未预料的 CodeMirror panic 向上传播
   useEffect(() => {
-    if (viewRef.current) {
+    if (!viewRef.current) return;
+    try {
       viewRef.current.dispatch({
         effects: decorationsCompartmentRef.current.reconfigure(
           createProofreadDecorations(proofreadResults)
         ),
       });
+    } catch (err) {
+      console.error('[proofread] 装饰更新失败，已忽略:', err);
     }
   }, [proofreadResults]);
 
   return (
     <div className={`editor-container ${className || ''}`} style={style}>
-      <div ref={editorRef} className="editor-content" />
+      <div className="editor-document-card">
+        <div ref={editorRef} className="editor-content" />
+      </div>
     </div>
   );
 }

@@ -1,9 +1,8 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import MarkdownIt from 'markdown-it';
 import hljs from 'highlight.js';
 import katex from 'katex';
 import 'katex/dist/katex.min.css';
-import 'highlight.js/styles/github-dark.css';
 import { useAppStore } from '../../stores/appStore';
 
 interface PreviewProps {
@@ -29,8 +28,19 @@ const md = new MarkdownIt({
 });
 
 export function Preview({ className, style }: PreviewProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLElement>(null);
+  const [resolvedTheme, setResolvedTheme] = useState(() => document.documentElement.dataset.theme || 'light');
   const { content, settings } = useAppStore();
+  const isEmpty = content.trim().length === 0;
+
+  useEffect(() => {
+    const handleThemeChange = (event: Event) => {
+      setResolvedTheme((event as CustomEvent<string>).detail);
+    };
+
+    window.addEventListener('markitdown-theme-change', handleThemeChange);
+    return () => window.removeEventListener('markitdown-theme-change', handleThemeChange);
+  }, []);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -72,7 +82,10 @@ export function Preview({ className, style }: PreviewProps) {
       try {
         // Dynamic import mermaid
         const mermaid = (await import('mermaid')).default;
-        mermaid.initialize({ startOnLoad: false, theme: 'default' });
+        mermaid.initialize({
+          startOnLoad: false,
+          theme: resolvedTheme === 'dark' ? 'dark' : 'neutral',
+        });
         const { svg } = await mermaid.render('mermaid-' + Date.now(), code);
         const pre = block.parentElement;
         if (pre && pre.parentElement) {
@@ -90,7 +103,7 @@ export function Preview({ className, style }: PreviewProps) {
         img.setAttribute('data-src', img.src);
       });
     });
-  }, [content]);
+  }, [content, resolvedTheme]);
 
   const containerStyle: React.CSSProperties = {
     fontFamily: settings.appearance.font_family,
@@ -100,9 +113,19 @@ export function Preview({ className, style }: PreviewProps) {
 
   return (
     <div
-      ref={containerRef}
       className={`preview-container ${className || ''}`}
       style={{ ...containerStyle, ...style }}
-    />
+    >
+      <div className={`preview-card ${isEmpty ? 'is-empty' : ''}`}>
+        <article ref={containerRef} className="preview-document" />
+        {isEmpty && (
+          <div className="preview-empty-state">
+            <span className="preview-empty-mark" aria-hidden="true">↗</span>
+            <strong>预览将在这里显示</strong>
+            <span>开始写作后，这里会呈现舒适的阅读排版。</span>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
