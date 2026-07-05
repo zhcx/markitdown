@@ -10,7 +10,7 @@ on:
       tag:
         description: 'Release tag to build and upload assets to'
         required: true
-        default: '0.2.2'
+        default: '0.2.3'
 
 permissions:
   contents: write
@@ -82,27 +82,23 @@ jobs:
           tagName: ${{ env.RELEASE_TAG }}
           releaseName: 'MarkitDown ${{ env.RELEASE_TAG }}'
           releaseBody: |
-            ## MarkitDown v0.2.2 更新日志
+            ## MarkitDown v0.2.3 更新日志
 
-            ### 🎨 纸张式 UI 全面改造
-            - **主题统一**：珊瑚色强调色体系（Light: `#C96B52` / Dark: `#DC846A`），替换原有蓝色紫色系
-            - **自定义标题栏**：关闭原生 Windows 标题栏，自绘标题栏融入菜单栏，仅保留应用图标 + 窗口控制按钮
-            - **圆角标准化**：统一为 6px（小型控件）/ 8px（工具组）/ 12px（工作区），去除 16px+ 大圆角
-            - **资源管理器图标**：新建/打开文件/打开文件夹按钮更换为现代 SVG 内联图标
-            - **大纲面板修复**：点击大纲按钮现在能正确显示，不再受侧边栏状态影响
+            ### 🖼️ 图标全面更新
+            - 重新生成全平台应用图标（Windows/macOS/Linux/iOS/Android）
+            - SVG 源图标简化为圆角矩形背景 + M 字母，更清晰现代
+            - 图标生成脚本优化精简
 
-            ### 🛡️ 校对崩溃全面修复
-            - **NaN 毒性过滤**：严格校验 AI 返回的 from/to 必须为合法数字，过滤 NaN/undefined/null
-            - **CodeMirror 装饰防护**：排序 + 范围校验 + try-catch 三层防御，防止 RangeSetBuilder 崩溃
-            - **Rust task 级 panic 隔离**：所有 AI 操作通过 `tokio::task::spawn` 隔离，panic 不再杀死进程
-            - **分块容错**：单个校对分块失败不影响其他分块，仅全部失败时才报错
-            - **并发防护**：重复点击校对按钮不再发起并发请求
-            - **崩溃日志**：panic 信息写入 `%TEMP%\markitdown_crash.log`，便于诊断
+            ### 🎨 标题栏与菜单优化
+            - **应用品牌菜单**：新增 MarkitDown 应用名称菜单项，包含快捷键说明、Markdown 语法、检查更新、关于等入口
+            - **标题栏拖拽优化**：移除旧的全区域拖拽，改为专用拖拽间隔区域，避免与菜单交互冲突
+            - **双击最大化**：标题栏拖拽区域支持双击切换最大化/还原
+            - **窗口标题**：页面 title 统一为 "MarkitDown"（首字母大写）
+            - **性能优化**：窗口控制按钮使用 useCallback 缓存，减少不必要的重渲染
 
-            ### 🤖 AI 功能优化
-            - 校对超时从 90s 提升至 300s，长文档校对更稳定
-            - HTTP 客户端 `OnceLock` 竞争安全处理，不再因并发初始化 panic
-            - `checkProofread` 内的重试机制保留网络/超时错误自动重试
+            ### 📝 文档修正
+            - README 技术栈中 React 版本修正为 18（原误写为 19）
+            - 关于对话框信息更新至最新版本
 
             ### 📦 安装包
 

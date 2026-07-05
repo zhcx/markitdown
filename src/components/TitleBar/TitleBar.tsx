@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type MouseEvent } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { MenuBar } from '../MenuBar/MenuBar';
+
+const APP_NAME = 'MarkitDown';
 
 export function TitleBar() {
   const [isMaximized, setIsMaximized] = useState(false);
@@ -40,24 +42,42 @@ export function TitleBar() {
     return () => { unlistenPromise.then(fn => fn()); };
   }, [handleResize]);
 
-  const handleMinimize = async () => {
+  useEffect(() => {
+    getCurrentWindow().setTitle(APP_NAME).catch(() => { /* not critical */ });
+  }, []);
+
+  const handleMinimize = useCallback(async () => {
     await getCurrentWindow().minimize();
-  };
+  }, []);
 
-  const handleToggleMaximize = async () => {
+  const handleToggleMaximize = useCallback(async () => {
     await getCurrentWindow().toggleMaximize();
-  };
+  }, []);
 
-  const handleClose = async () => {
+  const handleClose = useCallback(async () => {
     await getCurrentWindow().close();
-  };
+  }, []);
+
+  const handleStartDragging = useCallback((event: MouseEvent<HTMLElement>) => {
+    if (event.button !== 0 || event.detail > 1) return;
+    getCurrentWindow().startDragging().catch(() => { /* not critical */ });
+  }, []);
+
+  const handleDragDoubleClick = useCallback(() => {
+    void handleToggleMaximize();
+  }, [handleToggleMaximize]);
 
   return (
-    <div className="titlebar" data-tauri-drag-region>
-      <span className="titlebar-icon" data-tauri-drag-region="false">M</span>
+    <div className="titlebar">
       <div className="titlebar-menu" data-tauri-drag-region="false">
         <MenuBar />
       </div>
+      <div
+        className="titlebar-drag-spacer"
+        data-tauri-drag-region
+        onMouseDown={handleStartDragging}
+        onDoubleClick={handleDragDoubleClick}
+      />
       <div className="titlebar-controls" data-tauri-drag-region="false">
         <button
           className="titlebar-btn titlebar-minimize"

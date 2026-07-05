@@ -18,6 +18,7 @@ interface MenuItem {
 
 interface MenuGroup {
   label: string;
+  variant?: 'app';
   items: MenuItem[];
 }
 
@@ -64,6 +65,8 @@ const md = new MarkdownIt({
     return '<pre class="hljs"><code>' + md.utils.escapeHtml(str) + '</code></pre>';
   },
 });
+
+const APP_NAME = 'MarkitDown';
 
 function HelpModal({ type, updateInfo, downloadProgress, downloadDone, onDownloadAndInstall, onClose }: HelpModalProps) {
   const content = {
@@ -139,21 +142,25 @@ graph TD
     about: {
       title: '关于 MarkitDown',
       body: `
-**MarkitDown v0.2.0**
+**MarkitDown v0.2.3**
 
 一款现代化的 Markdown 编辑器
 
 **功能特点**
-- 实时预览
-- 多标签页编辑
-- 支持数学公式
-- 支持 Mermaid 图表
-- 多种图床支持
-- 深色/浅色主题
-- AI智能助手
+- 实时预览 / 沉浸模式（类 Typora）
+- 多标签页编辑，可调节布局
+- 数学公式（KaTeX）、Mermaid 图表、代码高亮
+- 多主题：浅色 / 深色 / Solarized
+- 文件夹浏览、最近文档、拖拽打开
+- 多图床支持：Cloudinary、PicGo、S3、本地存储
+- AI 智能助手：对话面板、校对、重写、翻译、摘要、大纲
+- AI 思维链展示与思考模式（DeepSeek / 硅基流动）
+- 支持 OpenAI、DeepSeek、Anthropic、自定义 OpenAI 兼容服务
+- HTML / PDF / Word 导出
+- GitHub Release 自动检查更新
 
 **技术栈**
-Tauri 2.0 + React + TypeScript
+Tauri 2.0 + React 18 + TypeScript + CodeMirror 6 + markdown-it
 
 **开发者**
 [七月](https://github.com/zhcx)
@@ -348,8 +355,8 @@ export function MenuBar() {
       console.error('检查更新失败:', error);
       setUpdateInfo({
         has_update: false,
-        current_version: '0.1.2',
-        latest_version: '0.1.2',
+        current_version: '0.2.2',
+        latest_version: '0.2.2',
         download_url: 'https://github.com/zhcx/markitdown/releases',
         asset_download_url: '',
         asset_name: '',
@@ -508,6 +515,18 @@ export function MenuBar() {
 
   const menus: MenuGroup[] = [
     {
+      label: APP_NAME,
+      variant: 'app',
+      items: [
+        { label: '快捷键说明', action: () => setHelpModal('shortcuts') },
+        { label: 'Markdown 语法', action: () => setHelpModal('syntax') },
+        { divider: true, label: '' },
+        { label: '检查更新', action: handleCheckUpdates },
+        { divider: true, label: '' },
+        { label: '关于 MarkitDown', action: () => setHelpModal('about') },
+      ],
+    },
+    {
       label: '文件',
       items: [
         { label: '新建', action: handleNewFile, shortcut: 'Ctrl+N' },
@@ -558,17 +577,6 @@ export function MenuBar() {
         { label: '设置', action: () => setSettingsOpen(true) },
       ],
     },
-    {
-      label: '帮助',
-      items: [
-        { label: '快捷键说明', action: () => setHelpModal('shortcuts') },
-        { label: 'Markdown 语法', action: () => setHelpModal('syntax') },
-        { divider: true, label: '' },
-        { label: '检查更新', action: handleCheckUpdates },
-        { divider: true, label: '' },
-        { label: '关于 MarkitDown', action: () => setHelpModal('about') },
-      ],
-    },
   ];
 
   useEffect(() => {
@@ -601,59 +609,76 @@ export function MenuBar() {
           }, 150);
         }}
       >
-        {menus.map((menu) => (
-          <div key={menu.label} className="menu-item"
-            onMouseEnter={() => { if (menuOpen) setActiveMenu(menu.label); }}
-          >
-            <button
-              className={'menu-trigger' + (activeMenu === menu.label ? ' active' : '')}
-              onClick={() => {
-                if (activeMenu === menu.label && menuOpen) {
-                  setActiveMenu(null);
-                  setMenuOpen(false);
-                } else {
-                  setActiveMenu(menu.label);
-                  setMenuOpen(true);
-                }
-              }}
+        {menus.map((menu) => {
+          const isAppMenu = menu.variant === 'app';
+
+          return (
+            <div key={menu.label} className="menu-item"
+              onMouseEnter={() => { if (menuOpen) setActiveMenu(menu.label); }}
             >
-              {menu.label}
-            </button>
-            {menuOpen && activeMenu === menu.label && (
-              <div className="menu-dropdown">
-                {menu.items.filter(item => !shouldHideLegacyExportItem(item)).map((item, index) => (
-                  item.divider ? (
-                    <div key={index} className="menu-divider" />
-                  ) : item.children ? (
-                    <div key={index} className="menu-option-wrapper">
-                      <button className="menu-option submenu-trigger" type="button">
-                        <span>{item.label}</span>
-                        <span className="submenu-arrow">›</span>
-                      </button>
-                      <div className="submenu-dropdown">
-                        {item.children.map((child, childIndex) => (
-                          child.divider ? (
-                            <div key={childIndex} className="menu-divider" />
-                          ) : (
-                            <button key={childIndex} className="menu-option" onClick={child.action}>
-                              <span>{child.label}</span>
-                              {child.shortcut && <span className="shortcut">{child.shortcut}</span>}
-                            </button>
-                          )
-                        ))}
+              <button
+                className={
+                  'menu-trigger' +
+                  (activeMenu === menu.label ? ' active' : '') +
+                  (isAppMenu ? ' app-menu-trigger' : '')
+                }
+                onClick={() => {
+                  if (activeMenu === menu.label && menuOpen) {
+                    setActiveMenu(null);
+                    setMenuOpen(false);
+                  } else {
+                    setActiveMenu(menu.label);
+                    setMenuOpen(true);
+                  }
+                }}
+                aria-label={isAppMenu ? `${APP_NAME} 菜单` : undefined}
+                title={isAppMenu ? APP_NAME : undefined}
+              >
+                {isAppMenu ? (
+                  <>
+                    <span className="titlebar-icon" aria-hidden="true">M</span>
+                    <span className="titlebar-app-name">{APP_NAME}</span>
+                  </>
+                ) : (
+                  menu.label
+                )}
+              </button>
+              {menuOpen && activeMenu === menu.label && (
+                <div className="menu-dropdown">
+                  {menu.items.filter(item => !shouldHideLegacyExportItem(item)).map((item, index) => (
+                    item.divider ? (
+                      <div key={index} className="menu-divider" />
+                    ) : item.children ? (
+                      <div key={index} className="menu-option-wrapper">
+                        <button className="menu-option submenu-trigger" type="button">
+                          <span>{item.label}</span>
+                          <span className="submenu-arrow">›</span>
+                        </button>
+                        <div className="submenu-dropdown">
+                          {item.children.map((child, childIndex) => (
+                            child.divider ? (
+                              <div key={childIndex} className="menu-divider" />
+                            ) : (
+                              <button key={childIndex} className="menu-option" onClick={child.action}>
+                                <span>{child.label}</span>
+                                {child.shortcut && <span className="shortcut">{child.shortcut}</span>}
+                              </button>
+                            )
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                  ) : (
-                    <button key={index} className="menu-option" onClick={item.action}>
-                      <span>{item.label}</span>
-                      {item.shortcut && <span className="shortcut">{item.shortcut}</span>}
-                    </button>
-                  )
-                ))}
-              </div>
-            )}
-          </div>
-        ))}
+                    ) : (
+                      <button key={index} className="menu-option" onClick={item.action}>
+                        <span>{item.label}</span>
+                        {item.shortcut && <span className="shortcut">{item.shortcut}</span>}
+                      </button>
+                    )
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
       {helpModal && (
         <HelpModal

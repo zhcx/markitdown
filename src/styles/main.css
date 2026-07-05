@@ -194,6 +194,7 @@ select:focus-visible {
 .titlebar {
   display: flex;
   align-items: center;
+  gap: 8px;
   height: 34px;
   padding: 0 4px 0 12px;
   background: var(--menubar-bg);
@@ -218,12 +219,30 @@ select:focus-visible {
   flex-shrink: 0;
 }
 
+.titlebar-app-name {
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .titlebar-menu {
   display: flex;
   align-items: center;
-  flex: 1;
+  flex: 0 1 auto;
   min-width: 0;
   /* Hand off to the MenuBar's own styling */
+}
+
+.titlebar-drag-spacer {
+  align-self: stretch;
+  flex: 1 1 auto;
+  min-width: 48px;
+  cursor: default;
 }
 
 .titlebar-controls {
@@ -359,6 +378,20 @@ select:focus-visible {
   font-size: 12.5px;
   font-weight: 500;
   transition: background var(--transition), color var(--transition);
+}
+
+.app-menu-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  min-width: 128px;
+  padding: 0 10px 0 8px;
+}
+
+.app-menu-trigger:hover .titlebar-app-name,
+.app-menu-trigger.active .titlebar-app-name {
+  color: var(--text-color);
 }
 
 .menu-trigger:hover,
@@ -4233,8 +4266,8 @@ textarea {
 .editor-content .cm-scroller { padding-block: 28px 44px; }
 
 .editor-content .cm-content {
-  max-width: 780px;
-  padding-inline: clamp(24px, 4.5vw, 54px);
+  max-width: 1120px;
+  padding-inline: clamp(20px, 2.6vw, 36px);
   line-height: 1.8;
 }
 

@@ -26,3 +26,9 @@ src-tauri/target
 *.njsproj
 *.sln
 *.sw?
+
+# Misc
+.superpowers/
+.workbuddy/
+docs/superpowers/
+*.png.bak

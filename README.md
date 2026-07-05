@@ -131,7 +131,7 @@ npm run tauri build
 
 | 层级 | 技术 |
 |------|------|
-| 前端框架 | React 19 + TypeScript |
+| 前端框架 | React 18 + TypeScript |
 | 编辑器引擎 | CodeMirror 6 |
 | Markdown 渲染 | markdown-it + KaTeX + Mermaid |
 | 状态管理 | Zustand |
