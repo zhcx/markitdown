@@ -142,7 +142,7 @@ graph TD
     about: {
       title: '关于 MarkitDown',
       body: `
-**MarkitDown v0.2.3**
+**MarkitDown v0.2.4**
 
 一款现代化的 Markdown 编辑器
 
@@ -355,8 +355,8 @@ export function MenuBar() {
       console.error('检查更新失败:', error);
       setUpdateInfo({
         has_update: false,
-        current_version: '0.2.2',
-        latest_version: '0.2.2',
+        current_version: '0.2.4',
+        latest_version: '0.2.4',
         download_url: 'https://github.com/zhcx/markitdown/releases',
         asset_download_url: '',
         asset_name: '',

@@ -35,6 +35,7 @@ function App() {
     setSidebarWidth,
     openFile
   } = useAppStore();
+  const editorView = useAppStore(state => state.editorView);
   const { proofreadResults, setProofreadPanelVisible, translationPosition, translationOriginal, translationResult, setTranslationVisible, chatbotVisible } = useAIStore();
 
   const dividerRef = useRef<HTMLDivElement>(null);
@@ -47,6 +48,10 @@ function App() {
   const isDraggingChatbot = useRef(false);
   const [proofreadPanelWidth, setProofreadPanelWidth] = useState(280);
   const [chatbotPanelWidth, setChatbotPanelWidth] = useState(340);
+  const [previewScrollElement, setPreviewScrollElement] = useState<HTMLDivElement | null>(null);
+  const scrollSyncFrame = useRef<number | null>(null);
+  const scrollSyncResetTimer = useRef<number | null>(null);
+  const programmaticScrollRef = useRef<{ element: HTMLElement; top: number } | null>(null);
 
   useEffect(() => {
     loadSettings();
@@ -211,6 +216,74 @@ function App() {
     };
   }, [handleSplitMouseMove, handleSidebarMouseMove, handleProofreadMouseMove, handleChatbotMouseMove, handleMouseUp]);
 
+  const handlePreviewScrollContainerReady = useCallback((element: HTMLDivElement | null) => {
+    setPreviewScrollElement(element);
+  }, []);
+
+  useEffect(() => {
+    if (mode !== 'split' || !editorView || !previewScrollElement) return undefined;
+
+    const editorScrollElement = editorView.scrollDOM;
+
+    const getScrollRatio = (element: HTMLElement) => {
+      const maxScrollTop = element.scrollHeight - element.clientHeight;
+      return maxScrollTop > 0 ? element.scrollTop / maxScrollTop : 0;
+    };
+
+    const syncScroll = (source: HTMLElement, target: HTMLElement) => {
+      const ignored = programmaticScrollRef.current;
+      if (ignored?.element === source && Math.abs(source.scrollTop - ignored.top) < 2) {
+        return;
+      }
+
+      if (scrollSyncFrame.current !== null) {
+        window.cancelAnimationFrame(scrollSyncFrame.current);
+      }
+
+      scrollSyncFrame.current = window.requestAnimationFrame(() => {
+        const targetMaxScrollTop = target.scrollHeight - target.clientHeight;
+        const nextTop = targetMaxScrollTop > 0 ? getScrollRatio(source) * targetMaxScrollTop : 0;
+
+        if (Math.abs(target.scrollTop - nextTop) < 1) return;
+
+        programmaticScrollRef.current = { element: target, top: nextTop };
+        target.scrollTop = nextTop;
+
+        if (scrollSyncResetTimer.current !== null) {
+          window.clearTimeout(scrollSyncResetTimer.current);
+        }
+
+        scrollSyncResetTimer.current = window.setTimeout(() => {
+          programmaticScrollRef.current = null;
+          scrollSyncResetTimer.current = null;
+        }, 80);
+      });
+    };
+
+    const handleEditorScroll = () => syncScroll(editorScrollElement, previewScrollElement);
+    const handlePreviewScroll = () => syncScroll(previewScrollElement, editorScrollElement);
+
+    editorScrollElement.addEventListener('scroll', handleEditorScroll, { passive: true });
+    previewScrollElement.addEventListener('scroll', handlePreviewScroll, { passive: true });
+
+    return () => {
+      editorScrollElement.removeEventListener('scroll', handleEditorScroll);
+      previewScrollElement.removeEventListener('scroll', handlePreviewScroll);
+
+      if (scrollSyncFrame.current !== null) {
+        window.cancelAnimationFrame(scrollSyncFrame.current);
+        scrollSyncFrame.current = null;
+      }
+
+      if (scrollSyncResetTimer.current !== null) {
+        window.clearTimeout(scrollSyncResetTimer.current);
+        scrollSyncResetTimer.current = null;
+      }
+
+      programmaticScrollRef.current = null;
+    };
+  }, [mode, editorView, previewScrollElement]);
+
   return (
     <div className="app">
       <TitleBar />
@@ -241,7 +314,11 @@ function App() {
                 onMouseDown={handleSplitMouseDown}
               />
               <div className="preview-with-panel" style={{ flex: 1 - splitRatio }}>
-                <Preview className="preview-pane" style={{ flex: 1 }} />
+                <Preview
+                  className="preview-pane"
+                  style={{ flex: 1 }}
+                  onScrollContainerReady={handlePreviewScrollContainerReady}
+                />
                 {proofreadResults.length > 0 && (
                   <>
                     <div

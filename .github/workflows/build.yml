@@ -10,7 +10,7 @@ on:
       tag:
         description: 'Release tag to build and upload assets to'
         required: true
-        default: '0.2.3'
+        default: 'v0.2.4'
 
 permissions:
   contents: write
@@ -82,23 +82,22 @@ jobs:
           tagName: ${{ env.RELEASE_TAG }}
           releaseName: 'MarkitDown ${{ env.RELEASE_TAG }}'
           releaseBody: |
-            ## MarkitDown v0.2.3 更新日志
+            ## MarkitDown v0.2.4 更新日志
 
-            ### 🖼️ 图标全面更新
-            - 重新生成全平台应用图标（Windows/macOS/Linux/iOS/Android）
-            - SVG 源图标简化为圆角矩形背景 + M 字母，更清晰现代
-            - 图标生成脚本优化精简
+            ### 🧭 编辑与预览同步滚动
+            - 分屏模式下，滚动编辑框时预览框会同步到相应阅读位置
+            - 滚动预览框时，编辑框也会同步到对应编辑位置
+            - 增加程序化滚动来源标记，避免两侧滚动事件互相循环触发
 
-            ### 🎨 标题栏与菜单优化
-            - **应用品牌菜单**：新增 MarkitDown 应用名称菜单项，包含快捷键说明、Markdown 语法、检查更新、关于等入口
-            - **标题栏拖拽优化**：移除旧的全区域拖拽，改为专用拖拽间隔区域，避免与菜单交互冲突
-            - **双击最大化**：标题栏拖拽区域支持双击切换最大化/还原
-            - **窗口标题**：页面 title 统一为 "MarkitDown"（首字母大写）
-            - **性能优化**：窗口控制按钮使用 useCallback 缓存，减少不必要的重渲染
+            ### 📖 预览阅读体验优化
+            - 预览正文宽度与编辑框对齐，减少左右留白
+            - 预览内容最大宽度统一到编辑器正文宽度，分屏浏览更一致
+            - 修复长链接在预览中不自动换行、撑破版面的情况
 
-            ### 📝 文档修正
-            - README 技术栈中 React 版本修正为 18（原误写为 19）
-            - 关于对话框信息更新至最新版本
+            ### 📦 版本与更新页面
+            - 应用版本更新至 v0.2.4
+            - 关于页面版本号同步更新
+            - GitHub Release 更新说明同步展示本次功能变化和平台安装包列表
 
             ### 📦 安装包
 

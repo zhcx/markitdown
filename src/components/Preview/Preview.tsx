@@ -8,6 +8,7 @@ import { useAppStore } from '../../stores/appStore';
 interface PreviewProps {
   className?: string;
   style?: React.CSSProperties;
+  onScrollContainerReady?: (element: HTMLDivElement | null) => void;
 }
 
 const md = new MarkdownIt({
@@ -27,11 +28,17 @@ const md = new MarkdownIt({
   },
 });
 
-export function Preview({ className, style }: PreviewProps) {
+export function Preview({ className, style, onScrollContainerReady }: PreviewProps) {
   const containerRef = useRef<HTMLElement>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
   const [resolvedTheme, setResolvedTheme] = useState(() => document.documentElement.dataset.theme || 'light');
   const { content, settings } = useAppStore();
   const isEmpty = content.trim().length === 0;
+
+  useEffect(() => {
+    onScrollContainerReady?.(cardRef.current);
+    return () => onScrollContainerReady?.(null);
+  }, [onScrollContainerReady]);
 
   useEffect(() => {
     const handleThemeChange = (event: Event) => {
@@ -116,7 +123,7 @@ export function Preview({ className, style }: PreviewProps) {
       className={`preview-container ${className || ''}`}
       style={{ ...containerStyle, ...style }}
     >
-      <div className={`preview-card ${isEmpty ? 'is-empty' : ''}`}>
+      <div ref={cardRef} className={`preview-card ${isEmpty ? 'is-empty' : ''}`}>
         <article ref={containerRef} className="preview-document" />
         {isEmpty && (
           <div className="preview-empty-state">

@@ -4339,14 +4339,20 @@ textarea {
 }
 
 .preview-document {
-  width: min(100%, 790px);
+  width: 100%;
+  max-width: 1120px;
   min-height: 100%;
   margin: 0 auto;
-  padding: clamp(38px, 5vw, 70px) clamp(28px, 6vw, 78px) clamp(60px, 8vw, 104px);
+  padding: 28px clamp(20px, 2.6vw, 36px) 44px;
   border: 0;
   border-radius: 0;
   background: transparent;
   box-shadow: none;
+}
+
+.preview-pane .preview-document {
+  width: 100%;
+  max-width: 1120px;
 }
 
 .preview-card.is-empty {
@@ -5521,7 +5527,7 @@ textarea:focus-visible {
 
 /* Reading-width flow within the preview card */
 .preview-document {
-  max-width: 790px;
+  max-width: 1120px;
 }
 
 /* Softer, more readable heading hierarchy */
@@ -5608,6 +5614,8 @@ textarea:focus-visible {
 .preview-document a {
   color: var(--accent-color);
   text-decoration: none;
+  overflow-wrap: anywhere;
+  word-break: break-word;
   border-bottom: 1px solid color-mix(in srgb, var(--accent-color) 35%, transparent);
   transition: border-color var(--transition);
 }
