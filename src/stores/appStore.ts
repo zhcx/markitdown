@@ -119,7 +119,7 @@ interface AppState {
 
 const defaultSettings: Settings = {
   appearance: {
-    theme: 'light',
+    theme: 'notion-light',
     font_family: 'Microsoft YaHei',
     font_size: 16,
     line_height: 1.6,

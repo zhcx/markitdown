@@ -19,7 +19,6 @@ pub struct UpdateInfo {
     pub release_notes: String,
     pub published_at: String,
 }
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RecentFile {
     pub path: String,
@@ -499,3 +498,4 @@ pub async fn download_and_install_update(app: AppHandle, download_url: String, f
     // Exit the app so the installer can replace files
     std::process::exit(0);
 }
+

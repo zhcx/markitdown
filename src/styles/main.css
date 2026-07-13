@@ -4281,6 +4281,13 @@ textarea {
 
 .editor-content .cm-lineNumbers .cm-gutterElement { padding-inline: 8px 7px; }
 
+.editor-content .cm-lineNumbers { min-width: 42px; }
+.editor-content .cm-lineNumbers .cm-gutterElement {
+  color: var(--text-muted) !important;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
 .editor-content .cm-activeLine {
   border-radius: 4px;
   background: color-mix(in srgb, var(--accent-light) 45%, transparent) !important;
@@ -5765,3 +5772,283 @@ textarea:focus-visible {
   background: var(--surface-muted);
   color: var(--text-muted);
 }
+
+.table-picker-overlay { align-items: flex-start; padding-top: 22vh; }
+.table-picker {
+  width: 300px; padding: 16px; border: 1px solid var(--border-strong); border-radius: 12px;
+  background: var(--surface-raised); box-shadow: var(--shadow-lg);
+}
+.table-picker-header { display: flex; justify-content: space-between; margin-bottom: 12px; color: var(--text-color); }
+.table-picker-header span { color: var(--accent-color); font-variant-numeric: tabular-nums; }
+.table-picker-grid { display: grid; grid-template-columns: repeat(10, 1fr); gap: 3px; }
+.table-picker-grid button { aspect-ratio: 1; padding: 0; border: 1px solid var(--border-color); border-radius: 2px; background: var(--bg-secondary); cursor: pointer; }
+.table-picker-grid button.active { background: var(--accent-light); border-color: var(--accent-color); }
+.table-picker-hint { margin-top: 12px; color: var(--text-secondary); font-size: 12px; text-align: center; }
+.image-export-modal { width: 720px; }
+.export-modal-subtitle { margin: 4px 0 0; color: var(--text-secondary); font-size: 12px; }
+.image-export-body { display: grid; grid-template-columns: 1fr 1.25fr; gap: 18px; }
+.image-format-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; align-content: start; }
+.image-format-option { display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 10px; border: 1px solid var(--border-color); border-radius: 10px; background: var(--surface-subtle); color: var(--text-color); cursor: pointer; }
+.image-format-option:hover, .image-format-option.selected { border-color: var(--accent-color); background: var(--accent-light); }
+.image-format-preview { width: 62px; max-height: 62px; border: 1px solid var(--border-strong); border-radius: 4px; background: var(--bg-document); position: relative; overflow: hidden; }
+.preview-lines { position: absolute; inset: 20% 15%; background: repeating-linear-gradient(to bottom, var(--text-muted) 0 2px, transparent 2px 8px); opacity: .65; }
+.image-format-option strong { font-size: 13px; }.image-format-option small { color: var(--text-secondary); font-size: 10px; }
+.image-export-preview-wrap { min-width: 0; }.image-export-preview-label { display: block; margin-bottom: 8px; color: var(--text-secondary); font-size: 12px; }
+.image-export-preview { max-height: 330px; overflow: hidden; padding: 22px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-document); box-shadow: var(--shadow-xs); }
+.image-export-preview > div { font-size: 12px; line-height: 1.55; }.image-export-preview h1, .image-export-preview h2, .image-export-preview h3 { margin: 0 0 8px; line-height: 1.2; }.image-export-preview p { margin: 6px 0; }
+.image-export-preview pre { padding: 8px; overflow: hidden; border-radius: 5px; background: #202124; color: #f5f5f5; }.image-export-preview table { width: 100%; border-collapse: collapse; }.image-export-preview td, .image-export-preview th { border: 1px solid var(--border-color); padding: 3px; }
+.image-export-actions { border-top: 1px solid var(--border-color); margin: 0; padding: 14px 20px; }
+@media (max-width: 680px) { .image-export-body { grid-template-columns: 1fr; } .image-export-preview { max-height: 220px; } }
+
+/* Claude themes: warm paper, editorial typography, quiet controls. */
+:root {
+  --claude-paper: #fbfaf7;
+  --claude-paper-deep: #f2f0ea;
+  --claude-ink: #292724;
+  --claude-muted-ink: #68635d;
+  --claude-coral: #d97757;
+}
+
+[data-theme="light"] {
+  --bg-app: #f6f5f1;
+  --bg-shell: #efeee9;
+  --bg-panel: #f8f7f3;
+  --bg-document: var(--claude-paper);
+  --bg-elevated: #fffefa;
+  --text-color: var(--claude-ink);
+  --text-primary: var(--claude-ink);
+  --text-secondary: var(--claude-muted-ink);
+  --text-muted: #9a958d;
+  --border: #dedbd3;
+  --border-color: #dedbd3;
+  --border-soft: rgba(190, 185, 174, .45);
+  --border-strong: rgba(76, 70, 63, .24);
+  --accent-color: var(--claude-coral);
+  --accent: var(--claude-coral);
+  --accent-hover: #bf6045;
+  --accent-light: rgba(217, 119, 87, .12);
+  --toolbar-bg: rgba(251, 250, 247, .9);
+  --menubar-bg: rgba(251, 250, 247, .94);
+  --surface-raised: rgba(255, 254, 250, .96);
+  --surface-subtle: #f4f2ec;
+  --surface-muted: #ece9e1;
+  --code-bg: #f0eee8;
+  --code-text: #403b36;
+  --overlay-bg: rgba(41, 39, 36, .24);
+  --font-reading: Georgia, "Noto Serif SC", "Songti SC", serif;
+}
+
+[data-theme="dark"] {
+  --bg-app: #242523;
+  --bg-shell: #20211f;
+  --bg-panel: #2a2b29;
+  --bg-document: #272825;
+  --bg-elevated: #30312e;
+  --text-color: #f0ede6;
+  --text-primary: #f0ede6;
+  --text-secondary: #d0cbc2;
+  --text-muted: #97938b;
+  --border: #4a4b47;
+  --border-color: #4a4b47;
+  --border-soft: rgba(197, 191, 180, .22);
+  --border-strong: #5a5b56;
+  --accent-color: #ef9274;
+  --accent: #ef9274;
+  --accent-hover: #ffad8d;
+  --accent-light: rgba(239, 146, 116, .18);
+  --toolbar-bg: rgba(39, 40, 37, .92);
+  --menubar-bg: rgba(32, 33, 31, .96);
+  --surface-raised: rgba(48, 49, 46, .98);
+  --surface-subtle: #30312e;
+  --surface-muted: #3a3b37;
+  --code-bg: #2d2e2b;
+  --code-text: #e9e4da;
+  --overlay-bg: rgba(0, 0, 0, .52);
+  --font-reading: Georgia, "Noto Serif SC", "Songti SC", serif;
+}
+
+[data-theme="light"] .preview-container,
+[data-theme="dark"] .preview-container {
+  font-family: var(--font-reading) !important;
+  letter-spacing: 0;
+}
+
+[data-theme="light"] .preview-container p,
+[data-theme="light"] .preview-container li,
+[data-theme="dark"] .preview-container p,
+[data-theme="dark"] .preview-container li { color: var(--text-color); }
+
+.preview-container pre { background: var(--code-bg); color: var(--code-text); border-color: var(--border-color); box-shadow: none; }
+.preview-container pre code { color: var(--code-text); }
+[data-theme="dark"] .preview-container pre code { color: var(--code-text); }
+.preview-container blockquote { border-left: 3px solid var(--border-strong); background: transparent; }
+.preview-container table { box-shadow: none; border-radius: 0; }
+.preview-container th { background: transparent; }
+.preview-container td { background: transparent; }
+
+/* Notion themes: neutral workspace surfaces, compact sans-serif UI, and
+   restrained semantic colors inspired by Notion's editor. */
+[data-theme="light"] {
+  --bg-app: #f7f7f5;
+  --bg-shell: #f1f1ef;
+  --bg-panel: #fbfbfa;
+  --bg-document: #ffffff;
+  --bg-elevated: #ffffff;
+  --text-color: #37352f;
+  --text-primary: #37352f;
+  --text-secondary: #6b6b67;
+  --text-muted: #9b9b97;
+  --border: #e9e9e7;
+  --border-color: #e9e9e7;
+  --border-soft: rgba(55, 53, 47, .08);
+  --border-strong: rgba(55, 53, 47, .18);
+  --accent-color: #2383e2;
+  --accent: #2383e2;
+  --accent-hover: #0b6ecb;
+  --accent-light: rgba(35, 131, 226, .10);
+  --toolbar-bg: rgba(251, 251, 250, .96);
+  --menubar-bg: rgba(251, 251, 250, .98);
+  --surface-raised: #ffffff;
+  --surface-subtle: #f7f7f5;
+  --surface-muted: #efefed;
+  --code-bg: #f7f6f3;
+  --code-text: #37352f;
+  --font-reading: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+
+[data-theme="dark"] {
+  --bg-app: #191919;
+  --bg-shell: #161616;
+  --bg-panel: #202020;
+  --bg-document: #191919;
+  --bg-elevated: #252525;
+  --text-color: #e6e6e4;
+  --text-primary: #e6e6e4;
+  --text-secondary: #aaa9a4;
+  --text-muted: #777671;
+  --border: #333331;
+  --border-color: #333331;
+  --border-soft: rgba(255, 255, 255, .09);
+  --border-strong: rgba(255, 255, 255, .18);
+  --accent-color: #529cca;
+  --accent: #529cca;
+  --accent-hover: #73b4df;
+  --accent-light: rgba(82, 156, 202, .18);
+  --toolbar-bg: rgba(32, 32, 32, .98);
+  --menubar-bg: rgba(25, 25, 25, .98);
+  --surface-raised: #252525;
+  --surface-subtle: #222222;
+  --surface-muted: #30302f;
+  --code-bg: #252525;
+  --code-text: #dededb;
+  --font-reading: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+
+[data-theme="light"] .preview-container,
+[data-theme="dark"] .preview-container {
+  font-family: var(--font-reading) !important;
+  max-width: 880px;
+  letter-spacing: 0;
+}
+
+.preview-container h1,
+.preview-container h2,
+.preview-container h3,
+.preview-container h4,
+.preview-container h5,
+.preview-container h6 { font-weight: 700; }
+.preview-container h1,
+.preview-container h2 { border-bottom: 1px solid var(--border-color); }
+.preview-container blockquote { border-left: 3px solid var(--text-color); background: transparent; border-radius: 0; }
+.preview-container pre { background: var(--code-bg); color: var(--code-text); border: 0; border-radius: 4px; box-shadow: none; }
+.preview-container code { background: var(--surface-muted); border: 0; border-radius: 3px; color: var(--text-color); padding: 2px 4px; }
+.preview-container table { border: 1px solid var(--border-color); border-radius: 0; box-shadow: none; }
+.preview-container th, .preview-container td { border-color: var(--border-color); }
+.preview-container th { background: var(--surface-subtle); }
+.preview-container td { background: transparent; }
+.preview-container a { color: var(--accent-color); }
+.preview-container a:hover { color: var(--accent-hover); }
+
+/* Theme aliases are intentionally separate so users can switch among all
+   four named themes without one palette overwriting another. */
+[data-theme="claude-light"] {
+  --bg-app: #f5f2ec; --bg-shell: #edeadf; --bg-panel: #f9f6f0; --bg-document: #fffdf9; --bg-elevated: #fff;
+  --text-color: #37322c; --text-primary: #37322c; --text-secondary: #776f66; --text-muted: #a59d93;
+  --border: #e8e2d8; --border-color: #e8e2d8; --border-soft: rgba(232,226,216,.5); --border-strong: rgba(55,50,44,.14);
+  --accent-color: #c96b52; --accent: #c96b52; --accent-hover: #b55d46; --accent-light: rgba(201,107,82,.1);
+  --toolbar-bg: rgba(253,251,247,.88); --menubar-bg: rgba(253,251,247,.92); --surface-raised: rgba(255,255,255,.9);
+  --surface-subtle: #fdfbf7; --surface-muted: #f3efe7; --code-bg: #f5f2ec; --code-text: #4b4640;
+  --font-reading: "Iowan Old Style", "Noto Serif SC", "Source Han Serif SC", Georgia, serif;
+}
+[data-theme="claude-dark"] {
+  --bg-app: #181a19; --bg-shell: #141514; --bg-panel: #1e201f; --bg-document: #272927; --bg-elevated: #2e302e;
+  --text-color: #ede8de; --text-primary: #ede8de; --text-secondary: #b5afa5; --text-muted: #8e8880;
+  --border: #383a38; --border-color: #383a38; --border-soft: rgba(56,58,56,.6); --border-strong: #4a4c4a;
+  --accent-color: #dc846a; --accent: #dc846a; --accent-hover: #e8977e; --accent-light: rgba(220,132,106,.16);
+  --toolbar-bg: rgba(33,35,33,.86); --menubar-bg: rgba(24,26,25,.92); --surface-raised: rgba(46,48,46,.94);
+  --surface-subtle: #212321; --surface-muted: #2c2e2c; --code-bg: #1e201e; --code-text: #ddd8d0;
+  --font-reading: "Iowan Old Style", "Noto Serif SC", "Source Han Serif SC", Georgia, serif;
+}
+[data-theme="notion-light"] {
+  --bg-app: #f7f7f5; --bg-shell: #f1f1ef; --bg-panel: #fbfbfa; --bg-document: #fff; --bg-elevated: #fff;
+  --text-color: #37352f; --text-primary: #37352f; --text-secondary: #6b6b67; --text-muted: #9b9b97;
+  --border: #e9e9e7; --border-color: #e9e9e7; --border-soft: rgba(55,53,47,.08); --border-strong: rgba(55,53,47,.18);
+  --accent-color: #2383e2; --accent: #2383e2; --accent-hover: #0b6ecb; --accent-light: rgba(35,131,226,.1);
+  --toolbar-bg: rgba(251,251,250,.96); --menubar-bg: rgba(251,251,250,.98); --surface-raised: #fff;
+  --surface-subtle: #f7f7f5; --surface-muted: #efefed; --code-bg: #f7f6f3; --code-text: #37352f;
+  --font-reading: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+[data-theme="notion-dark"] {
+  --bg-app: #191919; --bg-shell: #161616; --bg-panel: #202020; --bg-document: #191919; --bg-elevated: #252525;
+  --text-color: #e6e6e4; --text-primary: #e6e6e4; --text-secondary: #aaa9a4; --text-muted: #777671;
+  --border: #333331; --border-color: #333331; --border-soft: rgba(255,255,255,.09); --border-strong: rgba(255,255,255,.18);
+  --accent-color: #529cca; --accent: #529cca; --accent-hover: #73b4df; --accent-light: rgba(82,156,202,.18);
+  --toolbar-bg: rgba(32,32,32,.98); --menubar-bg: rgba(25,25,25,.98); --surface-raised: #252525;
+  --surface-subtle: #222; --surface-muted: #30302f; --code-bg: #252525; --code-text: #dededb;
+  --font-reading: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+[data-theme="claude-light"] .preview-container,
+[data-theme="claude-dark"] .preview-container,
+[data-theme="notion-light"] .preview-container,
+[data-theme="notion-dark"] .preview-container { font-family: var(--font-reading) !important; }
+
+/* Split panes must divide the entire workspace. The inline ratio supplied by
+   App.tsx controls flex-grow; zeroing the basis prevents intrinsic content
+   widths from leaving an unused strip beside the preview. */
+.workspace-shell > .main-content {
+  width: 0;
+  flex-basis: 0;
+}
+.main-content.split > .editor-pane,
+.main-content.split > .preview-with-panel {
+  width: 0;
+  flex-basis: 0 !important;
+}
+.main-content.split > .preview-with-panel,
+.main-content.split > .preview-with-panel > .preview-pane {
+  min-width: 0;
+}
+
+/* Markdown tables should size to their cells instead of drawing a full-width
+   empty frame across the preview surface. Long tables still stay responsive. */
+.preview-container table {
+  display: inline-table;
+  width: auto;
+  max-width: 100%;
+  table-layout: auto;
+  vertical-align: top;
+}
+
+.table-picker-popover {
+  position: fixed;
+  z-index: 10020;
+}
+.table-picker-popover .table-picker {
+  width: 282px;
+  padding: 12px;
+  border-radius: 8px;
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-lg);
+}
+.table-picker-popover .table-picker-header { margin-bottom: 10px; }
+.table-picker-popover .table-picker-hint { margin-top: 10px; }

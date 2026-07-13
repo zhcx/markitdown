@@ -91,7 +91,7 @@ export function Preview({ className, style, onScrollContainerReady }: PreviewPro
         const mermaid = (await import('mermaid')).default;
         mermaid.initialize({
           startOnLoad: false,
-          theme: resolvedTheme === 'dark' ? 'dark' : 'neutral',
+          theme: resolvedTheme.endsWith('-dark') ? 'dark' : 'neutral',
         });
         const { svg } = await mermaid.render('mermaid-' + Date.now(), code);
         const pre = block.parentElement;

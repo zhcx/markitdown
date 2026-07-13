@@ -4,6 +4,7 @@ import { useAIStore } from '../../stores/aiStore';
 import { EditorSelection } from '@codemirror/state';
 import { open } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
+import { TablePicker } from '../Editor/TablePicker';
 
 function ImageOptionsModal({ onClose, onInsert }: { onClose: () => void; onInsert: (url: string, alt?: string) => void }) {
   const [mode, setMode] = useState<'link' | 'upload' | null>(null);
@@ -98,6 +99,8 @@ function ImageOptionsModal({ onClose, onInsert }: { onClose: () => void; onInser
 export function Toolbar() {
   const { mode, setMode, editorView, setContent, content, sidebarVisible, setSidebarVisible, outlineVisible, setOutlineVisible, settings } = useAppStore();
   const [showImageModal, setShowImageModal] = useState(false);
+  const [showTablePicker, setShowTablePicker] = useState(false);
+  const tablePickerButtonRef = useRef<HTMLButtonElement>(null);
   const toolbarWheelDeltaRef = useRef(0);
   const toolbarWheelFrameRef = useRef<number | null>(null);
   const {
@@ -286,6 +289,14 @@ export function Toolbar() {
     insertAtCursor(imageMarkdown);
   };
 
+  const insertTable = (rows: number, columns: number) => {
+    const header = `| ${Array.from({ length: columns }, (_, index) => `列${index + 1}`).join(' | ')} |`;
+    const divider = `| ${Array.from({ length: columns }, () => '---').join(' | ')} |`;
+    const body = Array.from({ length: Math.max(1, rows - 1) }, () => `| ${Array.from({ length: columns }, () => '内容').join(' | ')} |`).join('\n');
+    insertAtCursor(`\n${header}\n${divider}\n${body}\n`);
+    setShowTablePicker(false);
+  };
+
   const toolbarGroups = [
     {
       title: '格式',
@@ -341,6 +352,8 @@ export function Toolbar() {
       ],
     },
   ];
+
+  toolbarGroups[3].buttons.unshift({ label: '▦', title: '插入表格（拖动选择行列）', action: () => setShowTablePicker((visible) => !visible) });
 
   const styleNames: Record<string, string> = {
     formal: '正式',
@@ -427,6 +440,7 @@ export function Toolbar() {
                 {group.buttons.map((btn) => (
                   <button
                     key={btn.title}
+                    ref={btn.title.includes('插入表格') ? tablePickerButtonRef : undefined}
                     className="toolbar-btn"
                     title={btn.title}
                     onClick={btn.action}
@@ -468,6 +482,7 @@ export function Toolbar() {
           onInsert={insertImage}
         />
       )}
+      {showTablePicker && <TablePicker anchorRef={tablePickerButtonRef} onInsert={insertTable} />}
     </div>
   );
 }

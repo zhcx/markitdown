@@ -18,7 +18,7 @@
 
 ## 🌟 关于这个项目
 
-> **这是我第一个使用 Claude Code 通过「Vibe Coding」方式创建的项目。**
+> **这是我第一个使用 Claude Code 和 CodeX 通过「Vibe Coding」方式创建的项目。**
 >
 > 没有繁琐的需求文档，没有刻板的开发计划。我只是告诉 Claude：「我想做一个像 Typora 那样的 Markdown 编辑器」，然后我们开始了一场编码对话——我描述想法，Claude 实现代码，我调整方向，Claude 优化细节。
 >
@@ -44,7 +44,9 @@
 - **任务列表** - 待办事项管理
 
 ### 🎯 界面设计
-- **多主题支持** - 浅色主题（Typora 风格）、深色主题（GitHub Dark）、Solarized
+- **多主题支持** - Claude Light/Dark Theme 与 Notion Light/Dark Theme，可从“功能 → 主题”菜单切换
+- **编辑增强** - 编辑器行号、可拖动网格选择并插入 Markdown 表格
+- **图片导出** - 支持 1:1、4:3、16:9、9:16、A4 比例预览并导出 PNG
 - **现代化设计** - Notion 风格的简洁界面
 - **右键菜单** - 快捷操作，从列表移除文件
 
@@ -92,6 +94,29 @@
 ---
 
 ## 🚀 快速开始
+
+## v0.2.5 更新
+
+- 新增 Claude 与 Notion 两套明暗主题，可在“功能 → 主题”菜单中独立选择。
+- 修复分屏预览右侧空白和 Markdown 表格宽度异常问题。
+- 插入表格改为工具栏下方菜单式网格选择器，支持鼠标移动、拖动选择行列。
+- 新增 Markdown 内容按多种比例导出 PNG，并提供比例预览。
+- 编辑器显示行号；关于页面的项目链接在桌面端通过系统浏览器打开。
+
+### v0.2.5 平台安装包
+
+| 平台 | 架构 | 安装包 |
+| --- | --- | --- |
+| Windows | x86_64 | NSIS `.exe` / `.msi` |
+| macOS | Intel x86_64 | `.dmg` / `.app.tar.gz` |
+| macOS | Apple Silicon arm64 | `.dmg` / `.app.tar.gz` |
+| Linux | x86_64 | `.deb` / `.rpm` / `.AppImage` |
+
+完整安装包请前往 [GitHub Releases](https://github.com/zhcx/markitdown/releases)。
+
+## Contributors
+
+- CodeX
 
 ### 下载安装
 
@@ -184,7 +209,7 @@ markitdown/
 
 <div align="center">
 
-**用 ❤️ 和 Claude Code 构建**
+**用 ❤️ 和 Claude Code、CodeX 构建**
 
 *If you like this project, give it a ⭐!*
 

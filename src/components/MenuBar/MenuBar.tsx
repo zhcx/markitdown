@@ -7,6 +7,7 @@ import { open } from '@tauri-apps/plugin-shell';
 import MarkdownIt from 'markdown-it';
 import hljs from 'highlight.js';
 import { PdfExportDialog } from '../Export/PdfExportDialog';
+import { ImageExportDialog } from '../Export/ImageExportDialog';
 
 interface MenuItem {
   label: string;
@@ -142,7 +143,7 @@ graph TD
     about: {
       title: '关于 MarkitDown',
       body: `
-**MarkitDown v0.2.4**
+**MarkitDown v0.2.5**
 
 一款现代化的 Markdown 编辑器
 
@@ -176,6 +177,24 @@ https://github.com/zhcx/markitdown
   };
 
   const { title } = content[type];
+
+  useEffect(() => {
+    if (type !== 'about') return undefined;
+    const links = document.querySelectorAll<HTMLAnchorElement>('.help-content a');
+    const handleLinkClick = (event: Event) => {
+      const link = event.currentTarget as HTMLAnchorElement;
+      const url = link.href;
+      if (!url) return;
+      event.preventDefault();
+      if ('__TAURI_INTERNALS__' in window) {
+        void open(url).catch(() => window.open(url, '_blank', 'noopener,noreferrer'));
+      } else {
+        window.open(url, '_blank', 'noopener,noreferrer');
+      }
+    };
+    links.forEach((link) => link.addEventListener('click', handleLinkClick));
+    return () => links.forEach((link) => link.removeEventListener('click', handleLinkClick));
+  }, [type]);
 
   const formatDate = (dateStr: string) => {
     if (!dateStr) return '';
@@ -335,6 +354,7 @@ export function MenuBar() {
   const [helpModal, setHelpModal] = useState<'shortcuts' | 'syntax' | 'about' | 'update' | null>(null);
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
   const [pdfExportOpen, setPdfExportOpen] = useState(false);
+  const [imageExportOpen, setImageExportOpen] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState<DownloadProgress | null>(null);
   const [downloadDone, setDownloadDone] = useState(false);
   const menubarRef = useRef<HTMLDivElement>(null);
@@ -355,8 +375,8 @@ export function MenuBar() {
       console.error('检查更新失败:', error);
       setUpdateInfo({
         has_update: false,
-        current_version: '0.2.4',
-        latest_version: '0.2.4',
+        current_version: '0.2.5',
+        latest_version: '0.2.5',
         download_url: 'https://github.com/zhcx/markitdown/releases',
         asset_download_url: '',
         asset_name: '',
@@ -565,19 +585,40 @@ export function MenuBar() {
         { label: '分屏模式', action: () => useAppStore.getState().setMode('split') },
         { label: '沉浸模式', action: () => useAppStore.getState().setMode('immersive') },
         { divider: true, label: '' },
-        { label: '浅色主题', action: () => {
-          setSettings({ ...settings, appearance: { ...settings.appearance, theme: 'light' } });
-          setActiveMenu(null);
-        }},
-        { label: '深色主题', action: () => {
-          setSettings({ ...settings, appearance: { ...settings.appearance, theme: 'dark' } });
-          setActiveMenu(null);
-        }},
+        {
+          label: '主题',
+          children: [
+            { label: 'Claude Light Theme', action: () => {
+              setSettings({ ...settings, appearance: { ...settings.appearance, theme: 'claude-light' } });
+              setActiveMenu(null);
+              setMenuOpen(false);
+            }},
+            { label: 'Claude Dark Theme', action: () => {
+              setSettings({ ...settings, appearance: { ...settings.appearance, theme: 'claude-dark' } });
+              setActiveMenu(null);
+              setMenuOpen(false);
+            }},
+            { label: 'Notion Light Theme', action: () => {
+              setSettings({ ...settings, appearance: { ...settings.appearance, theme: 'notion-light' } });
+              setActiveMenu(null);
+              setMenuOpen(false);
+            }},
+            { label: 'Notion Dark Theme', action: () => {
+              setSettings({ ...settings, appearance: { ...settings.appearance, theme: 'notion-dark' } });
+              setActiveMenu(null);
+              setMenuOpen(false);
+            }},
+          ],
+        },
         { divider: true, label: '' },
         { label: '设置', action: () => setSettingsOpen(true) },
       ],
     },
   ];
+
+  const fileMenu = menus[1];
+  const exportMenu = fileMenu.items.find((item) => item.children)?.children;
+  exportMenu?.push({ label: '导出为图片...', action: () => { setImageExportOpen(true); setActiveMenu(null); setMenuOpen(false); } });
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -697,6 +738,7 @@ export function MenuBar() {
           onClose={() => setPdfExportOpen(false)}
         />
       )}
+      {imageExportOpen && <ImageExportDialog content={content} onClose={() => setImageExportOpen(false)} />}
     </>
   );
 }

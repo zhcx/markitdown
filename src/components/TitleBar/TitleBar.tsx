@@ -7,8 +7,10 @@ const APP_NAME = 'MarkitDown';
 export function TitleBar() {
   const [isMaximized, setIsMaximized] = useState(false);
   const mountedRef = useRef(true);
+  const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 
   useEffect(() => {
+    if (!isTauri) return undefined;
     mountedRef.current = true;
 
     // One-shot initial read — fire-and-forget, no effect nesting
@@ -26,7 +28,7 @@ export function TitleBar() {
     };
     // Run once on mount only
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [isTauri]);
 
   const handleResize = useCallback(async () => {
     try {
@@ -38,30 +40,37 @@ export function TitleBar() {
   }, []);
 
   useEffect(() => {
+    if (!isTauri) return undefined;
     const unlistenPromise = getCurrentWindow().onResized(handleResize);
     return () => { unlistenPromise.then(fn => fn()); };
-  }, [handleResize]);
+  }, [handleResize, isTauri]);
 
   useEffect(() => {
+    if (!isTauri) return undefined;
     getCurrentWindow().setTitle(APP_NAME).catch(() => { /* not critical */ });
-  }, []);
+    return undefined;
+  }, [isTauri]);
 
   const handleMinimize = useCallback(async () => {
+    if (!isTauri) return;
     await getCurrentWindow().minimize();
-  }, []);
+  }, [isTauri]);
 
   const handleToggleMaximize = useCallback(async () => {
+    if (!isTauri) return;
     await getCurrentWindow().toggleMaximize();
-  }, []);
+  }, [isTauri]);
 
   const handleClose = useCallback(async () => {
+    if (!isTauri) return;
     await getCurrentWindow().close();
-  }, []);
+  }, [isTauri]);
 
   const handleStartDragging = useCallback((event: MouseEvent<HTMLElement>) => {
+    if (!isTauri) return;
     if (event.button !== 0 || event.detail > 1) return;
     getCurrentWindow().startDragging().catch(() => { /* not critical */ });
-  }, []);
+  }, [isTauri]);
 
   const handleDragDoubleClick = useCallback(() => {
     void handleToggleMaximize();

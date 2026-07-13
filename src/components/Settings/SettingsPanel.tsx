@@ -82,8 +82,10 @@ export function SettingsPanel() {
                     })
                   }
                 >
-                  <option value="light">浅色（暖白）</option>
-                  <option value="dark">深色（暖黑）</option>
+                  <option value="claude-light">Claude Light Theme</option>
+                  <option value="claude-dark">Claude Dark Theme</option>
+                  <option value="notion-light">Notion Light Theme</option>
+                  <option value="notion-dark">Notion Dark Theme</option>
                   <option value="system">跟随系统</option>
                 </select>
               </div>

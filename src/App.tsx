@@ -63,17 +63,17 @@ function App() {
 
     const applyTheme = () => {
       let resolvedTheme = preference === 'system'
-        ? (mediaQuery.matches ? 'dark' : 'light')
+        ? (mediaQuery.matches ? 'notion-dark' : 'notion-light')
         : preference;
 
       // Keep older saved themes working, but never leave the UI without a
       // complete token set when a malformed value makes it into settings.
-      if (!['light', 'dark'].includes(resolvedTheme)) {
-        resolvedTheme = 'light';
+      if (!['claude-light', 'claude-dark', 'notion-light', 'notion-dark'].includes(resolvedTheme)) {
+        resolvedTheme = 'notion-light';
       }
 
       document.documentElement.setAttribute('data-theme', resolvedTheme);
-      document.documentElement.style.colorScheme = resolvedTheme === 'dark' ? 'dark' : 'light';
+      document.documentElement.style.colorScheme = resolvedTheme.endsWith('-dark') ? 'dark' : 'light';
       window.dispatchEvent(new CustomEvent('markitdown-theme-change', { detail: resolvedTheme }));
     };
 

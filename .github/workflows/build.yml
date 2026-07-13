@@ -10,7 +10,7 @@ on:
       tag:
         description: 'Release tag to build and upload assets to'
         required: true
-        default: 'v0.2.4'
+        default: 'v0.2.5'
 
 permissions:
   contents: write
@@ -82,7 +82,23 @@ jobs:
           tagName: ${{ env.RELEASE_TAG }}
           releaseName: 'MarkitDown ${{ env.RELEASE_TAG }}'
           releaseBody: |
-            ## MarkitDown v0.2.4 更新日志
+            ## MarkitDown v0.2.5 更新日志
+
+            ### ✨ 本次更新
+            - 新增 Claude Light/Dark Theme 与 Notion Light/Dark Theme，可从“功能 → 主题”菜单选择
+            - 编辑器新增行号
+            - 插入表格改为工具栏下方的菜单式网格选择器，支持鼠标移动和拖动选择
+            - 新增 1:1、4:3、16:9、9:16、A4 图片导出比例预览和 PNG 导出
+            - 修复分屏预览右侧空白、表格边框宽度异常问题
+            - 关于页面链接改为调用系统浏览器打开
+
+            ### 📦 平台安装包对应表
+            | 平台 | 架构 | 安装包 |
+            | --- | --- | --- |
+            | Windows | x86_64 | `.msi` / `.exe` (NSIS) |
+            | macOS | x86_64 Intel | `.dmg` / `.app.tar.gz` |
+            | macOS | arm64 Apple Silicon | `.dmg` / `.app.tar.gz` |
+            | Linux | x86_64 | `.deb` / `.rpm` / `.AppImage` |
 
             ### 🧭 编辑与预览同步滚动
             - 分屏模式下，滚动编辑框时预览框会同步到相应阅读位置
@@ -95,7 +111,7 @@ jobs:
             - 修复长链接在预览中不自动换行、撑破版面的情况
 
             ### 📦 版本与更新页面
-            - 应用版本更新至 v0.2.4
+            - 应用版本更新至 v0.2.5
             - 关于页面版本号同步更新
             - GitHub Release 更新说明同步展示本次功能变化和平台安装包列表
 
