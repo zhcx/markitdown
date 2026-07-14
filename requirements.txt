@@ -1,0 +1,2 @@
+# Runtime dependency for the source/dev document conversion fallback.
+markitdown[pdf,docx,pptx,xlsx]>=0.1.0

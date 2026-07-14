@@ -1,7 +1,8 @@
 import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import { useAppStore } from './appStore';
+import { useAppStore, type AIProviderId, type AIProviderProfile } from './appStore';
+import { useSkillStore } from './skillStore';
 
 export interface ProofreadResult {
   from: number;
@@ -187,7 +188,7 @@ interface AIState {
   setProofreadPanelVisible: (visible: boolean) => void;
   setChatbotVisible: (visible: boolean) => void;
   toggleChatbot: () => void;
-  sendChatMessage: (content: string, attachments?: ChatMessageAttachment[]) => Promise<void>;
+  sendChatMessage: (content: string, attachments?: ChatMessageAttachment[], selection?: { provider: AIProviderId; model: string }) => Promise<void>;
   clearChatHistory: () => void;
   setReasoningEffort: (effort: ReasoningEffort) => void;
   toggleLinkDocument: () => void;
@@ -599,8 +600,38 @@ export const useAIStore = create<AIState>((set, get) => ({
     set((state) => ({ chatbotVisible: !state.chatbotVisible }));
   },
 
-  sendChatMessage: async (content, attachments) => {
-    const settings = useAppStore.getState().settings;
+  sendChatMessage: async (content, attachments, selection) => {
+    const appSettings = useAppStore.getState().settings;
+    let settings = appSettings;
+    if (selection) {
+      let profiles: Record<string, AIProviderProfile> = {};
+      try {
+        profiles = JSON.parse(appSettings.ai.provider_profiles || '{}');
+      } catch {
+        // Keep the empty profile map when loading legacy or malformed settings.
+      }
+      const profile = profiles[selection.provider] || (selection.provider === appSettings.ai.provider
+        ? {
+            api_key: appSettings.ai.api_key,
+            api_endpoint: appSettings.ai.api_endpoint,
+            model: appSettings.ai.model,
+          }
+        : undefined);
+      if (!profile) {
+        set({ status: 'error', statusMessage: '请先在设置中配置该 AI 服务商' });
+        return;
+      }
+      settings = {
+        ...appSettings,
+        ai: {
+          ...appSettings.ai,
+          provider: selection.provider,
+          api_key: profile.api_key,
+          api_endpoint: profile.api_endpoint,
+          model: selection.model || profile.model,
+        },
+      };
+    }
 
     if (!settings.ai.enabled) {
       set({ status: 'error', statusMessage: 'AI功能未启用' });
@@ -609,6 +640,11 @@ export const useAIStore = create<AIState>((set, get) => ({
 
     if (!settings.ai.api_key) {
       set({ status: 'error', statusMessage: '请先配置API密钥' });
+      return;
+    }
+
+    if (!('__TAURI_INTERNALS__' in window)) {
+      set({ status: 'error', statusMessage: '浏览器预览仅支持网络搜索结果展示，AI 对话请使用桌面应用' });
       return;
     }
 
@@ -670,12 +706,19 @@ export const useAIStore = create<AIState>((set, get) => ({
       }));
 
       const linkedDoc = get().linkedDocument;
+      const enabledSkills = useSkillStore.getState().skills.filter((skill) => skill.enabled);
       const requestArgs: Record<string, unknown> = {
         content: messageContent,
         context: JSON.stringify(history),
         settings: settings.ai,
         enableThinking: supportsThinking && effort !== 'off',
       };
+
+      if (enabledSkills.length > 0) {
+        requestArgs.skill_context = enabledSkills
+          .map((skill) => `### ${skill.name}\n${skill.content}`)
+          .join('\n\n');
+      }
 
       if (linkedDoc) {
         requestArgs.doc_context = linkedDoc.content;

@@ -11,7 +11,6 @@ import { Sidebar } from './components/Sidebar/Sidebar';
 import { AICompanionPopup } from './components/AI/AICompanionPopup';
 import { AITranslationPopup } from './components/AI/AITranslationPopup';
 import { AIChatbotPanel } from './components/Chatbot/AIChatbotPanel';
-import { OutlinePanel } from './components/Outline/OutlinePanel';
 import { TitleBar } from './components/TitleBar/TitleBar';
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 import './styles/main.css';
@@ -33,7 +32,8 @@ function App() {
     splitRatio,
     setSplitRatio,
     setSidebarWidth,
-    openFile
+    openFile,
+    convertDocument
   } = useAppStore();
   const editorView = useAppStore(state => state.editorView);
   const { proofreadResults, setProofreadPanelVisible, translationPosition, translationOriginal, translationResult, setTranslationVisible, chatbotVisible } = useAIStore();
@@ -46,12 +46,56 @@ function App() {
   const isDraggingSidebar = useRef(false);
   const isDraggingProofread = useRef(false);
   const isDraggingChatbot = useRef(false);
+  const dragFrame = useRef<number | null>(null);
+  const pendingDrag = useRef<{ type: 'split' | 'sidebar' | 'proofread' | 'chatbot'; clientX: number } | null>(null);
+  const dragBounds = useRef<DOMRect | null>(null);
   const [proofreadPanelWidth, setProofreadPanelWidth] = useState(280);
   const [chatbotPanelWidth, setChatbotPanelWidth] = useState(340);
   const [previewScrollElement, setPreviewScrollElement] = useState<HTMLDivElement | null>(null);
   const scrollSyncFrame = useRef<number | null>(null);
-  const scrollSyncResetTimer = useRef<number | null>(null);
+  const pendingScrollSync = useRef<{ source: HTMLElement; target: HTMLElement } | null>(null);
   const programmaticScrollRef = useRef<{ element: HTMLElement; top: number } | null>(null);
+  const dragValues = useRef({ splitRatio, sidebarWidth, proofreadPanelWidth, chatbotPanelWidth });
+
+  const scheduleDragFrame = useCallback((type: 'split' | 'sidebar' | 'proofread' | 'chatbot', clientX: number) => {
+    pendingDrag.current = { type, clientX };
+    if (dragFrame.current !== null) return;
+
+    dragFrame.current = window.requestAnimationFrame(() => {
+      dragFrame.current = null;
+      const drag = pendingDrag.current;
+      const bounds = dragBounds.current;
+      if (!drag || !bounds) return;
+
+      if (drag.type === 'split') {
+        const sidebarOffset = sidebarVisible ? sidebarWidth : 0;
+        const ratio = Math.max(0.1, Math.min(0.9,
+          (drag.clientX - bounds.left - sidebarOffset) / (bounds.width - sidebarOffset),
+        ));
+        const divider = dividerRef.current;
+        const editor = divider?.previousElementSibling as HTMLElement | null;
+        const preview = divider?.nextElementSibling as HTMLElement | null;
+        if (editor) editor.style.flex = String(ratio);
+        if (preview) preview.style.flex = String(1 - ratio);
+        dragValues.current.splitRatio = ratio;
+      } else if (drag.type === 'sidebar') {
+        const width = Math.max(150, Math.min(400, drag.clientX - bounds.left));
+        const sidebar = sidebarDividerRef.current?.previousElementSibling as HTMLElement | null;
+        if (sidebar) sidebar.style.width = `${width}px`;
+        dragValues.current.sidebarWidth = width;
+      } else if (drag.type === 'proofread') {
+        const width = Math.max(200, Math.min(500, bounds.right - drag.clientX));
+        const panel = proofreadDividerRef.current?.nextElementSibling as HTMLElement | null;
+        if (panel) panel.style.width = `${width}px`;
+        dragValues.current.proofreadPanelWidth = width;
+      } else {
+        const width = Math.max(200, Math.min(500, bounds.right - drag.clientX));
+        const panel = chatbotDividerRef.current?.nextElementSibling as HTMLElement | null;
+        if (panel) panel.style.width = `${width}px`;
+        dragValues.current.chatbotPanelWidth = width;
+      }
+    });
+  }, [sidebarVisible, sidebarWidth]);
 
   useEffect(() => {
     loadSettings();
@@ -63,13 +107,13 @@ function App() {
 
     const applyTheme = () => {
       let resolvedTheme = preference === 'system'
-        ? (mediaQuery.matches ? 'notion-dark' : 'notion-light')
+        ? (mediaQuery.matches ? 'inkwell-dark' : 'inkwell-light')
         : preference;
 
       // Keep older saved themes working, but never leave the UI without a
       // complete token set when a malformed value makes it into settings.
-      if (!['claude-light', 'claude-dark', 'notion-light', 'notion-dark'].includes(resolvedTheme)) {
-        resolvedTheme = 'notion-light';
+      if (!['inkwell-light', 'inkwell-dark', 'claude-light', 'claude-dark', 'notion-light', 'notion-dark'].includes(resolvedTheme)) {
+        resolvedTheme = 'inkwell-light';
       }
 
       document.documentElement.setAttribute('data-theme', resolvedTheme);
@@ -98,108 +142,135 @@ function App() {
         const lowerPath = path.toLowerCase();
         if (lowerPath.endsWith('.md') || lowerPath.endsWith('.txt') || lowerPath.endsWith('.markdown')) {
           await openFile(path);
+        } else {
+          try {
+            await convertDocument(path);
+          } catch (error) {
+            console.error('Document conversion failed:', error);
+            window.alert(`文档转换失败：${String(error)}`);
+          }
         }
       }
     });
 
     return () => { unlisten.then(fn => fn()); };
-  }, [openFile]);
+  }, [convertDocument, openFile]);
 
   const handleSplitMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     isDragging.current = true;
     document.body.style.cursor = 'col-resize';
     document.body.style.userSelect = 'none';
+    dragBounds.current = dividerRef.current?.parentElement?.getBoundingClientRect() || null;
+    document.documentElement.classList.add('panel-resizing');
   }, []);
 
   const handleSplitMouseMove = useCallback((e: MouseEvent) => {
     if (!isDragging.current) return;
 
-    const mainContent = dividerRef.current?.parentElement;
-    if (!mainContent) return;
-
-    const rect = mainContent.getBoundingClientRect();
-    const sidebarOffset = sidebarVisible ? sidebarWidth : 0;
-    const newRatio = (e.clientX - rect.left - sidebarOffset) / (rect.width - sidebarOffset);
-    setSplitRatio(newRatio);
-  }, [setSplitRatio, sidebarVisible, sidebarWidth]);
+    scheduleDragFrame('split', e.clientX);
+  }, [scheduleDragFrame]);
 
   const handleSidebarMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     isDraggingSidebar.current = true;
     document.body.style.cursor = 'col-resize';
     document.body.style.userSelect = 'none';
+    dragBounds.current = sidebarDividerRef.current?.parentElement?.getBoundingClientRect() || null;
+    document.documentElement.classList.add('panel-resizing');
   }, []);
 
   const handleSidebarMouseMove = useCallback((e: MouseEvent) => {
     if (!isDraggingSidebar.current) return;
 
-    const appBody = sidebarDividerRef.current?.parentElement;
-    if (!appBody) return;
-
-    const rect = appBody.getBoundingClientRect();
-    const newWidth = e.clientX - rect.left;
-    setSidebarWidth(newWidth);
-  }, [setSidebarWidth]);
+    scheduleDragFrame('sidebar', e.clientX);
+  }, [scheduleDragFrame]);
 
   const handleProofreadMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     isDraggingProofread.current = true;
     document.body.style.cursor = 'col-resize';
     document.body.style.userSelect = 'none';
+    dragBounds.current = proofreadDividerRef.current?.parentElement?.getBoundingClientRect() || null;
+    document.documentElement.classList.add('panel-resizing');
   }, []);
 
   const handleProofreadMouseMove = useCallback((e: MouseEvent) => {
     if (!isDraggingProofread.current) return;
 
-    const container = proofreadDividerRef.current?.parentElement;
-    if (!container) return;
-
-    const rect = container.getBoundingClientRect();
-    const newWidth = rect.right - e.clientX;
-    setProofreadPanelWidth(Math.max(200, Math.min(500, newWidth)));
-  }, []);
+    scheduleDragFrame('proofread', e.clientX);
+  }, [scheduleDragFrame]);
 
   const handleChatbotMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     isDraggingChatbot.current = true;
     document.body.style.cursor = 'col-resize';
     document.body.style.userSelect = 'none';
+    dragBounds.current = chatbotDividerRef.current?.parentElement?.getBoundingClientRect() || null;
+    document.documentElement.classList.add('panel-resizing');
   }, []);
 
   const handleChatbotMouseMove = useCallback((e: MouseEvent) => {
     if (!isDraggingChatbot.current) return;
 
-    const container = chatbotDividerRef.current?.parentElement;
-    if (!container) return;
+    scheduleDragFrame('chatbot', e.clientX);
+  }, [scheduleDragFrame]);
 
-    const rect = container.getBoundingClientRect();
-    const newWidth = rect.right - e.clientX;
-    setChatbotPanelWidth(Math.max(200, Math.min(500, newWidth)));
-  }, []);
+  useEffect(() => {
+    if (!chatbotVisible) return undefined;
+
+    const balanceThreeColumns = () => {
+      const appBody = chatbotDividerRef.current?.parentElement;
+      if (!appBody) return;
+
+      const explorerWidth = (sidebarVisible || outlineVisible) ? sidebarWidth + 10 : 0;
+      const dividerWidth = 12;
+      const usableWidth = appBody.clientWidth - explorerWidth - dividerWidth;
+      const balancedChatWidth = Math.round(usableWidth / 3);
+
+      setChatbotPanelWidth(Math.max(280, Math.min(500, balancedChatWidth)));
+      setSplitRatio(0.5);
+    };
+
+    const frame = window.requestAnimationFrame(balanceThreeColumns);
+    window.addEventListener('resize', balanceThreeColumns);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener('resize', balanceThreeColumns);
+    };
+  }, [chatbotVisible, outlineVisible, setSplitRatio, sidebarVisible, sidebarWidth]);
 
   const handleMouseUp = useCallback(() => {
+    const wasDraggingChatbot = isDraggingChatbot.current;
     if (isDragging.current) {
       isDragging.current = false;
+      setSplitRatio(dragValues.current.splitRatio);
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
     }
     if (isDraggingSidebar.current) {
       isDraggingSidebar.current = false;
+      setSidebarWidth(dragValues.current.sidebarWidth);
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
     }
     if (isDraggingProofread.current) {
       isDraggingProofread.current = false;
+      setProofreadPanelWidth(dragValues.current.proofreadPanelWidth);
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
     }
     if (isDraggingChatbot.current) {
       isDraggingChatbot.current = false;
+      setChatbotPanelWidth(dragValues.current.chatbotPanelWidth);
+      if (wasDraggingChatbot) setSplitRatio(0.5);
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
     }
-  }, []);
+    pendingDrag.current = null;
+    dragBounds.current = null;
+    document.documentElement.classList.remove('panel-resizing');
+  }, [setChatbotPanelWidth, setProofreadPanelWidth, setSidebarWidth, setSplitRatio]);
 
   useEffect(() => {
     document.addEventListener('mousemove', handleSplitMouseMove);
@@ -236,27 +307,25 @@ function App() {
         return;
       }
 
-      if (scrollSyncFrame.current !== null) {
-        window.cancelAnimationFrame(scrollSyncFrame.current);
-      }
+      pendingScrollSync.current = { source, target };
+      if (scrollSyncFrame.current !== null) return;
 
       scrollSyncFrame.current = window.requestAnimationFrame(() => {
-        const targetMaxScrollTop = target.scrollHeight - target.clientHeight;
-        const nextTop = targetMaxScrollTop > 0 ? getScrollRatio(source) * targetMaxScrollTop : 0;
+        scrollSyncFrame.current = null;
+        const request = pendingScrollSync.current;
+        pendingScrollSync.current = null;
+        if (!request) return;
 
-        if (Math.abs(target.scrollTop - nextTop) < 1) return;
+        const { source: latestSource, target: latestTarget } = request;
+        const targetMaxScrollTop = latestTarget.scrollHeight - latestTarget.clientHeight;
+        const nextTop = targetMaxScrollTop > 0 ? getScrollRatio(latestSource) * targetMaxScrollTop : 0;
 
-        programmaticScrollRef.current = { element: target, top: nextTop };
-        target.scrollTop = nextTop;
+        // A tiny threshold avoids expensive layout work from sub-pixel scroll events
+        // while preserving the feel of one-to-one scrolling for long documents.
+        if (Math.abs(latestTarget.scrollTop - nextTop) < 2) return;
 
-        if (scrollSyncResetTimer.current !== null) {
-          window.clearTimeout(scrollSyncResetTimer.current);
-        }
-
-        scrollSyncResetTimer.current = window.setTimeout(() => {
-          programmaticScrollRef.current = null;
-          scrollSyncResetTimer.current = null;
-        }, 80);
+        programmaticScrollRef.current = { element: latestTarget, top: nextTop };
+        latestTarget.scrollTop = nextTop;
       });
     };
 
@@ -275,11 +344,7 @@ function App() {
         scrollSyncFrame.current = null;
       }
 
-      if (scrollSyncResetTimer.current !== null) {
-        window.clearTimeout(scrollSyncResetTimer.current);
-        scrollSyncResetTimer.current = null;
-      }
-
+      pendingScrollSync.current = null;
       programmaticScrollRef.current = null;
     };
   }, [mode, editorView, previewScrollElement]);
@@ -294,8 +359,7 @@ function App() {
       <div className="app-body">
         {(sidebarVisible || outlineVisible) && (
           <>
-            {outlineVisible && <OutlinePanel style={{ width: sidebarWidth }} />}
-            {!outlineVisible && sidebarVisible && <Sidebar style={{ width: sidebarWidth }} />}
+            <Sidebar style={{ width: sidebarWidth }} />
             <div
               ref={sidebarDividerRef}
               className="sidebar-divider resizable"

@@ -44,6 +44,7 @@ interface DownloadProgress {
 interface HelpModalProps {
   type: 'shortcuts' | 'syntax' | 'about' | 'update';
   updateInfo?: UpdateInfo | null;
+  updateError?: string | null;
   downloadProgress?: DownloadProgress | null;
   downloadDone?: boolean;
   onDownloadAndInstall?: () => void;
@@ -69,7 +70,7 @@ const md = new MarkdownIt({
 
 const APP_NAME = 'MarkitDown';
 
-function HelpModal({ type, updateInfo, downloadProgress, downloadDone, onDownloadAndInstall, onClose }: HelpModalProps) {
+function HelpModal({ type, updateInfo, updateError, downloadProgress, downloadDone, onDownloadAndInstall, onClose }: HelpModalProps) {
   const content = {
     shortcuts: {
       title: '快捷键说明',
@@ -239,7 +240,16 @@ https://github.com/zhcx/markitdown
         </div>
         <div className="modal-body">
           {type === 'update' ? (
-            updateInfo ? (
+            updateError ? (
+              <div className="update-modal-content">
+                <div className="update-badge current">检查更新失败</div>
+                <p className="update-installer-summary">{updateError}</p>
+                <div className="update-actions">
+                  <button className="update-cancel-btn" onClick={() => open('https://github.com/zhcx/markitdown/releases')}>前往 GitHub Release</button>
+                  <button className="update-cancel-btn" onClick={onClose}>关闭</button>
+                </div>
+              </div>
+            ) : updateInfo ? (
               <div className="update-modal-content">
                 {updateInfo.has_update ? (
                   <>
@@ -345,6 +355,7 @@ export function MenuBar() {
     setSettings,
     setSettingsOpen,
     addTab,
+    convertDocument,
     saveFile,
     getActiveTab
   } = useAppStore();
@@ -353,6 +364,7 @@ export function MenuBar() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [helpModal, setHelpModal] = useState<'shortcuts' | 'syntax' | 'about' | 'update' | null>(null);
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
+  const [updateError, setUpdateError] = useState<string | null>(null);
   const [pdfExportOpen, setPdfExportOpen] = useState(false);
   const [imageExportOpen, setImageExportOpen] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState<DownloadProgress | null>(null);
@@ -368,22 +380,13 @@ export function MenuBar() {
   const handleCheckUpdates = async () => {
     setHelpModal('update');
     setUpdateInfo(null);
+    setUpdateError(null);
     try {
       const info = await invoke<UpdateInfo>('check_for_updates');
       setUpdateInfo(info);
     } catch (error) {
       console.error('检查更新失败:', error);
-      setUpdateInfo({
-        has_update: false,
-        current_version: '0.2.5',
-        latest_version: '0.2.5',
-        download_url: 'https://github.com/zhcx/markitdown/releases',
-        asset_download_url: '',
-        asset_name: '',
-        asset_size: 0,
-        release_notes: '检查更新失败，请稍后重试',
-        published_at: ''
-      });
+      setUpdateError(`无法检查更新：${String(error)}`);
     }
   };
 
@@ -431,6 +434,28 @@ export function MenuBar() {
       console.error('Failed to open file:', error);
     }
     setActiveMenu(null);
+  };
+
+  const handleConvertDocument = async () => {
+    try {
+      const selected = await openDialog({
+        filters: [{
+          name: 'Documents',
+          extensions: ['pdf', 'docx', 'doc', 'pptx', 'ppt', 'xlsx', 'xls', 'html', 'htm', 'csv', 'json', 'xml', 'epub', 'zip', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'wav', 'mp3'],
+        }],
+        multiple: true,
+      });
+      if (selected) {
+        for (const file of Array.isArray(selected) ? selected : [selected]) {
+          await convertDocument(file as string);
+        }
+      }
+    } catch (error) {
+      console.error('Document conversion failed:', error);
+      window.alert(`文档转换失败：${String(error)}`);
+    }
+    setActiveMenu(null);
+    setMenuOpen(false);
   };
 
   const handleSaveFile = async () => {
@@ -551,6 +576,7 @@ export function MenuBar() {
       items: [
         { label: '新建', action: handleNewFile, shortcut: 'Ctrl+N' },
         { label: '打开', action: handleOpenFile, shortcut: 'Ctrl+O' },
+        { label: '导入并转换文档…', action: handleConvertDocument },
         { label: '保存', action: handleSaveFile, shortcut: 'Ctrl+S' },
         { label: '另存为', action: handleSaveAs, shortcut: 'Ctrl+Shift+S' },
         { divider: true, label: '' },
@@ -588,6 +614,16 @@ export function MenuBar() {
         {
           label: '主题',
           children: [
+            { label: 'Inkwell Light Theme', action: () => {
+              setSettings({ ...settings, appearance: { ...settings.appearance, theme: 'inkwell-light' } });
+              setActiveMenu(null);
+              setMenuOpen(false);
+            }},
+            { label: 'Inkwell Dark Theme', action: () => {
+              setSettings({ ...settings, appearance: { ...settings.appearance, theme: 'inkwell-dark' } });
+              setActiveMenu(null);
+              setMenuOpen(false);
+            }},
             { label: 'Claude Light Theme', action: () => {
               setSettings({ ...settings, appearance: { ...settings.appearance, theme: 'claude-light' } });
               setActiveMenu(null);
@@ -725,6 +761,7 @@ export function MenuBar() {
         <HelpModal
           type={helpModal}
           updateInfo={helpModal === 'update' ? updateInfo : undefined}
+          updateError={helpModal === 'update' ? updateError : undefined}
           downloadProgress={helpModal === 'update' ? downloadProgress : null}
           downloadDone={helpModal === 'update' ? downloadDone : false}
           onDownloadAndInstall={helpModal === 'update' ? handleDownloadAndInstall : undefined}

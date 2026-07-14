@@ -1,11 +1,40 @@
 import { useState } from 'react';
-import { useAppStore } from '../../stores/appStore';
+import { AI_PROVIDER_DEFINITIONS, useAppStore, type AIProviderId, type AIProviderProfile, type SettingsTab } from '../../stores/appStore';
 import { invoke } from '@tauri-apps/api/core';
 
+const isTauriRuntime = () => '__TAURI_INTERNALS__' in window;
+
+const fetchModelsFromApi = async (apiKey: string, apiEndpoint: string): Promise<string[]> => {
+  if (isTauriRuntime()) {
+    return invoke<string[]>('fetch_ai_models', { apiKey, apiEndpoint });
+  }
+
+  const response = await fetch(`${apiEndpoint.replace(/\/+$/, '')}/models`, {
+    headers: { Authorization: `Bearer ${apiKey}` },
+  });
+  if (!response.ok) {
+    throw new Error(`获取模型失败（${response.status}）：${await response.text()}`);
+  }
+
+  const payload: unknown = await response.json();
+  const data = typeof payload === 'object' && payload !== null && 'data' in payload
+    ? (payload as { data?: unknown }).data
+    : undefined;
+  if (!Array.isArray(data)) throw new Error('模型服务返回了无法识别的数据格式。');
+
+  return data.flatMap(model => {
+    if (typeof model === 'string') return [model];
+    if (typeof model === 'object' && model !== null && 'id' in model && typeof model.id === 'string') {
+      return [model.id];
+    }
+    return [];
+  });
+};
+
 export function SettingsPanel() {
-  const { settings, saveSettings, setSettingsOpen } = useAppStore();
+  const { settings, settingsTab, saveSettings, setSettingsOpen } = useAppStore();
   const [localSettings, setLocalSettings] = useState(settings);
-  const [activeTab, setActiveTab] = useState<'appearance' | 'editor' | 'image' | 'export' | 'ai'>('appearance');
+  const [activeTab, setActiveTab] = useState<SettingsTab>(settingsTab);
   const [apiKeyVisible, setApiKeyVisible] = useState(false);
   const [models, setModels] = useState<string[]>([]);
   const [fetchingModels, setFetchingModels] = useState(false);
@@ -20,12 +49,30 @@ export function SettingsPanel() {
     }
   };
 
+  const parseProviderProfiles = (): Record<string, AIProviderProfile> => {
+    try {
+      return JSON.parse(localSettings.ai.provider_profiles || '{}');
+    } catch {
+      return {};
+    }
+  };
+
   const handleSave = async () => {
     // 保存前确保当前 API KEY 已记录到映射中
     const keys = { ...parseProviderKeys(), [localSettings.ai.provider]: localSettings.ai.api_key };
+    const profiles = {
+      ...parseProviderProfiles(),
+      [localSettings.ai.provider]: {
+        ...(parseProviderProfiles()[localSettings.ai.provider] || {}),
+        api_key: localSettings.ai.api_key,
+        api_endpoint: localSettings.ai.api_endpoint,
+        model: localSettings.ai.model,
+        models: models.length > 0 ? models : parseProviderProfiles()[localSettings.ai.provider]?.models,
+      },
+    };
     const saveData = {
       ...localSettings,
-      ai: { ...localSettings.ai, provider_api_keys: JSON.stringify(keys) },
+      ai: { ...localSettings.ai, provider_api_keys: JSON.stringify(keys), provider_profiles: JSON.stringify(profiles) },
     };
     await saveSettings(saveData);
     setSettingsOpen(false);
@@ -82,6 +129,8 @@ export function SettingsPanel() {
                     })
                   }
                 >
+                  <option value="inkwell-light">Inkwell Light Theme</option>
+                  <option value="inkwell-dark">Inkwell Dark Theme</option>
                   <option value="claude-light">Claude Light Theme</option>
                   <option value="claude-dark">Claude Dark Theme</option>
                   <option value="notion-light">Notion Light Theme</option>
@@ -531,6 +580,103 @@ export function SettingsPanel() {
                   启用AI助手
                 </label>
               </div>
+              <div className="setting-item">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={localSettings.web_search.enabled}
+                    onChange={(e) => setLocalSettings({
+                      ...localSettings,
+                      web_search: { ...localSettings.web_search, enabled: e.target.checked },
+                    })}
+                  />
+                  启用网络搜索
+                </label>
+              </div>
+              {localSettings.web_search.enabled && (
+                <div className="settings-subsection web-search-settings">
+                  <div className="setting-item">
+                    <label>搜索服务</label>
+                    <select
+                      value={localSettings.web_search.provider}
+                      onChange={(e) => setLocalSettings({
+                        ...localSettings,
+                        web_search: { ...localSettings.web_search, provider: e.target.value as 'tavily' | 'searxng' },
+                      })}
+                    >
+                      <option value="tavily">Tavily</option>
+                      <option value="searxng">SearXNG</option>
+                    </select>
+                  </div>
+                  {localSettings.web_search.provider === 'tavily' ? (
+                    <>
+                      <div className="setting-item">
+                        <label>Tavily API Key</label>
+                        <input
+                          type="password"
+                          value={localSettings.web_search.tavily_api_key}
+                          onChange={(e) => setLocalSettings({ ...localSettings, web_search: { ...localSettings.web_search, tavily_api_key: e.target.value } })}
+                          placeholder="tvly-..."
+                        />
+                      </div>
+                      <div className="setting-item">
+                        <label>搜索深度</label>
+                        <select
+                          value={localSettings.web_search.tavily_search_depth}
+                          onChange={(e) => setLocalSettings({ ...localSettings, web_search: { ...localSettings.web_search, tavily_search_depth: e.target.value as 'basic' | 'advanced' | 'fast' | 'ultra-fast' } })}
+                        >
+                          <option value="basic">Basic</option>
+                          <option value="fast">Fast</option>
+                          <option value="advanced">Advanced</option>
+                          <option value="ultra-fast">Ultra fast</option>
+                        </select>
+                      </div>
+                      <div className="setting-item">
+                        <label>最大结果数</label>
+                        <input type="number" min="1" max="20" value={localSettings.web_search.tavily_max_results} onChange={(e) => setLocalSettings({ ...localSettings, web_search: { ...localSettings.web_search, tavily_max_results: Number(e.target.value) } })} />
+                      </div>
+                      <div className="setting-item">
+                        <label><input type="checkbox" checked={localSettings.web_search.tavily_include_answer} onChange={(e) => setLocalSettings({ ...localSettings, web_search: { ...localSettings.web_search, tavily_include_answer: e.target.checked } })} /> 请求摘要答案</label>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="setting-item">
+                        <label>SearXNG API 地址</label>
+                        <input type="url" value={localSettings.web_search.searxng_url} onChange={(e) => setLocalSettings({ ...localSettings, web_search: { ...localSettings.web_search, searxng_url: e.target.value } })} placeholder="http://localhost:8080" />
+                      </div>
+                      <div className="setting-item">
+                        <label>SearXNG API Key（可选）</label>
+                        <input type="password" value={localSettings.web_search.searxng_api_key} onChange={(e) => setLocalSettings({ ...localSettings, web_search: { ...localSettings.web_search, searxng_api_key: e.target.value } })} />
+                      </div>
+                      <div className="setting-item">
+                        <label>语言</label>
+                        <input type="text" value={localSettings.web_search.searxng_language} onChange={(e) => setLocalSettings({ ...localSettings, web_search: { ...localSettings.web_search, searxng_language: e.target.value } })} placeholder="auto / zh-CN / en" />
+                      </div>
+                      <div className="setting-item">
+                        <label>分类</label>
+                        <input type="text" value={localSettings.web_search.searxng_categories} onChange={(e) => setLocalSettings({ ...localSettings, web_search: { ...localSettings.web_search, searxng_categories: e.target.value } })} placeholder="general" />
+                      </div>
+                      <div className="setting-item">
+                        <label>安全搜索</label>
+                        <select value={localSettings.web_search.searxng_safesearch} onChange={(e) => setLocalSettings({ ...localSettings, web_search: { ...localSettings.web_search, searxng_safesearch: Number(e.target.value) } })}>
+                          <option value={0}>关闭</option><option value={1}>中等</option><option value={2}>严格</option>
+                        </select>
+                      </div>
+                      <div className="setting-item">
+                        <label>时间范围</label>
+                        <select value={localSettings.web_search.searxng_time_range} onChange={(e) => setLocalSettings({ ...localSettings, web_search: { ...localSettings.web_search, searxng_time_range: e.target.value } })}>
+                          <option value="">不限</option><option value="day">一天</option><option value="month">一个月</option><option value="year">一年</option>
+                        </select>
+                      </div>
+                      <div className="setting-item">
+                        <label>最大结果数</label>
+                        <input type="number" min="1" max="20" value={localSettings.web_search.searxng_max_results} onChange={(e) => setLocalSettings({ ...localSettings, web_search: { ...localSettings.web_search, searxng_max_results: Number(e.target.value) } })} />
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
               {localSettings.ai.enabled && (
                 <>
                   <div className="setting-item">
@@ -544,34 +690,40 @@ export function SettingsPanel() {
                         // 先保存当前服务商的 API KEY
                         const keys = { ...parseProviderKeys(), [oldProvider]: localSettings.ai.api_key };
 
-                        const defaults: Record<string, { endpoint: string; model: string }> = {
-                          openai: { endpoint: 'https://api.openai.com/v1', model: 'gpt-4o-mini' },
-                          anthropic: { endpoint: 'https://api.anthropic.com/v1', model: 'claude-sonnet-4-20250514' },
-                          deepseek: { endpoint: 'https://api.deepseek.com/v1', model: 'deepseek-chat' },
-                          siliconflow: { endpoint: 'https://api.siliconflow.cn/v1', model: 'Qwen/Qwen3-35B-A3B' },
-                          custom: { endpoint: localSettings.ai.api_endpoint || 'https://api.openai.com/v1', model: localSettings.ai.model },
+                        const definition = AI_PROVIDER_DEFINITIONS.find((item) => item.id === newProvider) || AI_PROVIDER_DEFINITIONS[AI_PROVIDER_DEFINITIONS.length - 1];
+                        const profiles = parseProviderProfiles();
+                        profiles[oldProvider] = {
+                          api_key: localSettings.ai.api_key,
+                          api_endpoint: localSettings.ai.api_endpoint,
+                          model: localSettings.ai.model,
+                          models: profiles[oldProvider]?.models,
                         };
-                        const def = defaults[newProvider] || defaults.custom;
+                        const nextProfile = profiles[newProvider] || {
+                          api_key: keys[newProvider] || '',
+                          api_endpoint: definition.endpoint,
+                          model: definition.model,
+                        };
+                        profiles[newProvider] = nextProfile;
                         // 取出该服务商之前保存的 KEY（如有）
-                        const savedKey = keys[newProvider] || '';
                         setLocalSettings({
                           ...localSettings,
                           ai: {
                             ...localSettings.ai,
-                            provider: newProvider as 'openai' | 'anthropic' | 'deepseek' | 'siliconflow' | 'custom',
-                            api_key: savedKey,
-                            api_endpoint: def.endpoint,
-                            model: def.model,
+                            provider: newProvider as AIProviderId,
+                            api_key: nextProfile.api_key,
+                            api_endpoint: nextProfile.api_endpoint,
+                            model: nextProfile.model,
                             provider_api_keys: JSON.stringify(keys),
+                            provider_profiles: JSON.stringify(profiles),
                           },
                         });
                         setModels([]);
                         setFetchError('');
                       }}
                     >
-                      <option value="openai">OpenAI</option>
-                      <option value="anthropic">Anthropic (Claude)</option>
-                      <option value="deepseek">DeepSeek</option>
+                      {AI_PROVIDER_DEFINITIONS.map((provider) => (
+                        <option key={provider.id} value={provider.id}>{provider.label}</option>
+                      ))}
                       <option value="siliconflow">硅基流动 (SiliconFlow)</option>
                       <option value="custom">自定义</option>
                     </select>
@@ -653,10 +805,10 @@ export function SettingsPanel() {
                           setFetchingModels(true);
                           setFetchError('');
                           try {
-                            const result = await invoke<string[]>('fetch_ai_models', {
-                              apiKey: localSettings.ai.api_key,
-                              apiEndpoint: localSettings.ai.api_endpoint,
-                            });
+                            const result = await fetchModelsFromApi(
+                              localSettings.ai.api_key,
+                              localSettings.ai.api_endpoint,
+                            );
                             setModels(result);
                             if (result.length > 0) {
                               setLocalSettings({

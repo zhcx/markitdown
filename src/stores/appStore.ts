@@ -2,6 +2,9 @@ import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
 import type { EditorView } from '@codemirror/view';
 
+const isTauriRuntime = () => typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+const browserSettingsKey = 'markitdown.browser.settings';
+
 export interface Settings {
   appearance: {
     theme: string;
@@ -46,9 +49,10 @@ export interface Settings {
     pdf_margin: number;
     html_template: string;
   };
+  web_search: WebSearchSettings;
   ai: {
     enabled: boolean;
-    provider: 'openai' | 'anthropic' | 'deepseek' | 'siliconflow' | 'custom';
+    provider: AIProviderId;
     api_key: string;
     api_endpoint: string;
     model: string;
@@ -58,8 +62,67 @@ export interface Settings {
     writing_style: 'formal' | 'casual' | 'academic' | 'creative' | 'custom';
     custom_style_prompt: string;
     provider_api_keys: string;
+    provider_profiles: string;
   };
 }
+
+export interface WebSearchSettings {
+  enabled: boolean;
+  provider: 'tavily' | 'searxng';
+  tavily_api_key: string;
+  tavily_search_depth: 'basic' | 'advanced' | 'fast' | 'ultra-fast';
+  tavily_include_answer: boolean;
+  tavily_max_results: number;
+  searxng_url: string;
+  searxng_api_key: string;
+  searxng_language: string;
+  searxng_categories: string;
+  searxng_safesearch: number;
+  searxng_time_range: string;
+  searxng_max_results: number;
+}
+
+export type AIProviderId =
+  | 'openai'
+  | 'anthropic'
+  | 'deepseek'
+  | 'siliconflow'
+  | 'mimo'
+  | 'volcengine'
+  | 'longcat'
+  | 'zhipu'
+  | 'minimax'
+  | 'kimi'
+  | 'custom';
+
+export interface AIProviderDefinition {
+  id: AIProviderId;
+  label: string;
+  endpoint: string;
+  model: string;
+  supportsThinking?: boolean;
+}
+
+export interface AIProviderProfile {
+  api_key: string;
+  api_endpoint: string;
+  model: string;
+  models?: string[];
+}
+
+export const AI_PROVIDER_DEFINITIONS: AIProviderDefinition[] = [
+  { id: 'openai', label: 'OpenAI', endpoint: 'https://api.openai.com/v1', model: 'gpt-4o-mini' },
+  { id: 'anthropic', label: 'Anthropic (Claude)', endpoint: 'https://api.anthropic.com/v1', model: 'claude-sonnet-4-20250514' },
+  { id: 'deepseek', label: 'DeepSeek', endpoint: 'https://api.deepseek.com/v1', model: 'deepseek-chat', supportsThinking: true },
+  { id: 'siliconflow', label: '硅基流动 (SiliconFlow)', endpoint: 'https://api.siliconflow.cn/v1', model: 'Qwen/Qwen3-35B-A3B', supportsThinking: true },
+  { id: 'mimo', label: '小米 MiMo', endpoint: 'https://api.xiaomimimo.com/v1', model: 'mimo-v2.5-pro', supportsThinking: true },
+  { id: 'volcengine', label: '火山引擎 / 豆包', endpoint: 'https://ark.cn-beijing.volces.com/api/v3', model: 'ep-请输入接入点ID' },
+  { id: 'longcat', label: '美团 LongCat', endpoint: 'https://api.longcat.chat/openai/v1', model: 'LongCat-2.0', supportsThinking: true },
+  { id: 'zhipu', label: '智谱 AI', endpoint: 'https://open.bigmodel.cn/api/paas/v4', model: 'glm-4.7', supportsThinking: true },
+  { id: 'minimax', label: 'MiniMax', endpoint: 'https://api.minimaxi.com/v1', model: 'MiniMax-M2.7', supportsThinking: true },
+  { id: 'kimi', label: 'Kimi / Moonshot', endpoint: 'https://api.moonshot.cn/v1', model: 'kimi-k2.5', supportsThinking: true },
+  { id: 'custom', label: '自定义 OpenAI 兼容', endpoint: 'https://api.openai.com/v1', model: 'gpt-4o-mini' },
+];
 
 export interface Tab {
   id: string;
@@ -69,7 +132,16 @@ export interface Tab {
   modified: boolean;
 }
 
+export interface TimelineEntry {
+  id: string;
+  content: string;
+  timestamp: number;
+  label: string;
+}
+
 export type UploadStatus = 'idle' | 'uploading' | 'success' | 'error';
+export type ConversionStatus = 'idle' | 'converting' | 'success' | 'error';
+export type SettingsTab = 'appearance' | 'editor' | 'image' | 'export' | 'ai';
 
 interface AppState {
   content: string;
@@ -81,15 +153,19 @@ interface AppState {
   sidebarWidth: number;
   outlineVisible: boolean;
   settingsOpen: boolean;
+  settingsTab: SettingsTab;
   isSaving: boolean;
   wordCount: string;
   activeImageService: 'cloudinary' | 'picgo' | 's3' | 'local';
   editorView: EditorView | null;
   tabs: Tab[];
   activeTabId: string | null;
+  timeline: Record<string, TimelineEntry[]>;
   uploadStatus: UploadStatus;
   uploadProgress: number;
   uploadMessage: string;
+  conversionStatus: ConversionStatus;
+  conversionMessage: string;
 
   setContent: (content: string) => void;
   setMode: (mode: 'split' | 'immersive') => void;
@@ -100,11 +176,13 @@ interface AppState {
   setSidebarWidth: (width: number) => void;
   setOutlineVisible: (visible: boolean) => void;
   setSettingsOpen: (open: boolean) => void;
+  setSettingsTab: (tab: SettingsTab) => void;
   setActiveImageService: (service: 'cloudinary' | 'picgo' | 's3' | 'local') => void;
   setEditorView: (view: EditorView | null) => void;
   loadSettings: () => Promise<void>;
   saveSettings: (settings: Settings) => Promise<void>;
   openFile: (path: string) => Promise<void>;
+  convertDocument: (path: string) => Promise<void>;
   saveFile: (path: string) => Promise<void>;
   updateWordCount: () => void;
 
@@ -113,13 +191,15 @@ interface AppState {
   setActiveTab: (id: string) => void;
   updateTabContent: (id: string, content: string) => void;
   updateTabTitle: (id: string, path: string) => void;
+  restoreTimelineEntry: (tabId: string, entryId: string) => void;
   getActiveTab: () => Tab | undefined;
   setUploadStatus: (status: UploadStatus, progress?: number, message?: string) => void;
+  setConversionStatus: (status: ConversionStatus, message?: string) => void;
 }
 
 const defaultSettings: Settings = {
   appearance: {
-    theme: 'notion-light',
+    theme: 'inkwell-light',
     font_family: 'Microsoft YaHei',
     font_size: 16,
     line_height: 1.6,
@@ -160,6 +240,21 @@ const defaultSettings: Settings = {
     pdf_margin: 20,
     html_template: 'default',
   },
+  web_search: {
+    enabled: false,
+    provider: 'tavily',
+    tavily_api_key: '',
+    tavily_search_depth: 'basic',
+    tavily_include_answer: true,
+    tavily_max_results: 5,
+    searxng_url: 'http://localhost:8080',
+    searxng_api_key: '',
+    searxng_language: 'auto',
+    searxng_categories: 'general',
+    searxng_safesearch: 1,
+    searxng_time_range: '',
+    searxng_max_results: 5,
+  },
   ai: {
     enabled: false,
     provider: 'openai',
@@ -172,10 +267,14 @@ const defaultSettings: Settings = {
     writing_style: 'formal',
     custom_style_prompt: '',
     provider_api_keys: '{}',
+    provider_profiles: '{}',
   },
 };
 
 const generateId = () => Math.random().toString(36).substring(2, 9);
+const TIMELINE_LIMIT = 40;
+const TIMELINE_SNAPSHOT_INTERVAL = 1500;
+const lastTimelineCaptureAt = new Map<string, number>();
 
 const initialTab: Tab = {
   id: generateId(),
@@ -195,21 +294,48 @@ export const useAppStore = create<AppState>((set, get) => ({
   sidebarWidth: 220,
   outlineVisible: false,
   settingsOpen: false,
+  settingsTab: 'appearance',
   isSaving: false,
   wordCount: '0 字, 0 字符',
   activeImageService: 'local',
   editorView: null,
   tabs: [initialTab],
   activeTabId: initialTab.id,
+  timeline: {},
   uploadStatus: 'idle',
   uploadProgress: 0,
   uploadMessage: '',
+  conversionStatus: 'idle',
+  conversionMessage: '',
 
   setContent: (content) => {
-    const { activeTabId, tabs } = get();
+    const { activeTabId, tabs, timeline } = get();
+    const activeTab = tabs.find(tab => tab.id === activeTabId);
     if (activeTabId) {
+      const now = Date.now();
+      const shouldCapture = Boolean(
+        activeTab
+        && activeTab.content !== content
+        && now - (lastTimelineCaptureAt.get(activeTabId) ?? 0) >= TIMELINE_SNAPSHOT_INTERVAL,
+      );
+      const nextTimeline = shouldCapture && activeTab
+        ? {
+          ...timeline,
+          [activeTabId]: [
+            {
+              id: generateId(),
+              content: activeTab.content,
+              timestamp: now,
+              label: '编辑快照',
+            },
+            ...(timeline[activeTabId] || []),
+          ].slice(0, TIMELINE_LIMIT),
+        }
+        : timeline;
+      if (shouldCapture) lastTimelineCaptureAt.set(activeTabId, now);
       set({
         content,
+        timeline: nextTimeline,
         tabs: tabs.map(tab =>
           tab.id === activeTabId
             ? { ...tab, content, modified: true }
@@ -235,12 +361,22 @@ export const useAppStore = create<AppState>((set, get) => ({
   setOutlineVisible: (visible) => set({ outlineVisible: visible }),
 
   setSettingsOpen: (open) => set({ settingsOpen: open }),
+  setSettingsTab: (tab) => set({ settingsTab: tab }),
 
   setActiveImageService: (service) => set({ activeImageService: service }),
 
   setEditorView: (view) => set({ editorView: view }),
 
   loadSettings: async () => {
+    if (!isTauriRuntime()) {
+      try {
+        const saved = JSON.parse(localStorage.getItem(browserSettingsKey) || 'null') as Settings | null;
+        if (saved) set({ settings: saved });
+      } catch (error) {
+        console.warn('Failed to load browser settings:', error);
+      }
+      return;
+    }
     try {
       const settings = await invoke<Settings>('get_settings');
       set({ settings });
@@ -251,11 +387,19 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   saveSettings: async (settings) => {
+    if (!isTauriRuntime()) {
+      localStorage.setItem(browserSettingsKey, JSON.stringify(settings));
+      set({ settings });
+      return;
+    }
     try {
       await invoke('save_settings', { settings });
       set({ settings });
     } catch (error) {
       console.error('Failed to save settings:', error);
+      // Browser preview has no Tauri IPC. Keep the selected settings in memory
+      // so themes and layout can be tested without building the desktop app.
+      set({ settings });
     }
   },
 
@@ -304,6 +448,35 @@ export const useAppStore = create<AppState>((set, get) => ({
       get().updateWordCount();
     } catch (error) {
       console.error('Failed to open file:', error);
+    }
+  },
+
+  convertDocument: async (path) => {
+    const sourceName = path.split(/[\\/]/).pop() || path;
+    get().setConversionStatus('converting', `正在转换：${sourceName}`);
+    try {
+      const markdown = await invoke<string>('convert_document', { path });
+      const title = sourceName.replace(/\.[^.]+$/, '') + '.md';
+      const newTab: Tab = {
+        id: generateId(),
+        title,
+        path: null,
+        content: markdown,
+        // Converted content has not been saved as a Markdown file yet.
+        modified: true,
+      };
+      const { tabs } = get();
+      set({
+        tabs: [...tabs, newTab],
+        activeTabId: newTab.id,
+        content: markdown,
+        currentFile: null,
+      });
+      get().updateWordCount();
+      get().setConversionStatus('success', `导入成功：${title}`);
+    } catch (error) {
+      get().setConversionStatus('error', `导入失败：${String(error)}`);
+      throw error;
     }
   },
 
@@ -426,6 +599,41 @@ export const useAppStore = create<AppState>((set, get) => ({
       setTimeout(() => {
         set({ uploadStatus: 'idle', uploadProgress: 0, uploadMessage: '' });
       }, 3000);
+    }
+  },
+
+  restoreTimelineEntry: (tabId, entryId) => {
+    const { tabs, timeline, activeTabId } = get();
+    const entry = timeline[tabId]?.find(item => item.id === entryId);
+    const tab = tabs.find(item => item.id === tabId);
+    if (!entry || !tab) return;
+
+    const rollbackEntry: TimelineEntry = {
+      id: generateId(),
+      content: tab.content,
+      timestamp: Date.now(),
+      label: '回退前快照',
+    };
+    lastTimelineCaptureAt.set(tabId, Date.now());
+    set({
+      content: activeTabId === tabId ? entry.content : get().content,
+      timeline: {
+        ...timeline,
+        [tabId]: [rollbackEntry, ...(timeline[tabId] || [])].slice(0, TIMELINE_LIMIT),
+      },
+      tabs: tabs.map(item => item.id === tabId ? { ...item, content: entry.content, modified: true } : item),
+    });
+    get().updateWordCount();
+  },
+
+  setConversionStatus: (status, message = '') => {
+    set({ conversionStatus: status, conversionMessage: message });
+    if (status === 'success' || status === 'error') {
+      setTimeout(() => {
+        if (get().conversionStatus === status) {
+          set({ conversionStatus: 'idle', conversionMessage: '' });
+        }
+      }, 4000);
     }
   },
 }));

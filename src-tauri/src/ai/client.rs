@@ -128,7 +128,7 @@ struct Choice {
 }
 
 fn get_api_endpoint(settings: &AISettings) -> String {
-    let endpoint = if settings.provider == "custom" && !settings.api_endpoint.is_empty() {
+    let endpoint = if !settings.api_endpoint.is_empty() {
         settings.api_endpoint.clone()
     } else if settings.provider == "anthropic" {
         "https://api.anthropic.com/v1".to_string()
@@ -136,6 +136,18 @@ fn get_api_endpoint(settings: &AISettings) -> String {
         "https://api.deepseek.com/v1".to_string()
     } else if settings.provider == "siliconflow" {
         "https://api.siliconflow.cn/v1".to_string()
+    } else if settings.provider == "mimo" {
+        "https://api.xiaomimimo.com/v1".to_string()
+    } else if settings.provider == "volcengine" {
+        "https://ark.cn-beijing.volces.com/api/v3".to_string()
+    } else if settings.provider == "longcat" {
+        "https://api.longcat.chat/openai/v1".to_string()
+    } else if settings.provider == "zhipu" {
+        "https://open.bigmodel.cn/api/paas/v4".to_string()
+    } else if settings.provider == "minimax" {
+        "https://api.minimaxi.com/v1".to_string()
+    } else if settings.provider == "kimi" {
+        "https://api.moonshot.cn/v1".to_string()
     } else {
         "https://api.openai.com/v1".to_string()
     };
@@ -1070,9 +1082,14 @@ pub async fn chat(
     max_tokens: Option<u32>,
     doc_context: Option<String>,
     doc_title: Option<String>,
+    skill_context: Option<String>,
     enable_thinking: bool,
 ) -> Result<AIResponse, String> {
-    let system_prompt = get_prompt(PromptAction::Chat, "", None, settings);
+    let mut system_prompt = get_prompt(PromptAction::Chat, "", None, settings);
+    if let Some(skills) = skill_context.filter(|value| !value.trim().is_empty()) {
+        system_prompt.push_str("\n\n## Enabled Skills\nFollow these imported skill instructions when relevant:\n");
+        system_prompt.push_str(&skills);
+    }
 
     let mut messages = Vec::new();
 
@@ -1173,10 +1190,15 @@ pub async fn chat_streaming(
     max_tokens: Option<u32>,
     doc_context: Option<String>,
     doc_title: Option<String>,
+    skill_context: Option<String>,
     enable_thinking: bool,
     window: WebviewWindow,
 ) -> Result<(), String> {
-    let system_prompt = get_prompt(PromptAction::Chat, "", None, settings);
+    let mut system_prompt = get_prompt(PromptAction::Chat, "", None, settings);
+    if let Some(skills) = skill_context.filter(|value| !value.trim().is_empty()) {
+        system_prompt.push_str("\n\n## Enabled Skills\nFollow these imported skill instructions when relevant:\n");
+        system_prompt.push_str(&skills);
+    }
     let messages = build_chat_messages(
         content,
         context,

@@ -1,13 +1,15 @@
-import { useState, useCallback, useEffect } from 'react';
-import { useAppStore } from '../../stores/appStore';
-import { open } from '@tauri-apps/plugin-dialog';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { open } from '@tauri-apps/plugin-dialog';
+import { useAppStore } from '../../stores/appStore';
 
 interface FileNode {
   name: string;
   path: string;
   isDirectory: boolean;
   children?: FileNode[];
+  file?: File;
+  directoryHandle?: FileSystemDirectoryHandle;
 }
 
 interface RawFileNode {
@@ -18,20 +20,27 @@ interface RawFileNode {
   children?: RawFileNode[];
 }
 
+interface HeadingItem {
+  level: number;
+  text: string;
+  line: number;
+}
+
 interface SidebarProps {
   style?: React.CSSProperties;
 }
 
-type ContextMenuState = {
-  x: number;
-  y: number;
-  path: string;
-} | null;
+type ContextMenuState = { x: number; y: number; node: FileNode } | null;
 
 const OPEN_EDITORS_ID = 'virtual:open-editors';
+const isTauriRuntime = () => '__TAURI_INTERNALS__' in window;
+const isDirectOpenFile = (name: string) => /\.(md|markdown|txt)$/i.test(name);
+
+type DirectoryHandleWithEntries = FileSystemDirectoryHandle & {
+  entries: () => AsyncIterableIterator<[string, FileSystemHandle]>;
+};
 
 const getFolderName = (path: string) => path.split(/[\\/]/).filter(Boolean).pop() || path;
-
 const normalizeNode = (node: RawFileNode): FileNode => ({
   name: node.name,
   path: node.path,
@@ -39,21 +48,62 @@ const normalizeNode = (node: RawFileNode): FileNode => ({
   children: node.children?.map(normalizeNode),
 });
 
+const parseHeadings = (content: string): HeadingItem[] => content.split('\n').flatMap((line, index) => {
+  const match = line.match(/^(#{1,6})\s+(.+)$/);
+  return match ? [{ level: match[1].length, text: match[2].trim(), line: index + 1 }] : [];
+});
+
+function Chevron({ expanded }: { expanded: boolean }) {
+  return <span className={`explorer-chevron ${expanded ? 'expanded' : ''}`} aria-hidden="true" />;
+}
+
+function FolderIcon({ open: isOpen = false }: { open?: boolean }) {
+  return <span className={`explorer-icon folder-icon ${isOpen ? 'open' : ''}`} aria-hidden="true" />;
+}
+
+function FileIcon({ filename }: { filename: string }) {
+  const extension = filename.split('.').pop()?.toLowerCase();
+  const kind = extension === 'md' || extension === 'markdown' ? 'markdown'
+    : extension === 'txt' ? 'text'
+      : extension === 'json' ? 'json'
+        : 'document';
+  return <span className={`explorer-icon file-icon ${kind}`} aria-hidden="true">{kind === 'markdown' ? 'M' : ''}</span>;
+}
+
 export function Sidebar({ style }: SidebarProps) {
-  const { sidebarVisible, openFile, tabs, activeTabId, currentFile } = useAppStore();
-  const [hoveredItem, setHoveredItem] = useState<string | null>(null);
+  const {
+    sidebarVisible,
+    outlineVisible,
+    setOutlineVisible,
+    content,
+    openFile,
+    convertDocument,
+    tabs,
+    activeTabId,
+    currentFile,
+    timeline,
+    restoreTimelineEntry,
+  } = useAppStore();
   const [folderTree, setFolderTree] = useState<FileNode[]>([]);
   const [currentFolder, setCurrentFolder] = useState<string | null>(null);
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set([OPEN_EDITORS_ID]));
   const [loadedFolders, setLoadedFolders] = useState<Set<string>>(new Set());
   const [contextMenu, setContextMenu] = useState<ContextMenuState>(null);
+  const [timelineExpanded, setTimelineExpanded] = useState(false);
+  const headings = useMemo(() => parseHeadings(content), [content]);
+  const activeTimeline = activeTabId ? timeline[activeTabId] || [] : [];
 
-  const updateRecentFile = useCallback(async (path: string, title: string) => {
-    try {
-      await invoke('update_recent_file', { path, title });
-    } catch (error) {
-      console.error('Failed to update recent files:', error);
+  const readBrowserFolder = useCallback(async (handle: FileSystemDirectoryHandle, parentPath: string): Promise<FileNode[]> => {
+    const entries: FileNode[] = [];
+    for await (const [name, entry] of (handle as DirectoryHandleWithEntries).entries()) {
+      const path = `${parentPath}/${name}`;
+      if (entry.kind === 'directory') {
+        entries.push({ name, path, isDirectory: true, children: [], directoryHandle: entry as FileSystemDirectoryHandle });
+      } else if (isDirectOpenFile(name)) {
+        entries.push({ name, path, isDirectory: false, file: await (entry as FileSystemFileHandle).getFile() });
+      }
     }
+    return entries.sort((a, b) => Number(b.isDirectory) - Number(a.isDirectory) || a.name.localeCompare(b.name));
   }, []);
 
   const readFolder = useCallback(async (folderPath: string) => {
@@ -65,8 +115,8 @@ export function Sidebar({ style }: SidebarProps) {
     try {
       const tree = await readFolder(folderPath);
       setFolderTree(tree);
-      setLoadedFolders(prev => new Set(prev).add(folderPath));
-      setExpandedNodes(prev => new Set(prev).add(folderPath));
+      setLoadedFolders(previous => new Set(previous).add(folderPath));
+      setExpandedNodes(previous => new Set(previous).add(folderPath));
     } catch (error) {
       console.error('Failed to load folder contents:', error);
       setFolderTree([]);
@@ -74,291 +124,271 @@ export function Sidebar({ style }: SidebarProps) {
   }, [readFolder]);
 
   useEffect(() => {
-    const activeTab = tabs.find(t => t.id === activeTabId);
-    if (activeTab?.path) {
-      queueMicrotask(() => {
-        void updateRecentFile(activeTab.path, activeTab.title);
-      });
-    }
-  }, [activeTabId, tabs, updateRecentFile]);
+    const activeTab = tabs.find(tab => tab.id === activeTabId);
+    if (!activeTab?.path) return;
+    void invoke('update_recent_file', { path: activeTab.path, title: activeTab.title }).catch(() => undefined);
+  }, [activeTabId, tabs]);
 
-  const handleOpenFile = async () => {
-    try {
-      const selected = await open({
-        filters: [{ name: 'Markdown', extensions: ['md', 'txt', 'markdown'] }],
-        multiple: true,
+  useEffect(() => {
+    if (!currentFile || currentFile.startsWith('web://')) return;
+    const parent = currentFile.replace(/[\\/][^\\/]+$/, '');
+    if (parent && parent !== currentFolder) {
+      queueMicrotask(() => {
+        setCurrentFolder(parent);
+        void loadFolderContents(parent);
       });
-      if (selected) {
-        const paths = Array.isArray(selected) ? selected : [selected];
-        for (const path of paths) {
-          await openFile(path as string);
-        }
-        setExpandedNodes(prev => new Set(prev).add(OPEN_EDITORS_ID));
-      }
-    } catch (error) {
-      console.error('Failed to open file:', error);
     }
+  }, [currentFile, currentFolder, loadFolderContents]);
+
+  useEffect(() => {
+    const close = () => setContextMenu(null);
+    document.addEventListener('click', close);
+    return () => document.removeEventListener('click', close);
+  }, []);
+
+  const toggleExpanded = (path: string) => {
+    setExpandedNodes(previous => {
+      const next = new Set(previous);
+      if (next.has(path)) {
+        next.delete(path);
+      } else {
+        next.add(path);
+      }
+      return next;
+    });
+  };
+
+  const replaceNodeChildren = (nodes: FileNode[], path: string, children: FileNode[]): FileNode[] => nodes.map(node => {
+    if (node.path === path) return { ...node, children };
+    return node.children ? { ...node, children: replaceNodeChildren(node.children, path, children) } : node;
+  });
+
+  const toggleFolder = async (node: FileNode) => {
+    if (expandedNodes.has(node.path)) {
+      toggleExpanded(node.path);
+      return;
+    }
+    setExpandedNodes(previous => new Set(previous).add(node.path));
+    if (loadedFolders.has(node.path)) return;
+    try {
+      const children = node.directoryHandle
+        ? await readBrowserFolder(node.directoryHandle, node.path)
+        : await readFolder(node.path);
+      setFolderTree(previous => replaceNodeChildren(previous, node.path, children));
+      setLoadedFolders(previous => new Set(previous).add(node.path));
+    } catch (error) {
+      console.error('Failed to load folder children:', error);
+    }
+  };
+
+  const openTreeFile = async (node: FileNode) => {
+    if (node.file) {
+      useAppStore.getState().addTab({ path: node.path, title: node.name, content: await node.file.text(), modified: false });
+    } else if (isDirectOpenFile(node.name)) {
+      await openFile(node.path);
+    } else {
+      await convertDocument(node.path);
+    }
+  };
+
+  const scrollToHeading = (line: number) => {
+    const { editorView } = useAppStore.getState();
+    if (!editorView) return;
+    const position = editorView.state.doc.line(line).from;
+    editorView.dispatch({ selection: { anchor: position }, scrollIntoView: true });
+    editorView.focus();
   };
 
   const handleOpenFolder = async () => {
     try {
-      const selected = await open({
-        directory: true,
-        multiple: false,
-      });
+      if (!isTauriRuntime()) {
+        const picker = (window as Window & { showDirectoryPicker?: () => Promise<FileSystemDirectoryHandle> }).showDirectoryPicker;
+        if (!picker) throw new Error('请使用最新版 Chrome 或 Edge 选择文件夹。');
+        const handle = await picker();
+        const path = `web://${handle.name}`;
+        setCurrentFolder(path);
+        setFolderTree(await readBrowserFolder(handle, path));
+        setLoadedFolders(new Set([path]));
+        setExpandedNodes(previous => new Set(previous).add(path));
+        return;
+      }
+      const selected = await open({ directory: true, multiple: false });
       if (selected) {
-        const folderPath = selected as string;
-        setCurrentFolder(folderPath);
-        await loadFolderContents(folderPath);
+        setCurrentFolder(selected as string);
+        await loadFolderContents(selected as string);
       }
     } catch (error) {
       console.error('Failed to open folder:', error);
     }
   };
 
-  const handleNewFile = () => {
-    useAppStore.getState().addTab();
-    setExpandedNodes(prev => new Set(prev).add(OPEN_EDITORS_ID));
-  };
-
-  const replaceNodeChildren = (nodes: FileNode[], path: string, children: FileNode[]): FileNode[] =>
-    nodes.map(node => {
-      if (node.path === path) {
-        return { ...node, children };
-      }
-      if (node.children) {
-        return { ...node, children: replaceNodeChildren(node.children, path, children) };
-      }
-      return node;
-    });
-
-  const toggleExpanded = (id: string) => {
-    setExpandedNodes(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-      return next;
-    });
-  };
-
-  const toggleFolder = async (node: FileNode) => {
-    const isExpanded = expandedNodes.has(node.path);
-
-    if (isExpanded) {
-      toggleExpanded(node.path);
-      return;
-    }
-
-    setExpandedNodes(prev => new Set(prev).add(node.path));
-
-    if (!loadedFolders.has(node.path)) {
-      try {
-        const children = await readFolder(node.path);
-        setFolderTree(currentTree => replaceNodeChildren(currentTree, node.path, children));
-        setLoadedFolders(prev => new Set(prev).add(node.path));
-      } catch (error) {
-        console.error('Failed to load folder children:', error);
-      }
+  const handleOpenFile = async () => {
+    try {
+      const selected = await open({ filters: [{ name: 'Markdown', extensions: ['md', 'markdown', 'txt'] }], multiple: true });
+      if (!selected) return;
+      for (const path of (Array.isArray(selected) ? selected : [selected])) await openFile(path as string);
+      setExpandedNodes(previous => new Set(previous).add(OPEN_EDITORS_ID));
+    } catch (error) {
+      console.error('Failed to open file:', error);
     }
   };
 
-  const toggleWorkspaceRoot = async () => {
-    if (!currentFolder) return;
-
-    if (expandedNodes.has(currentFolder)) {
-      toggleExpanded(currentFolder);
-    } else {
-      setExpandedNodes(prev => new Set(prev).add(currentFolder));
-      if (!loadedFolders.has(currentFolder)) {
-        await loadFolderContents(currentFolder);
-      }
-    }
-  };
-
-  const handleContextMenu = (e: React.MouseEvent, path: string) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setContextMenu({ x: e.clientX, y: e.clientY, path });
-  };
-
-  const closeContextMenu = useCallback(() => {
-    setContextMenu(null);
-  }, []);
-
-  useEffect(() => {
-    document.addEventListener('click', closeContextMenu);
-    return () => document.removeEventListener('click', closeContextMenu);
-  }, [closeContextMenu]);
-
-  const getFileIcon = (filename: string) => {
-    const lowerName = filename.toLowerCase();
-    if (lowerName.endsWith('.md') || lowerName.endsWith('.markdown')) return 'M';
-    if (lowerName.endsWith('.txt')) return 'T';
-    if (lowerName.match(/\.(js|ts|jsx|tsx)$/)) return 'TS';
-    if (lowerName.match(/\.(json|yaml|yml)$/)) return '{}';
-    if (lowerName.match(/\.(html|css)$/)) return '<>';
-    return '';
-  };
-
-  const renderFileTree = (nodes: FileNode[], depth = 0) => {
-    return nodes.map(node => {
-      const isExpanded = expandedNodes.has(node.path);
-      const isActive = currentFile === node.path;
-
-      return (
-        <div key={node.path} className="file-tree-row-wrap">
-          <div
-            className={`file-tree-item ${node.isDirectory ? 'folder' : 'file'} ${isActive ? 'active' : ''}`}
-            style={{ paddingLeft: `${8 + depth * 14}px` }}
-            onClick={() => {
-              if (node.isDirectory) {
-                void toggleFolder(node);
-              } else {
-                void openFile(node.path);
-              }
-            }}
-            onContextMenu={(e) => !node.isDirectory && handleContextMenu(e, node.path)}
-            title={node.path}
-          >
-            <span className="expand-icon">{node.isDirectory ? (isExpanded ? '▾' : '▸') : ''}</span>
-            <span className={`tree-icon ${node.isDirectory ? 'folder-icon' : 'file-icon-badge'}`}>
-              {node.isDirectory ? '' : getFileIcon(node.name)}
-            </span>
-            <span className="tree-name">{node.name}</span>
+  const renderNodes = (nodes: FileNode[], depth = 0) => nodes.map(node => {
+    const expanded = expandedNodes.has(node.path);
+    const active = currentFile === node.path;
+    return (
+      <div key={node.path} role="treeitem" aria-expanded={node.isDirectory ? expanded : undefined}>
+        <button
+          className={`explorer-row ${node.isDirectory ? 'folder-row' : 'file-row'} ${active ? 'active' : ''}`}
+          style={{ paddingLeft: `${8 + depth * 14}px` }}
+          onClick={() => node.isDirectory ? void toggleFolder(node) : void openTreeFile(node)}
+          onContextMenu={event => {
+            if (!node.isDirectory) {
+              event.preventDefault();
+              setContextMenu({ x: event.clientX, y: event.clientY, node });
+            }
+          }}
+          title={node.path}
+        >
+          {node.isDirectory ? <Chevron expanded={expanded} /> : <span className="explorer-chevron-spacer" />}
+          {node.isDirectory ? <FolderIcon open={expanded} /> : <FileIcon filename={node.name} />}
+          <span className="explorer-name">{node.name}</span>
+        </button>
+        {node.isDirectory && expanded && (
+          <div role="group" className="explorer-children">
+            {node.children?.length ? renderNodes(node.children, depth + 1) : (
+              <div className="explorer-empty-folder" style={{ paddingLeft: `${38 + depth * 14}px` }}>空文件夹</div>
+            )}
           </div>
-          {node.isDirectory && isExpanded && (
-            <div className="file-tree-children">
-              {node.children && node.children.length > 0 ? (
-                renderFileTree(node.children, depth + 1)
-              ) : (
-                <div className="file-tree-empty" style={{ paddingLeft: `${28 + (depth + 1) * 14}px` }}>
-                  空文件夹
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      );
-    });
-  };
+        )}
+      </div>
+    );
+  });
 
-  if (!sidebarVisible) return null;
+  if (!sidebarVisible && !outlineVisible) return null;
 
   const openEditorsExpanded = expandedNodes.has(OPEN_EDITORS_ID);
-  const rootExpanded = currentFolder ? expandedNodes.has(currentFolder) : false;
-  const hasExplorerContent = tabs.length > 0 || Boolean(currentFolder);
+  const rootExpanded = Boolean(currentFolder && expandedNodes.has(currentFolder));
+  const workspaceExpanded = currentFolder ? rootExpanded : true;
 
   return (
-    <aside className="sidebar explorer-sidebar" style={style}>
+    <aside className="sidebar explorer-sidebar vscode-explorer" style={style}>
       <div className="sidebar-surface">
-        <div className="sidebar-header explorer-header">
-          <div className="sidebar-title-group">
-            <h3>资源管理器</h3>
+        <header className="vscode-explorer-header">
+          <span>资源管理器</span>
+          <div className="vscode-explorer-actions">
+            <button onClick={() => { useAppStore.getState().addTab(); setExpandedNodes(previous => new Set(previous).add(OPEN_EDITORS_ID)); }} title="新建文件" aria-label="新建文件">＋</button>
+            <button onClick={() => void handleOpenFile()} title="打开文件" aria-label="打开文件"><span className="toolbar-file-icon" /></button>
+            <button onClick={() => void handleOpenFolder()} title="打开文件夹" aria-label="打开文件夹"><FolderIcon /></button>
           </div>
-          <div className="sidebar-actions">
-            <button className="sidebar-action-btn" onClick={handleNewFile} title="新建文件" aria-label="新建文件">
-              <svg className="sidebar-action-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
-                <path d="M8 3v10M3 8h10"/>
-              </svg>
-            </button>
-            <button className="sidebar-action-btn" onClick={() => void handleOpenFile()} title="打开文件" aria-label="打开文件">
-              <svg className="sidebar-action-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M2 5.5V13a1 1 0 001 1h10a1 1 0 001-1V5.5"/>
-                <path d="M2 4.5L5.5 2h5L14 4.5v1H2v-1z"/>
-                <path d="M5.5 2v3.5h5V2"/>
-              </svg>
-            </button>
-            <button className="sidebar-action-btn" onClick={() => void handleOpenFolder()} title="打开文件夹" aria-label="打开文件夹">
-              <svg className="sidebar-action-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
-                <path d="M2 5v7a1 1 0 001 1h10a1 1 0 001-1V6a1 1 0 00-1-1H7.5L6.3 3.8a.5.5 0 00-.35-.13H3a1 1 0 00-1 1z"/>
-                <path d="M2 5.5h12"/>
-              </svg>
-            </button>
-          </div>
-        </div>
+        </header>
 
-        <div className="explorer-tree" role="tree" aria-label="资源管理器文件树">
-        <div className="file-tree open-editors-tree">
-          <div className="file-tree-item folder virtual-root" onClick={() => toggleExpanded(OPEN_EDITORS_ID)}>
-            <span className="expand-icon">{openEditorsExpanded ? '▾' : '▸'}</span>
-            <span className="tree-icon virtual-icon">O</span>
-            <span className="tree-name">打开的编辑器</span>
-            <span className="open-editors-count">{tabs.length}</span>
-          </div>
-          {openEditorsExpanded && (
-            tabs.length > 0 ? (
-              tabs.map(tab => (
-                <div
-                  key={tab.id}
-                  className={`file-tree-item file open-file-item ${tab.id === activeTabId ? 'active' : ''}`}
-                  style={{ paddingLeft: 22 }}
-                  onClick={() => useAppStore.getState().setActiveTab(tab.id)}
-                  onContextMenu={(e) => tab.path && handleContextMenu(e, tab.path)}
-                  onMouseEnter={() => setHoveredItem(tab.id)}
-                  onMouseLeave={() => setHoveredItem(null)}
-                  title={tab.path || tab.title}
-                >
-                  <span className="expand-icon" />
-                  <span className="tree-icon file-icon-badge">{getFileIcon(tab.title)}</span>
-                  <span className="tree-name">{tab.title}</span>
-                  {tab.modified && <span className="file-modified">•</span>}
-                  {hoveredItem === tab.id && (
-                    <button
-                      className="file-close"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        useAppStore.getState().closeTab(tab.id);
-                      }}
-                      title="关闭"
-                    >
-                      ×
-                    </button>
-                  )}
-                </div>
-              ))
-            ) : (
-              <div className="file-tree-empty" style={{ paddingLeft: 28 }}>
-                暂无打开的编辑器
+        <div className="vscode-explorer-tree" role="tree" aria-label="资源管理器">
+          <section className="explorer-section">
+            <button className="explorer-section-heading" onClick={() => toggleExpanded(OPEN_EDITORS_ID)}>
+              <Chevron expanded={openEditorsExpanded} />
+              <span>打开的编辑器</span>
+              <span className="explorer-count">{tabs.length}</span>
+            </button>
+            {openEditorsExpanded && (
+              <div role="group">
+                {tabs.length ? tabs.map(tab => (
+                  <button
+                    key={tab.id}
+                    className={`explorer-row file-row open-editor-row ${tab.id === activeTabId ? 'active' : ''}`}
+                    style={{ paddingLeft: 12 }}
+                    onClick={() => useAppStore.getState().setActiveTab(tab.id)}
+                    title={tab.path || tab.title}
+                  >
+                    <FileIcon filename={tab.title} />
+                    <span className="explorer-name">{tab.title}</span>
+                    {tab.modified && <span className="explorer-dirty" title="未保存更改" />}
+                    <span
+                      className="explorer-close"
+                      role="button"
+                      aria-label="关闭编辑器"
+                      onClick={event => { event.stopPropagation(); useAppStore.getState().closeTab(tab.id); }}
+                    >×</span>
+                  </button>
+                )) : <div className="explorer-empty-state">没有打开的编辑器</div>}
               </div>
-            )
-          )}
-        </div>
+            )}
+          </section>
 
-        {currentFolder && (
-          <div className="file-tree workspace-tree">
-            <div className="file-tree-item folder root-folder" onClick={() => void toggleWorkspaceRoot()} title={currentFolder}>
-              <span className="expand-icon">{rootExpanded ? '▾' : '▸'}</span>
-              <span className="tree-icon folder-icon" />
-              <span className="tree-name">{getFolderName(currentFolder)}</span>
-            </div>
-            {rootExpanded && renderFileTree(folderTree, 1)}
-          </div>
-        )}
-
-        {!hasExplorerContent && (
-          <div className="explorer-empty">
-            <span>尚未打开文件夹</span>
-            <small>使用顶部按钮打开文件或文件夹，内容会显示在资源管理器中。</small>
-            <button className="open-folder-primary" onClick={() => void handleOpenFolder()}>
-              打开文件夹
+          <section className="explorer-section workspace-section">
+            <button
+              className="explorer-section-heading workspace-heading"
+              onClick={() => currentFolder && toggleExpanded(currentFolder)}
+              title={currentFolder || '打开文件夹'}
+            >
+              <Chevron expanded={workspaceExpanded} />
+              <span>{currentFolder ? getFolderName(currentFolder) : '无打开的文件夹'}</span>
             </button>
-          </div>
-        )}
+            {currentFolder && rootExpanded && <div role="group" className="explorer-list">{renderNodes(folderTree)}</div>}
+            {!currentFolder && (
+              <div className="workspace-empty-state">
+                <p>尚未打开文件夹。</p>
+                <button className="open-workspace-button" onClick={() => void handleOpenFolder()}>打开文件夹</button>
+                <p className="workspace-hint">打开文件夹将关闭所有当前打开的编辑器。要使其保持打开状态，请改为添加文件夹。</p>
+              </div>
+            )}
+          </section>
+
+          <section className="explorer-section outline-section">
+            <button className="explorer-section-heading" onClick={() => setOutlineVisible(!outlineVisible)}>
+              <Chevron expanded={outlineVisible} />
+              <span>大纲</span>
+              {headings.length > 0 && <span className="explorer-count">{headings.length}</span>}
+            </button>
+            {outlineVisible && (
+              <div role="group" className="outline-explorer-list">
+                {headings.length ? headings.map((heading, index) => (
+                  <button
+                    key={`${heading.line}-${index}`}
+                    className="outline-explorer-row"
+                    style={{ paddingLeft: `${24 + (heading.level - 1) * 12}px` }}
+                    onClick={() => scrollToHeading(heading.line)}
+                    title={heading.text}
+                  >
+                    <span className="outline-level">H{heading.level}</span>
+                    <span>{heading.text}</span>
+                  </button>
+                )) : <div className="explorer-empty-state">当前文档没有标题</div>}
+              </div>
+            )}
+          </section>
+
+          <section className="explorer-section timeline-section">
+            <button className="explorer-section-heading" onClick={() => setTimelineExpanded(expanded => !expanded)}>
+              <Chevron expanded={timelineExpanded} />
+              <span>时间线</span>
+              {activeTimeline.length > 0 && <span className="explorer-count">{activeTimeline.length}</span>}
+            </button>
+            {timelineExpanded && (
+              <div role="group" className="timeline-explorer-list">
+                {activeTimeline.length ? activeTimeline.map(entry => (
+                  <button
+                    key={entry.id}
+                    className="timeline-explorer-row"
+                    onClick={() => activeTabId && restoreTimelineEntry(activeTabId, entry.id)}
+                    title="点击回退到此版本"
+                  >
+                    <span className="timeline-version-icon" aria-hidden="true" />
+                    <span className="timeline-entry-text">
+                      <strong>{entry.label}</strong>
+                      <small>{new Date(entry.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })} · {entry.content.length} 字符</small>
+                    </span>
+                  </button>
+                )) : <div className="explorer-empty-state">编辑后将在此保留版本记录</div>}
+              </div>
+            )}
+          </section>
         </div>
       </div>
 
       {contextMenu && (
-        <div
-          className="context-menu"
-          style={{ position: 'fixed', top: contextMenu.y, left: contextMenu.x, zIndex: 1000 }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div className="context-menu-item" onClick={() => void openFile(contextMenu.path)}>
-            打开文件
-          </div>
+        <div className="context-menu" style={{ position: 'fixed', top: contextMenu.y, left: contextMenu.x, zIndex: 1000 }} onClick={event => event.stopPropagation()}>
+          <button className="context-menu-item" onClick={() => { void openTreeFile(contextMenu.node); setContextMenu(null); }}>打开文件</button>
         </div>
       )}
     </aside>
