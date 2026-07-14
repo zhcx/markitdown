@@ -220,6 +220,16 @@ markitdown/
 
 ---
 
+## 📈 项目更新热力图
+
+<div align="center">
+
+[![GitHub 更新热力图](https://ghchart.rshah.org/2196f3/zhcx)](https://github.com/zhcx/markitdown/graphs/commit-activity)
+
+</div>
+
+---
+
 <div align="center">
 
 **用 ❤️ 和 Claude Code、CodeX 构建**
