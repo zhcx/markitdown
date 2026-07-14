@@ -4,13 +4,12 @@ on:
   push:
     tags:
       - 'v*'
-      - '[0-9]*'
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Release tag to build and upload assets to'
+        description: Release tag to build and upload assets to
         required: true
-        default: 'v0.2.5'
+        default: v0.2.6
 
 permissions:
   contents: write
@@ -20,28 +19,25 @@ env:
 
 jobs:
   build:
+    name: ${{ matrix.name }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - platform: 'macos-latest'
-            target: 'aarch64-apple-darwin'
-            arch: 'arm64'
-          - platform: 'macos-latest'
-            target: 'x86_64-apple-darwin'
-            arch: 'x64'
-          - platform: 'windows-latest'
-            target: 'x86_64-pc-windows-msvc'
-            arch: 'x64'
-          - platform: 'ubuntu-22.04'
-            target: 'x86_64-unknown-linux-gnu'
-            arch: 'x64'
+          - name: macOS Apple Silicon
+            platform: macos-latest
+            target: aarch64-apple-darwin
+          - name: macOS Intel
+            platform: macos-latest
+            target: x86_64-apple-darwin
+          - name: Windows x64
+            platform: windows-latest
+            target: x86_64-pc-windows-msvc
+          - name: Linux x64
+            platform: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
 
     runs-on: ${{ matrix.platform }}
-
-    defaults:
-      run:
-        working-directory: .
 
     steps:
       - name: Checkout repository
@@ -49,7 +45,7 @@ jobs:
         with:
           ref: ${{ github.event.inputs.tag || github.ref }}
 
-      - name: Install dependencies (Ubuntu only)
+      - name: Install Linux system dependencies
         if: matrix.platform == 'ubuntu-22.04'
         run: |
           sudo apt-get update
@@ -59,70 +55,58 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
+          cache: npm
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
 
-      - name: Rust cache
+      - name: Restore Rust cache
         uses: swatinem/rust-cache@v2
         with:
-          workspaces: './src-tauri -> target'
+          workspaces: ./src-tauri -> target
 
       - name: Install frontend dependencies
         run: npm ci
 
-      - name: Build Tauri app
+      - name: Build and publish Tauri bundles
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tagName: ${{ env.RELEASE_TAG }}
-          releaseName: 'MarkitDown ${{ env.RELEASE_TAG }}'
+          releaseName: MarkitDown ${{ env.RELEASE_TAG }}
           releaseBody: |
-            ## MarkitDown v0.2.5 更新日志
+            ## MarkitDown v0.2.6 更新日志
 
-            ### ✨ 本次更新
-            - 新增 Claude Light/Dark Theme 与 Notion Light/Dark Theme，可从“功能 → 主题”菜单选择
-            - 编辑器新增行号
-            - 插入表格改为工具栏下方的菜单式网格选择器，支持鼠标移动和拖动选择
-            - 新增 1:1、4:3、16:9、9:16、A4 图片导出比例预览和 PNG 导出
-            - 修复分屏预览右侧空白、表格边框宽度异常问题
-            - 关于页面链接改为调用系统浏览器打开
+            ### 文档转换与稳定性
+            - 集成 Microsoft MarkItDown 文档转换，支持 PDF、Word、Excel、PowerPoint 等文件导入 Markdown。
+            - 转换在后台执行，底部状态栏显示进度与结果；大文档转换增加临时文件交接与错误诊断，稳定性更高。
+            - Windows 发布包内置转换器依赖，安装后即可使用。
 
-            ### 📦 平台安装包对应表
-            | 平台 | 架构 | 安装包 |
+            ### Inkwell 主题与编辑体验
+            - 新增并默认启用 Inkwell Light / Dark 主题。
+            - 优化标签页层级、活动状态和未保存标记；最后一个标签关闭后自动创建空白标签。
+            - 长文档分屏同步滚动改为按动画帧合并调度，减少卡顿和双向抖动。
+
+            ### 资源管理器与时间线
+            - 文件栏升级为 VS Code 风格资源管理器：打开的编辑器、工作区、文档大纲和时间线集中展示。
+            - 打开文件时自动加载同级目录；文件夹可按树形列表展开。
+            - 时间线保存编辑快照，支持点击回退，并保留回退前版本。
+
+            ### AI 助手
+            - 顶部 AI 入口未配置时直达 AI 设置页，已配置时直接打开 Chatbox。
+            - 优化 Chatbox 输入区、附件/文档关联图标与推理强度选择器。
+            - 网页预览支持通过兼容 OpenAI 的 `/models` 接口获取硅基流动模型列表。
+
+            ### 各平台安装包对应表
+            | 平台 | 架构 | 发布资产 |
             | --- | --- | --- |
-            | Windows | x86_64 | `.msi` / `.exe` (NSIS) |
-            | macOS | x86_64 Intel | `.dmg` / `.app.tar.gz` |
-            | macOS | arm64 Apple Silicon | `.dmg` / `.app.tar.gz` |
-            | Linux | x86_64 | `.deb` / `.rpm` / `.AppImage` |
-
-            ### 🧭 编辑与预览同步滚动
-            - 分屏模式下，滚动编辑框时预览框会同步到相应阅读位置
-            - 滚动预览框时，编辑框也会同步到对应编辑位置
-            - 增加程序化滚动来源标记，避免两侧滚动事件互相循环触发
-
-            ### 📖 预览阅读体验优化
-            - 预览正文宽度与编辑框对齐，减少左右留白
-            - 预览内容最大宽度统一到编辑器正文宽度，分屏浏览更一致
-            - 修复长链接在预览中不自动换行、撑破版面的情况
-
-            ### 📦 版本与更新页面
-            - 应用版本更新至 v0.2.5
-            - 关于页面版本号同步更新
-            - GitHub Release 更新说明同步展示本次功能变化和平台安装包列表
-
-            ### 📦 安装包
-
-            | 平台 | 架构 | 安装包格式 |
-            | --- | --- | --- |
-            | Windows | x86_64 | `.msi` / `.exe` (NSIS) |
-            | macOS Intel | x86_64 | `.dmg` / `.app.tar.gz` |
-            | macOS Apple Silicon | arm64 | `.dmg` / `.app.tar.gz` |
-            | Linux | x86_64 | `.deb` / `.rpm` / `.AppImage` |
+            | Windows | x64 | `.msi`、`.exe`（NSIS） |
+            | macOS | Apple Silicon (arm64) | `.dmg`、`.app.tar.gz` |
+            | macOS | Intel (x64) | `.dmg`、`.app.tar.gz` |
+            | Linux | x64 | `.deb`、`.rpm`、`.AppImage` |
           releaseDraft: false
           prerelease: false
           args: --target ${{ matrix.target }}

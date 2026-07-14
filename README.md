@@ -149,6 +149,19 @@ npm run tauri build
 **环境要求：**
 - Node.js >= 18
 - Rust >= 1.70
+- Python >= 3.10（仅从源码运行或开发文档转换功能时需要）
+
+### 文档转换
+
+应用的“文件 → 导入并转换文档…”菜单和文件拖入支持将文档转换为未保存的 Markdown 标签页。发布版安装包和便携版均内置 Microsoft MarkItDown 及 PDF、Word、Excel、PowerPoint 所需依赖，打开即可使用，无需安装 Python。
+
+从源码运行时，为开发环境安装依赖：
+
+```bash
+python -m pip install "markitdown[pdf,docx,pptx,xlsx]"
+```
+
+如需让应用使用特定 Python 环境，设置 `MARKITDOWN_PYTHON` 为对应 Python 可执行文件的绝对路径。
 
 ---
 

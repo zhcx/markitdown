@@ -1,11 +1,40 @@
 import { useState } from 'react';
-import { useAppStore } from '../../stores/appStore';
+import { useAppStore, type SettingsTab } from '../../stores/appStore';
 import { invoke } from '@tauri-apps/api/core';
 
+const isTauriRuntime = () => '__TAURI_INTERNALS__' in window;
+
+const fetchModelsFromApi = async (apiKey: string, apiEndpoint: string): Promise<string[]> => {
+  if (isTauriRuntime()) {
+    return invoke<string[]>('fetch_ai_models', { apiKey, apiEndpoint });
+  }
+
+  const response = await fetch(`${apiEndpoint.replace(/\/+$/, '')}/models`, {
+    headers: { Authorization: `Bearer ${apiKey}` },
+  });
+  if (!response.ok) {
+    throw new Error(`获取模型失败（${response.status}）：${await response.text()}`);
+  }
+
+  const payload: unknown = await response.json();
+  const data = typeof payload === 'object' && payload !== null && 'data' in payload
+    ? (payload as { data?: unknown }).data
+    : undefined;
+  if (!Array.isArray(data)) throw new Error('模型服务返回了无法识别的数据格式。');
+
+  return data.flatMap(model => {
+    if (typeof model === 'string') return [model];
+    if (typeof model === 'object' && model !== null && 'id' in model && typeof model.id === 'string') {
+      return [model.id];
+    }
+    return [];
+  });
+};
+
 export function SettingsPanel() {
-  const { settings, saveSettings, setSettingsOpen } = useAppStore();
+  const { settings, settingsTab, saveSettings, setSettingsOpen } = useAppStore();
   const [localSettings, setLocalSettings] = useState(settings);
-  const [activeTab, setActiveTab] = useState<'appearance' | 'editor' | 'image' | 'export' | 'ai'>('appearance');
+  const [activeTab, setActiveTab] = useState<SettingsTab>(settingsTab);
   const [apiKeyVisible, setApiKeyVisible] = useState(false);
   const [models, setModels] = useState<string[]>([]);
   const [fetchingModels, setFetchingModels] = useState(false);
@@ -82,6 +111,8 @@ export function SettingsPanel() {
                     })
                   }
                 >
+                  <option value="inkwell-light">Inkwell Light Theme</option>
+                  <option value="inkwell-dark">Inkwell Dark Theme</option>
                   <option value="claude-light">Claude Light Theme</option>
                   <option value="claude-dark">Claude Dark Theme</option>
                   <option value="notion-light">Notion Light Theme</option>
@@ -653,10 +684,10 @@ export function SettingsPanel() {
                           setFetchingModels(true);
                           setFetchError('');
                           try {
-                            const result = await invoke<string[]>('fetch_ai_models', {
-                              apiKey: localSettings.ai.api_key,
-                              apiEndpoint: localSettings.ai.api_endpoint,
-                            });
+                            const result = await fetchModelsFromApi(
+                              localSettings.ai.api_key,
+                              localSettings.ai.api_endpoint,
+                            );
                             setModels(result);
                             if (result.length > 0) {
                               setLocalSettings({

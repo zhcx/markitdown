@@ -2,7 +2,7 @@ import { useAppStore } from '../../stores/appStore';
 import { useAIStore } from '../../stores/aiStore';
 
 export function StatusBar() {
-  const { wordCount, mode, currentFile, isSaving, uploadStatus, uploadProgress, uploadMessage, settings } = useAppStore();
+  const { wordCount, mode, currentFile, isSaving, uploadStatus, uploadProgress, uploadMessage, conversionStatus, conversionMessage, settings } = useAppStore();
   const { status: aiStatus, statusMessage: aiStatusMessage, errorCount, currentStyle, setProofreadPanelVisible } = useAIStore();
 
   const styleNames: Record<string, string> = {
@@ -50,6 +50,18 @@ export function StatusBar() {
             )}
             {aiStatus === 'success' && errorCount === 0 && aiStatusMessage && (
               <span className="status-item ai-success">✓ {aiStatusMessage}</span>
+            )}
+          </div>
+        ) : conversionStatus !== 'idle' ? (
+          <div className="conversion-status">
+            {conversionStatus === 'converting' && (
+              <span className="status-item conversion-working"><span className="ai-spinner"></span>{conversionMessage}</span>
+            )}
+            {conversionStatus === 'success' && (
+              <span className="status-item conversion-success">✓ {conversionMessage}</span>
+            )}
+            {conversionStatus === 'error' && (
+              <span className="status-item conversion-error">✗ {conversionMessage}</span>
             )}
           </div>
         ) : uploadStatus !== 'idle' ? (

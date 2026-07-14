@@ -69,7 +69,16 @@ export interface Tab {
   modified: boolean;
 }
 
+export interface TimelineEntry {
+  id: string;
+  content: string;
+  timestamp: number;
+  label: string;
+}
+
 export type UploadStatus = 'idle' | 'uploading' | 'success' | 'error';
+export type ConversionStatus = 'idle' | 'converting' | 'success' | 'error';
+export type SettingsTab = 'appearance' | 'editor' | 'image' | 'export' | 'ai';
 
 interface AppState {
   content: string;
@@ -81,15 +90,19 @@ interface AppState {
   sidebarWidth: number;
   outlineVisible: boolean;
   settingsOpen: boolean;
+  settingsTab: SettingsTab;
   isSaving: boolean;
   wordCount: string;
   activeImageService: 'cloudinary' | 'picgo' | 's3' | 'local';
   editorView: EditorView | null;
   tabs: Tab[];
   activeTabId: string | null;
+  timeline: Record<string, TimelineEntry[]>;
   uploadStatus: UploadStatus;
   uploadProgress: number;
   uploadMessage: string;
+  conversionStatus: ConversionStatus;
+  conversionMessage: string;
 
   setContent: (content: string) => void;
   setMode: (mode: 'split' | 'immersive') => void;
@@ -100,11 +113,13 @@ interface AppState {
   setSidebarWidth: (width: number) => void;
   setOutlineVisible: (visible: boolean) => void;
   setSettingsOpen: (open: boolean) => void;
+  setSettingsTab: (tab: SettingsTab) => void;
   setActiveImageService: (service: 'cloudinary' | 'picgo' | 's3' | 'local') => void;
   setEditorView: (view: EditorView | null) => void;
   loadSettings: () => Promise<void>;
   saveSettings: (settings: Settings) => Promise<void>;
   openFile: (path: string) => Promise<void>;
+  convertDocument: (path: string) => Promise<void>;
   saveFile: (path: string) => Promise<void>;
   updateWordCount: () => void;
 
@@ -113,13 +128,15 @@ interface AppState {
   setActiveTab: (id: string) => void;
   updateTabContent: (id: string, content: string) => void;
   updateTabTitle: (id: string, path: string) => void;
+  restoreTimelineEntry: (tabId: string, entryId: string) => void;
   getActiveTab: () => Tab | undefined;
   setUploadStatus: (status: UploadStatus, progress?: number, message?: string) => void;
+  setConversionStatus: (status: ConversionStatus, message?: string) => void;
 }
 
 const defaultSettings: Settings = {
   appearance: {
-    theme: 'notion-light',
+    theme: 'inkwell-light',
     font_family: 'Microsoft YaHei',
     font_size: 16,
     line_height: 1.6,
@@ -176,6 +193,9 @@ const defaultSettings: Settings = {
 };
 
 const generateId = () => Math.random().toString(36).substring(2, 9);
+const TIMELINE_LIMIT = 40;
+const TIMELINE_SNAPSHOT_INTERVAL = 1500;
+const lastTimelineCaptureAt = new Map<string, number>();
 
 const initialTab: Tab = {
   id: generateId(),
@@ -195,21 +215,48 @@ export const useAppStore = create<AppState>((set, get) => ({
   sidebarWidth: 220,
   outlineVisible: false,
   settingsOpen: false,
+  settingsTab: 'appearance',
   isSaving: false,
   wordCount: '0 字, 0 字符',
   activeImageService: 'local',
   editorView: null,
   tabs: [initialTab],
   activeTabId: initialTab.id,
+  timeline: {},
   uploadStatus: 'idle',
   uploadProgress: 0,
   uploadMessage: '',
+  conversionStatus: 'idle',
+  conversionMessage: '',
 
   setContent: (content) => {
-    const { activeTabId, tabs } = get();
+    const { activeTabId, tabs, timeline } = get();
+    const activeTab = tabs.find(tab => tab.id === activeTabId);
     if (activeTabId) {
+      const now = Date.now();
+      const shouldCapture = Boolean(
+        activeTab
+        && activeTab.content !== content
+        && now - (lastTimelineCaptureAt.get(activeTabId) ?? 0) >= TIMELINE_SNAPSHOT_INTERVAL,
+      );
+      const nextTimeline = shouldCapture && activeTab
+        ? {
+          ...timeline,
+          [activeTabId]: [
+            {
+              id: generateId(),
+              content: activeTab.content,
+              timestamp: now,
+              label: '编辑快照',
+            },
+            ...(timeline[activeTabId] || []),
+          ].slice(0, TIMELINE_LIMIT),
+        }
+        : timeline;
+      if (shouldCapture) lastTimelineCaptureAt.set(activeTabId, now);
       set({
         content,
+        timeline: nextTimeline,
         tabs: tabs.map(tab =>
           tab.id === activeTabId
             ? { ...tab, content, modified: true }
@@ -235,6 +282,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   setOutlineVisible: (visible) => set({ outlineVisible: visible }),
 
   setSettingsOpen: (open) => set({ settingsOpen: open }),
+  setSettingsTab: (tab) => set({ settingsTab: tab }),
 
   setActiveImageService: (service) => set({ activeImageService: service }),
 
@@ -256,6 +304,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ settings });
     } catch (error) {
       console.error('Failed to save settings:', error);
+      // Browser preview has no Tauri IPC. Keep the selected settings in memory
+      // so themes and layout can be tested without building the desktop app.
+      set({ settings });
     }
   },
 
@@ -304,6 +355,35 @@ export const useAppStore = create<AppState>((set, get) => ({
       get().updateWordCount();
     } catch (error) {
       console.error('Failed to open file:', error);
+    }
+  },
+
+  convertDocument: async (path) => {
+    const sourceName = path.split(/[\\/]/).pop() || path;
+    get().setConversionStatus('converting', `正在转换：${sourceName}`);
+    try {
+      const markdown = await invoke<string>('convert_document', { path });
+      const title = sourceName.replace(/\.[^.]+$/, '') + '.md';
+      const newTab: Tab = {
+        id: generateId(),
+        title,
+        path: null,
+        content: markdown,
+        // Converted content has not been saved as a Markdown file yet.
+        modified: true,
+      };
+      const { tabs } = get();
+      set({
+        tabs: [...tabs, newTab],
+        activeTabId: newTab.id,
+        content: markdown,
+        currentFile: null,
+      });
+      get().updateWordCount();
+      get().setConversionStatus('success', `导入成功：${title}`);
+    } catch (error) {
+      get().setConversionStatus('error', `导入失败：${String(error)}`);
+      throw error;
     }
   },
 
@@ -426,6 +506,41 @@ export const useAppStore = create<AppState>((set, get) => ({
       setTimeout(() => {
         set({ uploadStatus: 'idle', uploadProgress: 0, uploadMessage: '' });
       }, 3000);
+    }
+  },
+
+  restoreTimelineEntry: (tabId, entryId) => {
+    const { tabs, timeline, activeTabId } = get();
+    const entry = timeline[tabId]?.find(item => item.id === entryId);
+    const tab = tabs.find(item => item.id === tabId);
+    if (!entry || !tab) return;
+
+    const rollbackEntry: TimelineEntry = {
+      id: generateId(),
+      content: tab.content,
+      timestamp: Date.now(),
+      label: '回退前快照',
+    };
+    lastTimelineCaptureAt.set(tabId, Date.now());
+    set({
+      content: activeTabId === tabId ? entry.content : get().content,
+      timeline: {
+        ...timeline,
+        [tabId]: [rollbackEntry, ...(timeline[tabId] || [])].slice(0, TIMELINE_LIMIT),
+      },
+      tabs: tabs.map(item => item.id === tabId ? { ...item, content: entry.content, modified: true } : item),
+    });
+    get().updateWordCount();
+  },
+
+  setConversionStatus: (status, message = '') => {
+    set({ conversionStatus: status, conversionMessage: message });
+    if (status === 'success' || status === 'error') {
+      setTimeout(() => {
+        if (get().conversionStatus === status) {
+          set({ conversionStatus: 'idle', conversionMessage: '' });
+        }
+      }, 4000);
     }
   },
 }));

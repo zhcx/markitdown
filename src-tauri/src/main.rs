@@ -46,6 +46,7 @@ fn main() {
             commands::export_word,
             commands::cleanup_export_file,
             commands::get_file_content,
+            commands::convert_document,
             commands::save_file_content,
             commands::read_file_base64,
             commands::get_recent_files,

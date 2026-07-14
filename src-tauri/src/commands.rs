@@ -73,7 +73,7 @@ pub struct AISettings {
 impl Default for Settings {
     fn default() -> Self {
         Settings {
-            appearance: AppearanceSettings { theme: "light".into(), font_family: "Microsoft YaHei".into(), font_size: 16, line_height: 1.6 },
+            appearance: AppearanceSettings { theme: "inkwell-light".into(), font_family: "Microsoft YaHei".into(), font_size: 16, line_height: 1.6 },
             editor: EditorSettings { auto_save_interval: 30000, spell_check: false, auto_complete: true },
             image_hosting: ImageHostingSettings {
                 active_service: "local".into(),
@@ -326,6 +326,109 @@ fn write_utf8_text_file(path: &str, content: &str) -> Result<(), String> {
 
 #[tauri::command] pub async fn get_file_content(path: String) -> Result<String, String> { read_utf8_text_file(&path) }
 
+fn document_converter_script(app: &AppHandle) -> Result<PathBuf, String> {
+    let bundled = app.path().resource_dir()
+        .map_err(|e| format!("Unable to locate application resources: {e}"))?
+        .join("resources").join("document_converter.py");
+    if bundled.is_file() { return Ok(bundled); }
+
+    let development = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("resources").join("document_converter.py");
+    if development.is_file() { Ok(development) }
+    else { Err("Document converter resource is missing from the application bundle.".into()) }
+}
+
+fn document_converter_executable(app: &AppHandle) -> Option<PathBuf> {
+    let resource_dir = app.path().resource_dir().ok()?;
+    let mut candidates = vec![resource_dir.join("resources").join("document_converter.exe")];
+    if let Ok(current_exe) = std::env::current_exe() {
+        if let Some(exe_dir) = current_exe.parent() {
+            // Supports both the Tauri bundle layout and the portable ZIP layout.
+            candidates.push(exe_dir.join("resources").join("document_converter.exe"));
+            candidates.push(exe_dir.join("document_converter.exe"));
+        }
+    }
+    candidates.into_iter().find(|path| path.is_file())
+}
+
+fn markdown_from_converter_output(
+    output: std::process::Output,
+    markdown_path: &Path,
+    source_size: u64,
+    elapsed: std::time::Duration,
+) -> Result<String, String> {
+    let status = output.status.code().map_or_else(|| "terminated".to_string(), |code| code.to_string());
+    let stdout_len = output.stdout.len();
+    let stderr_len = output.stderr.len();
+    if !output.status.success() {
+        let error = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        log_to_file(&format!(
+            "document conversion failed: input_bytes={source_size}, elapsed_ms={}, exit={status}, stdout_bytes={stdout_len}, stderr_bytes={stderr_len}, error={error}",
+            elapsed.as_millis()
+        ));
+        return Err(if error.is_empty() { "文档转换失败。".into() } else { error });
+    }
+    let markdown = std::fs::read_to_string(markdown_path)
+        .map_err(|e| format!("读取转换结果失败: {e}"));
+    let output_size = std::fs::metadata(markdown_path).map(|meta| meta.len()).unwrap_or(0);
+    std::fs::remove_file(markdown_path).ok();
+    log_to_file(&format!(
+        "document conversion completed: input_bytes={source_size}, output_bytes={output_size}, elapsed_ms={}, exit={status}, stdout_bytes={stdout_len}, stderr_bytes={stderr_len}",
+        elapsed.as_millis()
+    ));
+    markdown
+}
+
+fn hide_converter_window(command: &mut std::process::Command) {
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        // CREATE_NO_WINDOW prevents the console flash when a sidecar starts.
+        command.creation_flags(0x0800_0000);
+    }
+}
+
+fn python_candidates() -> Vec<String> {
+    if let Ok(path) = std::env::var("MARKITDOWN_PYTHON") {
+        if !path.trim().is_empty() { return vec![path]; }
+    }
+    if cfg!(target_os = "windows") { vec!["python.exe".into(), "py.exe".into()] }
+    else { vec!["python3".into(), "python".into()] }
+}
+
+#[tauri::command]
+pub async fn convert_document(app: AppHandle, path: String) -> Result<String, String> {
+    let source = PathBuf::from(&path);
+    if !source.is_file() { return Err("请选择一个存在的本地文件。".into()); }
+    let source_size = std::fs::metadata(&source).map(|meta| meta.len()).unwrap_or(0);
+    let markdown_path = std::env::temp_dir().join(format!("markitdown-conversion-{}.md", uuid::Uuid::new_v4()));
+    let bundled_converter = document_converter_executable(&app);
+    let script = if bundled_converter.is_none() { Some(document_converter_script(&app)?) } else { None };
+
+    tokio::task::spawn_blocking(move || {
+        let started_at = std::time::Instant::now();
+        if let Some(converter) = bundled_converter {
+            let mut command = std::process::Command::new(converter);
+            hide_converter_window(&mut command);
+            return command.arg(&source).arg(&markdown_path).output()
+                .map_err(|e| format!("无法启动内置文档转换器: {e}"))
+                .and_then(|output| markdown_from_converter_output(output, &markdown_path, source_size, started_at.elapsed()));
+        }
+
+        let script = script.ok_or_else(|| "文档转换器脚本不可用。".to_string())?;
+        let mut launch_error = None;
+        for python in python_candidates() {
+            let mut command = std::process::Command::new(&python);
+            hide_converter_window(&mut command);
+            match command.arg(&script).arg(&source).arg(&markdown_path).output() {
+                Ok(output) => return markdown_from_converter_output(output, &markdown_path, source_size, started_at.elapsed()),
+                Err(error) => launch_error = Some(format!("{python}: {error}")),
+            }
+        }
+        Err(format!("无法启动 Python。请安装 Python 3.10+，或设置 MARKITDOWN_PYTHON 指向 Python 可执行文件。{}", launch_error.map(|e| format!(" ({e})")).unwrap_or_default()))
+    }).await.map_err(|e| format!("文档转换任务异常结束: {e}"))?
+}
+
 #[tauri::command]
 pub async fn read_file_base64(path: String) -> Result<String, String> {
     let data = std::fs::read(&path).map_err(|e| format!("读取文件失败: {}", e))?;
@@ -361,6 +464,13 @@ fn get_recent_files_path(app: &AppHandle) -> PathBuf {
     Ok(recent)
 }
 
+fn is_workspace_file(name: &str) -> bool {
+    matches!(name.rsplit('.').next().unwrap_or("").to_ascii_lowercase().as_str(),
+        "md" | "markdown" | "txt" | "pdf" | "doc" | "docx" | "ppt" | "pptx" |
+        "xls" | "xlsx" | "html" | "htm" | "csv" | "json" | "xml" | "epub" | "zip" |
+        "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" | "wav" | "mp3")
+}
+
 #[tauri::command] pub async fn read_folder(path: String) -> Result<Vec<FileNode>, String> {
     let mut nodes = Vec::new();
     for entry in std::fs::read_dir(&path).map_err(|e| e.to_string())? {
@@ -369,6 +479,7 @@ fn get_recent_files_path(app: &AppHandle) -> PathBuf {
         let name = e.file_name().to_string_lossy().to_string();
         if name.starts_with('.') || name == "node_modules" || name == "target" { continue; }
         let is_dir = m.is_dir();
+        if !is_dir && !is_workspace_file(&name) { continue; }
         nodes.push(FileNode { name, path: e.path().to_string_lossy().to_string(), is_directory: is_dir, children: if is_dir { Some(Vec::new()) } else { None } });
     }
     nodes.sort_by(|a, b| match (a.is_directory, b.is_directory) {
@@ -380,11 +491,14 @@ fn get_recent_files_path(app: &AppHandle) -> PathBuf {
 
 #[tauri::command] pub async fn check_for_updates() -> Result<UpdateInfo, String> {
     let client = reqwest::Client::builder().timeout(Duration::from_secs(30)).connect_timeout(Duration::from_secs(10)).build().map_err(|e| format!("HTTP: {}", e))?;
-    let resp = client.get("https://api.github.com/repos/zhcx/markitdown/releases/latest").header("User-Agent", "MarkitDown").header("Accept", "application/vnd.github.v3+json").send().await.map_err(|e| format!("Network: {}", e))?;
-    if !resp.status().is_success() { return Err(format!("API: {}", resp.status())); }
-    let rel: serde_json::Value = resp.json().await.map_err(|e| format!("JSON: {}", e))?;
-    let latest = rel["tag_name"].as_str().unwrap_or("v0.0.0").trim_start_matches('v').to_string();
     let current = VERSION.to_string();
+    let resp = match client.get("https://api.github.com/repos/zhcx/markitdown/releases/latest").header("User-Agent", "MarkitDown").header("Accept", "application/vnd.github.v3+json").send().await {
+        Ok(resp) if resp.status().is_success() => resp,
+        Ok(resp) => return check_updates_from_atom(&client, current, format!("GitHub API: {}", resp.status())).await,
+        Err(error) => return check_updates_from_atom(&client, current, format!("GitHub API: {}", error)).await,
+    };
+    let rel: serde_json::Value = resp.json().await.map_err(|e| format!("JSON: {}", e))?;
+    let latest = rel["tag_name"].as_str().ok_or("GitHub API response is missing tag_name")?.trim_start_matches('v').to_string();
     let has_update = compare_versions(&latest, &current)?;
 
     // Find the NSIS installer asset (.exe)
@@ -419,12 +533,72 @@ fn get_recent_files_path(app: &AppHandle) -> PathBuf {
     })
 }
 
+async fn check_updates_from_atom(client: &reqwest::Client, current: String, api_error: String) -> Result<UpdateInfo, String> {
+    let feed = client
+        .get("https://github.com/zhcx/markitdown/releases.atom")
+        .header("User-Agent", "MarkitDown")
+        .send()
+        .await
+        .map_err(|error| format!("{}; Release feed: {}", api_error, error))?;
+    if !feed.status().is_success() {
+        return Err(format!("{}; Release feed: {}", api_error, feed.status()));
+    }
+
+    let latest = extract_latest_tag_from_atom(&feed.text().await.map_err(|error| format!("Release feed body: {}", error))?)?;
+    let has_update = compare_versions(&latest, &current)?;
+    let download_url = format!("https://github.com/zhcx/markitdown/releases/tag/v{}", latest);
+
+    Ok(UpdateInfo {
+        has_update,
+        current_version: current,
+        latest_version: latest,
+        download_url,
+        asset_download_url: String::new(),
+        asset_name: String::new(),
+        asset_size: 0,
+        release_notes: "GitHub API 暂时不可用，已通过 Release feed 检测到该版本。请前往 Release 页面下载安装包。".into(),
+        published_at: String::new(),
+    })
+}
+
+fn extract_latest_tag_from_atom(feed: &str) -> Result<String, String> {
+    const TAG_PREFIX: &str = "/releases/tag/";
+    let tag_start = feed.find(TAG_PREFIX).ok_or("Release feed does not contain a release tag")? + TAG_PREFIX.len();
+    let tag = feed[tag_start..]
+        .split(['\"', '\'', '<', '&'])
+        .next()
+        .unwrap_or("")
+        .trim_start_matches('v');
+    if tag.is_empty() {
+        return Err("Release feed contains an empty release tag".into());
+    }
+    tag.split('.').try_for_each(|part| part.parse::<u32>().map(|_| ()).map_err(|_| format!("Invalid release tag: {}", tag)))?;
+    Ok(tag.to_string())
+}
+
 fn compare_versions(latest: &str, current: &str) -> Result<bool, String> {
     let parse = |v: &str| -> Result<Vec<u32>, String> { v.split('.').map(|s| s.parse::<u32>().map_err(|e| format!("{}", e))).collect() };
     let mut lp = parse(latest)?; let mut cp = parse(current)?;
     while lp.len() < cp.len() { lp.push(0); } while cp.len() < lp.len() { cp.push(0); }
     for (l, c) in lp.iter().zip(cp.iter()) { if l > c { return Ok(true); } else if l < c { return Ok(false); } }
     Ok(false)
+}
+
+#[cfg(test)]
+mod update_tests {
+    use super::extract_latest_tag_from_atom;
+
+    #[test]
+    fn extracts_the_first_release_tag_from_an_atom_feed() {
+        let feed = r#"
+            <feed>
+              <entry><link href="https://github.com/zhcx/markitdown/releases/tag/v0.2.6" /></entry>
+              <entry><link href="https://github.com/zhcx/markitdown/releases/tag/v0.2.5" /></entry>
+            </feed>
+        "#;
+
+        assert_eq!(extract_latest_tag_from_atom(feed).unwrap(), "0.2.6");
+    }
 }
 
 #[tauri::command]

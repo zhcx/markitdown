@@ -11,7 +11,6 @@ import { Sidebar } from './components/Sidebar/Sidebar';
 import { AICompanionPopup } from './components/AI/AICompanionPopup';
 import { AITranslationPopup } from './components/AI/AITranslationPopup';
 import { AIChatbotPanel } from './components/Chatbot/AIChatbotPanel';
-import { OutlinePanel } from './components/Outline/OutlinePanel';
 import { TitleBar } from './components/TitleBar/TitleBar';
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 import './styles/main.css';
@@ -33,7 +32,8 @@ function App() {
     splitRatio,
     setSplitRatio,
     setSidebarWidth,
-    openFile
+    openFile,
+    convertDocument
   } = useAppStore();
   const editorView = useAppStore(state => state.editorView);
   const { proofreadResults, setProofreadPanelVisible, translationPosition, translationOriginal, translationResult, setTranslationVisible, chatbotVisible } = useAIStore();
@@ -50,7 +50,7 @@ function App() {
   const [chatbotPanelWidth, setChatbotPanelWidth] = useState(340);
   const [previewScrollElement, setPreviewScrollElement] = useState<HTMLDivElement | null>(null);
   const scrollSyncFrame = useRef<number | null>(null);
-  const scrollSyncResetTimer = useRef<number | null>(null);
+  const pendingScrollSync = useRef<{ source: HTMLElement; target: HTMLElement } | null>(null);
   const programmaticScrollRef = useRef<{ element: HTMLElement; top: number } | null>(null);
 
   useEffect(() => {
@@ -63,13 +63,13 @@ function App() {
 
     const applyTheme = () => {
       let resolvedTheme = preference === 'system'
-        ? (mediaQuery.matches ? 'notion-dark' : 'notion-light')
+        ? (mediaQuery.matches ? 'inkwell-dark' : 'inkwell-light')
         : preference;
 
       // Keep older saved themes working, but never leave the UI without a
       // complete token set when a malformed value makes it into settings.
-      if (!['claude-light', 'claude-dark', 'notion-light', 'notion-dark'].includes(resolvedTheme)) {
-        resolvedTheme = 'notion-light';
+      if (!['inkwell-light', 'inkwell-dark', 'claude-light', 'claude-dark', 'notion-light', 'notion-dark'].includes(resolvedTheme)) {
+        resolvedTheme = 'inkwell-light';
       }
 
       document.documentElement.setAttribute('data-theme', resolvedTheme);
@@ -98,12 +98,19 @@ function App() {
         const lowerPath = path.toLowerCase();
         if (lowerPath.endsWith('.md') || lowerPath.endsWith('.txt') || lowerPath.endsWith('.markdown')) {
           await openFile(path);
+        } else {
+          try {
+            await convertDocument(path);
+          } catch (error) {
+            console.error('Document conversion failed:', error);
+            window.alert(`文档转换失败：${String(error)}`);
+          }
         }
       }
     });
 
     return () => { unlisten.then(fn => fn()); };
-  }, [openFile]);
+  }, [convertDocument, openFile]);
 
   const handleSplitMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -236,27 +243,25 @@ function App() {
         return;
       }
 
-      if (scrollSyncFrame.current !== null) {
-        window.cancelAnimationFrame(scrollSyncFrame.current);
-      }
+      pendingScrollSync.current = { source, target };
+      if (scrollSyncFrame.current !== null) return;
 
       scrollSyncFrame.current = window.requestAnimationFrame(() => {
-        const targetMaxScrollTop = target.scrollHeight - target.clientHeight;
-        const nextTop = targetMaxScrollTop > 0 ? getScrollRatio(source) * targetMaxScrollTop : 0;
+        scrollSyncFrame.current = null;
+        const request = pendingScrollSync.current;
+        pendingScrollSync.current = null;
+        if (!request) return;
 
-        if (Math.abs(target.scrollTop - nextTop) < 1) return;
+        const { source: latestSource, target: latestTarget } = request;
+        const targetMaxScrollTop = latestTarget.scrollHeight - latestTarget.clientHeight;
+        const nextTop = targetMaxScrollTop > 0 ? getScrollRatio(latestSource) * targetMaxScrollTop : 0;
 
-        programmaticScrollRef.current = { element: target, top: nextTop };
-        target.scrollTop = nextTop;
+        // A tiny threshold avoids expensive layout work from sub-pixel scroll events
+        // while preserving the feel of one-to-one scrolling for long documents.
+        if (Math.abs(latestTarget.scrollTop - nextTop) < 2) return;
 
-        if (scrollSyncResetTimer.current !== null) {
-          window.clearTimeout(scrollSyncResetTimer.current);
-        }
-
-        scrollSyncResetTimer.current = window.setTimeout(() => {
-          programmaticScrollRef.current = null;
-          scrollSyncResetTimer.current = null;
-        }, 80);
+        programmaticScrollRef.current = { element: latestTarget, top: nextTop };
+        latestTarget.scrollTop = nextTop;
       });
     };
 
@@ -275,11 +280,7 @@ function App() {
         scrollSyncFrame.current = null;
       }
 
-      if (scrollSyncResetTimer.current !== null) {
-        window.clearTimeout(scrollSyncResetTimer.current);
-        scrollSyncResetTimer.current = null;
-      }
-
+      pendingScrollSync.current = null;
       programmaticScrollRef.current = null;
     };
   }, [mode, editorView, previewScrollElement]);
@@ -294,8 +295,7 @@ function App() {
       <div className="app-body">
         {(sidebarVisible || outlineVisible) && (
           <>
-            {outlineVisible && <OutlinePanel style={{ width: sidebarWidth }} />}
-            {!outlineVisible && sidebarVisible && <Sidebar style={{ width: sidebarWidth }} />}
+            <Sidebar style={{ width: sidebarWidth }} />
             <div
               ref={sidebarDividerRef}
               className="sidebar-divider resizable"

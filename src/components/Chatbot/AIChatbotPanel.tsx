@@ -28,6 +28,16 @@ interface PendingAttachment {
   content?: string;
 }
 
+function ComposerIcon({ type }: { type: 'attach' | 'document' | 'send' }) {
+  if (type === 'attach') {
+    return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5.2 8.8 9.7 4.3a2.35 2.35 0 1 1 3.3 3.3l-5.4 5.4a3.6 3.6 0 0 1-5.1-5.1l5-5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>;
+  }
+  if (type === 'document') {
+    return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 1.8h5l3 3v9.4H4zM9 1.8v3.3h3M6 8h4M6 10.5h4" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round" /></svg>;
+  }
+  return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m2.2 2.5 11.2 5.1-11.2 5.1 2-5.1z" fill="currentColor" /><path d="M4.2 7.6h8.2" fill="none" stroke="var(--bg-elevated)" strokeWidth="1.15" strokeLinecap="round" /></svg>;
+}
+
 export function AIChatbotPanel() {
   const {
     chatbotMessages,
@@ -190,14 +200,14 @@ export function AIChatbotPanel() {
       <div className="chatbot-input-area">
         <div className="chatbot-input-toolbar">
           <button className="chatbot-toolbar-btn" onClick={handleAttach} title="上传附件">
-            📎
+            <ComposerIcon type="attach" />
           </button>
           <button
             className={`chatbot-toolbar-btn chatbot-link-btn ${linkedDocument ? 'linked' : ''}`}
             onClick={toggleLinkDocument}
             title={linkedDocument ? '取消关联文档' : '关联当前文档'}
           >
-            {linkedDocument ? '📄' : '📋'}
+            <ComposerIcon type="document" />
           </button>
           <div className="reasoning-dropdown" ref={reasoningMenuRef}>
             <button
@@ -205,7 +215,9 @@ export function AIChatbotPanel() {
               onClick={() => setReasoningMenuOpen(!reasoningMenuOpen)}
               title="思考强度"
             >
-              {reasoningIcons[reasoningEffort]} {reasoningLabels[reasoningEffort]} <span className="reasoning-arrow">▼</span>
+              <span className="reasoning-symbol" aria-hidden="true">✦</span>
+              <span>{reasoningLabels[reasoningEffort]}</span>
+              <span className="reasoning-arrow" aria-hidden="true">⌄</span>
             </button>
             {reasoningMenuOpen && (
               <div className="reasoning-menu">
@@ -232,7 +244,7 @@ export function AIChatbotPanel() {
             disabled={chatbotLoading || (!inputValue.trim() && pendingAttachments.length === 0)}
             onClick={handleSend}
           >
-            发送
+            <ComposerIcon type="send" />
           </button>
         </div>
         <textarea

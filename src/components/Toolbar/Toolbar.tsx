@@ -97,7 +97,7 @@ function ImageOptionsModal({ onClose, onInsert }: { onClose: () => void; onInser
 }
 
 export function Toolbar() {
-  const { mode, setMode, editorView, setContent, content, sidebarVisible, setSidebarVisible, outlineVisible, setOutlineVisible, settings } = useAppStore();
+  const { mode, setMode, editorView, setContent, content, sidebarVisible, setSidebarVisible, setSettingsOpen, setSettingsTab, settings } = useAppStore();
   const [showImageModal, setShowImageModal] = useState(false);
   const [showTablePicker, setShowTablePicker] = useState(false);
   const tablePickerButtonRef = useRef<HTMLButtonElement>(null);
@@ -112,9 +112,20 @@ export function Toolbar() {
     generateOutline,
     currentStyle,
     setCurrentStyle,
-    toggleChatbot,
+    setChatbotVisible,
     chatbotVisible,
   } = useAIStore();
+
+  const handleAiEntry = () => {
+    const configured = settings.ai.enabled && Boolean(settings.ai.api_key.trim());
+    if (!configured) {
+      window.alert('请先在设置中启用 AI 并填写 API 密钥。');
+      setSettingsTab('ai');
+      setSettingsOpen(true);
+      return;
+    }
+    setChatbotVisible(true);
+  };
 
   const getSelectedText = () => {
     if (!editorView) return '';
@@ -379,7 +390,7 @@ export function Toolbar() {
   const aiGroup = settings.ai.enabled ? {
     title: 'AI',
     buttons: [
-      { label: '💬', title: chatbotVisible ? '关闭AI对话' : 'AI对话', action: () => toggleChatbot() },
+      { label: '💬', title: '显示AI对话', action: () => setChatbotVisible(true) },
       { label: '✓', title: '校对文字', action: handleProofread },
       { label: '✨', title: '伴写建议', action: handleCompanion },
       { label: '🎨', title: `风格: ${styleNames[currentStyle] || currentStyle}`, action: handleStyleChange },
@@ -455,11 +466,11 @@ export function Toolbar() {
       </div>
       <div className="toolbar-right">
         <button
-          className={`toolbar-btn ${outlineVisible ? 'active' : ''}`}
-          title={outlineVisible ? '隐藏大纲' : '显示大纲'}
-          onClick={() => setOutlineVisible(!outlineVisible)}
+          className={`toolbar-btn ai-entry-btn ${chatbotVisible ? 'active' : ''}`}
+          title={chatbotVisible ? 'AI 对话已打开' : '打开 AI 对话'}
+          onClick={handleAiEntry}
         >
-          📑
+          AI
         </button>
         <button
           className="toolbar-btn"
