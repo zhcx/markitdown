@@ -6676,7 +6676,6 @@ textarea:focus-visible {
   .chatbot-toolbar-btn.reasoning-btn .reasoning-arrow { display: none; }
   .chatbot-input-toolbar { gap: 3px; }
 }
-
 /* Chat composer state controls: keep activation obvious and icons font-independent. */
 .chatbot-toolbar-btn.active {
   color: var(--accent-color);
