@@ -71,7 +71,7 @@ export function AIChatbotPanel() {
     setPendingAttachments([]);
     setInputValue('');
     if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.removeProperty('height');
     }
     sendChatMessage(text, attachments);
   }, [inputValue, pendingAttachments, chatbotLoading, sendChatMessage]);
@@ -251,7 +251,7 @@ export function AIChatbotPanel() {
           ref={textareaRef}
           className="chatbot-textarea"
           placeholder="输入消息… (Enter 发送, Shift+Enter 换行)"
-          rows={1}
+          rows={4}
           value={inputValue}
           onChange={(e) => setInputValue(e.target.value)}
           onKeyDown={handleKeyDown}

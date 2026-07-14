@@ -6569,7 +6569,14 @@ textarea:focus-visible {
   justify-content: center;
   padding: 0;
 }
-.chatbot-textarea { min-height: 58px; padding: 10px 11px; background: var(--bg-elevated); }
+.chatbot-textarea {
+  height: 116px;
+  min-height: 116px;
+  max-height: 360px;
+  resize: vertical;
+  padding: 10px 11px;
+  background: var(--bg-elevated);
+}
 
 @media (max-width: 350px) {
   .chatbot-toolbar-btn.reasoning-btn { min-width: 30px; padding: 0; }

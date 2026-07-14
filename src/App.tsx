@@ -183,7 +183,34 @@ function App() {
     const rect = container.getBoundingClientRect();
     const newWidth = rect.right - e.clientX;
     setChatbotPanelWidth(Math.max(200, Math.min(500, newWidth)));
-  }, []);
+    // Keep the editor and preview as equal peers while the third Chatbox
+    // column is being resized.
+    setSplitRatio(0.5);
+  }, [setSplitRatio]);
+
+  useEffect(() => {
+    if (!chatbotVisible) return undefined;
+
+    const balanceThreeColumns = () => {
+      const appBody = chatbotDividerRef.current?.parentElement;
+      if (!appBody) return;
+
+      const explorerWidth = (sidebarVisible || outlineVisible) ? sidebarWidth + 10 : 0;
+      const dividerWidth = 12;
+      const usableWidth = appBody.clientWidth - explorerWidth - dividerWidth;
+      const balancedChatWidth = Math.round(usableWidth / 3);
+
+      setChatbotPanelWidth(Math.max(280, Math.min(500, balancedChatWidth)));
+      setSplitRatio(0.5);
+    };
+
+    const frame = window.requestAnimationFrame(balanceThreeColumns);
+    window.addEventListener('resize', balanceThreeColumns);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener('resize', balanceThreeColumns);
+    };
+  }, [chatbotVisible, outlineVisible, setSplitRatio, sidebarVisible, sidebarWidth]);
 
   const handleMouseUp = useCallback(() => {
     if (isDragging.current) {
