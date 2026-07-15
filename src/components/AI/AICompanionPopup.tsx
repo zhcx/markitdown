@@ -6,7 +6,6 @@ export function AICompanionPopup() {
     companionVisible,
     companionPosition,
     companionSuggestions,
-    currentStyle,
     status,
     statusMessage,
     setCompanionVisible,
@@ -14,8 +13,7 @@ export function AICompanionPopup() {
     getCompanionSuggestion,
     clearResults
   } = useAIStore();
-
-  useAppStore();
+  const currentStyle = useAppStore((state) => state.settings.ai.writing_style);
 
   if (!companionVisible || !companionPosition) return null;
 

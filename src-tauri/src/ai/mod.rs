@@ -103,6 +103,7 @@ pub async fn ai_chat_streaming(
     doc_title: Option<String>,
     skill_context: Option<String>,
     enable_thinking: Option<bool>,
+    request_id: String,
     window: WebviewWindow,
 ) -> Result<(), String> {
     if !settings.enabled {
@@ -125,6 +126,7 @@ pub async fn ai_chat_streaming(
             doc_title,
             skill_context,
             enable_thinking.unwrap_or(false),
+            request_id,
             window,
         )
         .await

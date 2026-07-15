@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type MouseEvent } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { MenuBar } from '../MenuBar/MenuBar';
+import { useAppStore } from '../../stores/appStore';
 
 const APP_NAME = 'MarkitDown';
 
@@ -8,6 +9,9 @@ export function TitleBar() {
   const [isMaximized, setIsMaximized] = useState(false);
   const mountedRef = useRef(true);
   const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+  const activeDocumentTitle = useAppStore(state => (
+    state.tabs.find(tab => tab.id === state.activeTabId)?.title || '未命名'
+  ));
 
   useEffect(() => {
     if (!isTauri) return undefined;
@@ -72,9 +76,28 @@ export function TitleBar() {
     getCurrentWindow().startDragging().catch(() => { /* not critical */ });
   }, [isTauri]);
 
-  const handleDragDoubleClick = useCallback(() => {
-    void handleToggleMaximize();
-  }, [handleToggleMaximize]);
+  const handleDragDoubleClick = useCallback(async (event: MouseEvent<HTMLElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!isTauri) return;
+
+    try {
+      const appWindow = getCurrentWindow();
+      const maximized = await appWindow.isMaximized();
+
+      if (maximized) {
+        // Restore the saved window size first, then center that restored window
+        // in the current monitor's work area.
+        await appWindow.unmaximize();
+        await appWindow.center();
+      } else {
+        await appWindow.maximize();
+      }
+
+      const nextMaximized = await appWindow.isMaximized();
+      if (mountedRef.current) setIsMaximized(nextMaximized);
+    } catch { /* not critical */ }
+  }, [isTauri]);
 
   return (
     <div className="titlebar">
@@ -86,7 +109,11 @@ export function TitleBar() {
         data-tauri-drag-region
         onMouseDown={handleStartDragging}
         onDoubleClick={handleDragDoubleClick}
-      />
+      >
+        <div className="titlebar-command-center" data-tauri-drag-region role="status" aria-label={`当前文档：${activeDocumentTitle}`}>
+          <span>{activeDocumentTitle}</span>
+        </div>
+      </div>
       <div className="titlebar-controls" data-tauri-drag-region="false">
         <button
           className="titlebar-btn titlebar-minimize"

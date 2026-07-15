@@ -16,6 +16,7 @@ interface SkillState {
   importSkillPackage: (path: string) => Promise<void>;
   importSkillFile: (file: File) => Promise<void>;
   setSkillEnabled: (id: string, enabled: boolean) => Promise<void>;
+  deleteSkill: (id: string) => Promise<void>;
 }
 
 const isTauriRuntime = () => '__TAURI_INTERNALS__' in window;
@@ -110,5 +111,16 @@ export const useSkillStore = create<SkillState>((set) => ({
     }
     const { invoke } = await import('@tauri-apps/api/core');
     set({ skills: await invoke<SkillInfo[]>('set_skill_enabled', { id, enabled }) });
+  },
+
+  deleteSkill: async (id) => {
+    if (!isTauriRuntime()) {
+      const nextSkills = readBrowserSkills().filter((skill) => skill.id !== id);
+      saveBrowserSkills(nextSkills);
+      set({ skills: nextSkills });
+      return;
+    }
+    const { invoke } = await import('@tauri-apps/api/core');
+    set({ skills: await invoke<SkillInfo[]>('delete_skill', { id }) });
   },
 }));

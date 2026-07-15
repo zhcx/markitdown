@@ -1,9 +1,33 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="vscode-dark" style="color-scheme: dark">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      // Apply the last selected theme before CSS and React can paint a frame.
+      // Desktop keeps this small mirror in WebView localStorage as well.
+      (() => {
+        try {
+          const saved = JSON.parse(localStorage.getItem('markitdown.browser.settings') || 'null');
+          const preference = saved?.appearance?.theme;
+          const validThemes = ['vscode-light', 'vscode-dark', 'inkwell-light', 'inkwell-dark', 'claude-light', 'claude-dark', 'notion-light', 'notion-dark'];
+          const theme = preference === 'system'
+            ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'vscode-dark' : 'vscode-light')
+            : (validThemes.includes(preference) ? preference : 'vscode-dark');
+          const toFontStack = (fontFamily) => {
+            const family = typeof fontFamily === 'string'
+              ? fontFamily.replace(/[;{}]/g, '').trim()
+              : '';
+            return `${family || 'Microsoft YaHei'}, "Microsoft YaHei", sans-serif`;
+          };
+          document.documentElement.setAttribute('data-theme', theme);
+          document.documentElement.style.colorScheme = theme.endsWith('-dark') ? 'dark' : 'light';
+          document.documentElement.style.setProperty('--font-sans', toFontStack(saved?.appearance?.ui_font_family));
+          document.documentElement.style.setProperty('--font-content', toFontStack(saved?.appearance?.font_family));
+        } catch { /* Use the stylesheet default when cached data is unavailable. */ }
+      })();
+    </script>
     <title>MarkitDown</title>
   </head>
   <body>

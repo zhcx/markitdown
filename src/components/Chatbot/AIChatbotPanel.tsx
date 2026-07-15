@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import { useEffect, useRef, useState, useCallback, useMemo, type PointerEvent as ReactPointerEvent } from 'react';
 import { useAIStore, type ChatMessage, type ReasoningEffort } from '../../stores/aiStore';
 import { AI_PROVIDER_DEFINITIONS, useAppStore, type AIProviderId, type AIProviderProfile } from '../../stores/appStore';
 import { useSkillStore } from '../../stores/skillStore';
@@ -23,26 +23,35 @@ interface PendingAttachment {
   content?: string;
 }
 
-function ComposerIcon({ type }: { type: 'attach' | 'document' | 'send' | 'skills' | 'search' | 'reasoning' | 'chevronDown' }) {
+function ComposerIcon({ type }: { type: 'attach' | 'document' | 'image' | 'chat' | 'send' | 'stop' | 'skills' | 'search' | 'reasoning' | 'chevronDown' }) {
   if (type === 'attach') {
-    return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5.2 8.8 9.7 4.3a2.35 2.35 0 1 1 3.3 3.3l-5.4 5.4a3.6 3.6 0 0 1-5.1-5.1l5-5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>;
+    return <svg className={`composer-icon composer-icon-${type}`} viewBox="0 0 16 16" aria-hidden="true"><path d="M5.2 8.8 9.7 4.3a2.35 2.35 0 1 1 3.3 3.3l-5.4 5.4a3.6 3.6 0 0 1-5.1-5.1l5-5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>;
   }
   if (type === 'document') {
-    return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 1.8h5l3 3v9.4H4zM9 1.8v3.3h3M6 8h4M6 10.5h4" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round" /></svg>;
+    return <svg className={`composer-icon composer-icon-${type}`} viewBox="0 0 16 16" aria-hidden="true"><path d="M4 1.8h5l3 3v9.4H4zM9 1.8v3.3h3M6 8h4M6 10.5h4" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round" /></svg>;
+  }
+  if (type === 'image') {
+    return <svg className={`composer-icon composer-icon-${type}`} viewBox="0 0 16 16" aria-hidden="true"><rect x="1.8" y="2.5" width="12.4" height="11" rx="1" fill="none" stroke="currentColor" strokeWidth="1.25" /><circle cx="5.2" cy="6" r="1.1" fill="none" stroke="currentColor" strokeWidth="1.1" /><path d="m2.8 12 3.4-3.3 2.2 2 2.2-2.4 2.7 2.8" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" /></svg>;
+  }
+  if (type === 'chat') {
+    return <svg className={`composer-icon composer-icon-${type}`} viewBox="0 0 16 16" aria-hidden="true"><path d="M2 2.5h12v8H7l-3.5 3v-3H2z" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinejoin="round" /><path d="M5 6.5h6" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" /></svg>;
   }
   if (type === 'send') {
-    return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m2.2 2.5 11.2 5.1-11.2 5.1 2-5.1z" fill="currentColor" /><path d="M4.2 7.6h8.2" fill="none" stroke="var(--bg-elevated)" strokeWidth="1.15" strokeLinecap="round" /></svg>;
+    return <svg className={`composer-icon composer-icon-${type}`} viewBox="0 0 16 16" aria-hidden="true"><path d="m2.2 2.5 11.2 5.1-11.2 5.1 2-5.1z" fill="currentColor" /><path d="M4.2 7.6h8.2" fill="none" stroke="var(--bg-elevated)" strokeWidth="1.15" strokeLinecap="round" /></svg>;
+  }
+  if (type === 'stop') {
+    return <svg className={`composer-icon composer-icon-${type}`} viewBox="0 0 16 16" aria-hidden="true"><rect x="4" y="4" width="8" height="8" rx="1" fill="currentColor" /></svg>;
   }
   if (type === 'skills') {
-    return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m8 1.8 5 2.55L8 6.9 3 4.35 8 1.8Z" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" /><path d="m3 7.05 5 2.55 5-2.55M3 9.75l5 2.55 5-2.55" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" /></svg>;
+    return <svg className={`composer-icon composer-icon-${type}`} viewBox="0 0 16 16" aria-hidden="true"><path d="m8 1.8 5 2.55L8 6.9 3 4.35 8 1.8Z" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" /><path d="m3 7.05 5 2.55 5-2.55M3 9.75l5 2.55 5-2.55" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" /></svg>;
   }
   if (type === 'search') {
-    return <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.2" fill="none" stroke="currentColor" strokeWidth="1.4" /><path d="m10.2 10.2 3.2 3.2" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>;
+    return <svg className={`composer-icon composer-icon-${type}`} viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.2" fill="none" stroke="currentColor" strokeWidth="1.4" /><path d="m10.2 10.2 3.2 3.2" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>;
   }
   if (type === 'reasoning') {
-    return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.3 10.9a5.7 5.7 0 1 1 11.4 0" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" /><path d="M8 10.8 10.65 7.9M4.4 11.05h.01M11.6 11.05h.01" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round" /><path d="M3.5 13.1h9" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" /></svg>;
+    return <svg className={`composer-icon composer-icon-${type}`} viewBox="0 0 16 16" aria-hidden="true"><path d="M2.3 10.9a5.7 5.7 0 1 1 11.4 0" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" /><path d="M8 10.8 10.65 7.9M4.4 11.05h.01M11.6 11.05h.01" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round" /><path d="M3.5 13.1h9" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" /></svg>;
   }
-  return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.45" strokeLinecap="round" strokeLinejoin="round" /></svg>;
+  return <svg className={`composer-icon composer-icon-${type}`} viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.45" strokeLinecap="round" strokeLinejoin="round" /></svg>;
 }
 
 function ReasoningOptionIcon({ effort }: { effort: ReasoningEffort }) {
@@ -62,6 +71,7 @@ export function AIChatbotPanel() {
   const {
     chatbotMessages,
     chatbotLoading,
+    stopChatMessage,
     setChatbotVisible,
     sendChatMessage,
     clearChatHistory,
@@ -72,18 +82,24 @@ export function AIChatbotPanel() {
   } = useAIStore();
 
   const { settings } = useAppStore();
-  const { skills, loadSkills, importSkillPackage, importSkillFile, setSkillEnabled } = useSkillStore();
+  const { skills, loadSkills } = useSkillStore();
   const [chatProvider, setChatProvider] = useState<AIProviderId>(settings.ai.provider);
   const [chatModel, setChatModel] = useState(settings.ai.model);
   const listRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const composerResizeRef = useRef({ active: false, startY: 0, startHeight: 84 });
   const [inputValue, setInputValue] = useState('');
+  const [composerHeight, setComposerHeight] = useState(84);
   const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
   const [skillMenuOpen, setSkillMenuOpen] = useState(false);
+  const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([]);
   const [webSearchActive, setWebSearchActive] = useState(false);
-  const [searchPreview, setSearchPreview] = useState<WebSearchResponse | null>(null);
-  const skillFileInputRef = useRef<HTMLInputElement>(null);
+  const [webSearchLoading, setWebSearchLoading] = useState(false);
   const webSearchEnabled = settings.web_search.enabled;
+  const enabledSelectedSkillIds = useMemo(
+    () => selectedSkillIds.filter((id) => skills.some((skill) => skill.id === id && skill.enabled)),
+    [selectedSkillIds, skills],
+  );
 
   useEffect(() => {
     void loadSkills();
@@ -93,32 +109,37 @@ export function AIChatbotPanel() {
     if (listRef.current) {
       listRef.current.scrollTop = listRef.current.scrollHeight;
     }
-  }, [chatbotMessages]);
+  }, [chatbotMessages, webSearchLoading]);
 
   const handleSend = useCallback(async () => {
     const text = inputValue.trim();
-    if ((!text && pendingAttachments.length === 0) || chatbotLoading) return;
+    if ((!text && pendingAttachments.length === 0) || chatbotLoading || webSearchLoading) return;
 
     const attachments = pendingAttachments.length > 0 ? [...pendingAttachments] : undefined;
-    let message = text;
-    if (webSearchEnabled && webSearchActive && text) {
-      try {
-        const search = await performWebSearch(text, settings.web_search);
-        setSearchPreview(search);
-        message = `${text}\n\n---\n\n[网络搜索上下文]\n${formatWebSearchContext(search)}`;
-      } catch (error) {
-        window.alert(`网络搜索失败：${String(error)}`);
-        return;
-      }
-    }
+    // Give instant feedback before any network-bound search work begins.
     setPendingAttachments([]);
     setInputValue('');
-    if (textareaRef.current) {
-      textareaRef.current.style.removeProperty('height');
+    setComposerHeight(84);
+
+    let searchPreview: WebSearchResponse | undefined;
+    let searchContext: string | undefined;
+    if (webSearchEnabled && webSearchActive && text) {
+      setWebSearchLoading(true);
+      try {
+        const search = await performWebSearch(text, settings.web_search);
+        searchPreview = search;
+        searchContext = formatWebSearchContext(search);
+      } catch (error) {
+        setInputValue(text);
+        if (attachments) setPendingAttachments(attachments);
+        window.alert(`网络搜索失败：${String(error)}`);
+        return;
+      } finally {
+        setWebSearchLoading(false);
+      }
     }
-    if (webSearchEnabled && webSearchActive && !('__TAURI_INTERNALS__' in window)) return;
-    sendChatMessage(message, attachments, { provider: chatProvider, model: chatModel });
-  }, [inputValue, pendingAttachments, chatbotLoading, sendChatMessage, chatProvider, chatModel, settings.web_search, webSearchActive, webSearchEnabled]);
+    sendChatMessage(text, attachments, { provider: chatProvider, model: chatModel, searchContext, searchPreview, skillIds: enabledSelectedSkillIds });
+  }, [inputValue, pendingAttachments, chatbotLoading, sendChatMessage, chatProvider, chatModel, settings.web_search, webSearchActive, webSearchEnabled, enabledSelectedSkillIds, webSearchLoading]);
 
   const providerProfiles = useMemo<Record<string, AIProviderProfile>>(() => {
     try {
@@ -144,6 +165,32 @@ export function AIChatbotPanel() {
     setChatProvider(provider);
     setChatModel(profile?.model || AI_PROVIDER_DEFINITIONS.find((item) => item.id === provider)?.model || '');
   };
+
+  const handleComposerResizeStart = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    composerResizeRef.current = {
+      active: true,
+      startY: event.clientY,
+      startHeight: composerHeight,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }, [composerHeight]);
+
+  const handleComposerResizeMove = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    const resize = composerResizeRef.current;
+    if (!resize.active) return;
+    // The composer stays docked to the bottom: dragging its top edge upward
+    // increases the writing area, which matches standard chat-app behavior.
+    const nextHeight = Math.max(72, Math.min(280, resize.startHeight + resize.startY - event.clientY));
+    setComposerHeight(nextHeight);
+  }, []);
+
+  const handleComposerResizeEnd = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    composerResizeRef.current.active = false;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  }, []);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     const isEnter = e.key === 'Enter' || e.code === 'Enter' || e.code === 'NumpadEnter';
@@ -184,36 +231,6 @@ export function AIChatbotPanel() {
       setPendingAttachments(prev => [...prev, ...newAttachments]);
     } catch (err) {
       console.error('Failed to attach file:', err);
-    }
-  };
-
-  const handleImportSkill = async () => {
-    try {
-      if (!('__TAURI_INTERNALS__' in window)) {
-        skillFileInputRef.current?.click();
-        return;
-      }
-      const selected = await open({
-        multiple: false,
-        filters: [{ name: 'Skill 包', extensions: ['zip', 'md'] }],
-      });
-      if (!selected || Array.isArray(selected)) return;
-      await importSkillPackage(selected);
-      setSkillMenuOpen(true);
-    } catch (error) {
-      window.alert(`导入 Skill 失败：${String(error)}`);
-    }
-  };
-
-  const handleBrowserSkillFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    event.target.value = '';
-    if (!file) return;
-    try {
-      await importSkillFile(file);
-      setSkillMenuOpen(true);
-    } catch (error) {
-      window.alert(`导入 Skill 失败：${String(error)}`);
     }
   };
 
@@ -273,7 +290,7 @@ export function AIChatbotPanel() {
       <div className="chatbot-messages" ref={listRef}>
         {chatbotMessages.length === 0 ? (
           <div className="chatbot-empty">
-            <div className="chatbot-empty-icon">💬</div>
+            <div className="chatbot-empty-icon"><ComposerIcon type="chat" /></div>
             <div className="chatbot-empty-text">开始 AI 对话</div>
             <div className="chatbot-empty-hint">
               向 AI 提问关于当前文档的内容，或寻求写作帮助
@@ -294,14 +311,24 @@ export function AIChatbotPanel() {
             </div>
           </div>
         )}
-        {searchPreview && <WebSearchPreview response={searchPreview} />}
+        {webSearchLoading && (
+          <div className="chatbot-message assistant">
+            <div className="chatbot-avatar assistant-avatar">AI</div>
+            <div className="chatbot-bubble assistant-bubble thinking">
+              <span className="chatbot-searching-label">正在联网搜索</span>
+              <span className="chatbot-typing-dot" />
+              <span className="chatbot-typing-dot" />
+              <span className="chatbot-typing-dot" />
+            </div>
+          </div>
+        )}
       </div>
 
       {pendingAttachments.length > 0 && (
         <div className="chatbot-attachment-bar">
           {pendingAttachments.map((att, i) => (
             <div key={i} className="chatbot-attachment-chip">
-              {att.type === 'image' ? '🖼️' : '📄'}
+              <ComposerIcon type={att.type === 'image' ? 'image' : 'document'} />
               <span className="chatbot-attachment-name">{att.name}</span>
               <button className="chatbot-attachment-remove" onClick={() => removeAttachment(i)}>×</button>
             </div>
@@ -311,7 +338,7 @@ export function AIChatbotPanel() {
 
       {linkedDocument && (
         <div className="chatbot-linked-doc-bar">
-          <span className="chatbot-linked-doc-icon">📄</span>
+          <span className="chatbot-linked-doc-icon"><ComposerIcon type="document" /></span>
           <span className="chatbot-linked-doc-name">{linkedDocument.title}</span>
           <button className="chatbot-linked-doc-unlink" onClick={toggleLinkDocument} title="取消关联">×</button>
         </div>
@@ -320,17 +347,16 @@ export function AIChatbotPanel() {
       {skillMenuOpen && (
         <div className="chatbot-skill-panel">
           <div className="chatbot-skill-panel-header">
-            <span>Skills</span>
-            <button onClick={handleImportSkill}>导入 Skill 包</button>
+            <span>选择本轮 Skills</span>
           </div>
           {skills.length === 0 ? (
-            <div className="chatbot-skill-empty">导入 .zip 或 SKILL.md 后即可在对话中使用。</div>
-          ) : skills.map((skill) => (
+            <div className="chatbot-skill-empty">请先在 AI 设置中导入并启用 Skill。</div>
+          ) : skills.filter((skill) => skill.enabled).map((skill) => (
             <label key={skill.id} className="chatbot-skill-item" title={skill.description}>
               <input
                 type="checkbox"
-                checked={skill.enabled}
-                onChange={(event) => void setSkillEnabled(skill.id, event.target.checked)}
+                checked={selectedSkillIds.includes(skill.id)}
+                onChange={() => setSelectedSkillIds((ids) => ids.includes(skill.id) ? ids.filter((id) => id !== skill.id) : [...ids, skill.id])}
               />
               <span>{skill.name}</span>
             </label>
@@ -338,17 +364,18 @@ export function AIChatbotPanel() {
         </div>
       )}
 
-      <input
-        ref={skillFileInputRef}
-        className="chatbot-hidden-file-input"
-        type="file"
-        accept=".zip,.md,text/markdown,application/zip"
-        onChange={handleBrowserSkillFile}
-        aria-hidden="true"
-        tabIndex={-1}
-      />
-
       <div className="chatbot-input-area">
+        <div
+          className="chatbot-composer-resize-handle"
+          role="separator"
+          aria-label="调整输入框高度"
+          aria-orientation="horizontal"
+          title="向上拖动可增大输入框"
+          onPointerDown={handleComposerResizeStart}
+          onPointerMove={handleComposerResizeMove}
+          onPointerUp={handleComposerResizeEnd}
+          onPointerCancel={handleComposerResizeEnd}
+        />
         <div className="chatbot-input-toolbar">
           <button className="chatbot-toolbar-btn" onClick={handleAttach} title="上传附件">
             <span className="chatbot-toolbar-icon"><ComposerIcon type="attach" /></span>
@@ -363,10 +390,10 @@ export function AIChatbotPanel() {
           <button
             className={`chatbot-toolbar-btn ${skillMenuOpen ? 'active' : ''}`}
             onClick={() => setSkillMenuOpen((open) => !open)}
-            title="管理 Skills"
+            title="选择本轮使用的 Skills"
           >
             <span className="chatbot-toolbar-icon"><ComposerIcon type="skills" /></span>
-            <span className="chatbot-skill-count">{skills.filter((skill) => skill.enabled).length || ''}</span>
+            <span className="chatbot-skill-count">{enabledSelectedSkillIds.length || ''}</span>
           </button>
           <button
             className={`chatbot-toolbar-btn web-search-btn ${webSearchEnabled && webSearchActive ? 'active' : ''}`}
@@ -385,7 +412,7 @@ export function AIChatbotPanel() {
               title="思考强度"
             >
             <span className="reasoning-symbol" aria-hidden="true"><ComposerIcon type="reasoning" /></span>
-              <span>{reasoningLabels[reasoningEffort]}</span>
+              <span className="reasoning-label">{reasoningLabels[reasoningEffort]}</span>
               <span className="reasoning-arrow" aria-hidden="true"><ComposerIcon type="chevronDown" /></span>
             </button>
             {reasoningMenuOpen && (
@@ -410,10 +437,11 @@ export function AIChatbotPanel() {
           <div className="chatbot-toolbar-spacer" />
           <button
             className="chatbot-send-btn"
-            disabled={chatbotLoading || (!inputValue.trim() && pendingAttachments.length === 0)}
-            onClick={handleSend}
+            disabled={webSearchLoading || (!chatbotLoading && (!inputValue.trim() && pendingAttachments.length === 0))}
+            onClick={chatbotLoading ? stopChatMessage : handleSend}
+            title={chatbotLoading ? '终止生成' : webSearchLoading ? '正在联网搜索' : '发送消息'}
           >
-            <span className="chatbot-toolbar-icon"><ComposerIcon type="send" /></span>
+            <span className="chatbot-toolbar-icon"><ComposerIcon type={chatbotLoading ? 'stop' : 'send'} /></span>
           </button>
         </div>
         <textarea
@@ -421,11 +449,11 @@ export function AIChatbotPanel() {
           className="chatbot-textarea"
           placeholder="输入消息… (Enter 发送, Shift+Enter 换行)"
           rows={4}
+          style={{ height: composerHeight }}
           value={inputValue}
           onChange={(e) => setInputValue(e.target.value)}
           onKeyDownCapture={handleKeyDown}
           aria-keyshortcuts="Enter"
-          disabled={chatbotLoading}
         />
       </div>
 
@@ -442,7 +470,7 @@ export function AIChatbotPanel() {
 }
 
 function WebSearchPreview({ response }: { response: WebSearchResponse }) {
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(false);
 
   return (
     <section className="chatbot-search-preview" aria-label="网络搜索结果">
@@ -591,6 +619,7 @@ function ChatBubble({ message }: { message: ChatMessage }) {
             )}
           </div>
         </div>
+        {isUser && message.search && <WebSearchPreview response={message.search} />}
         <div className={`chatbot-message-time ${isUser ? 'user' : 'assistant'}`}>
           {timeStr}
         </div>

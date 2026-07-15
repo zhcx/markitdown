@@ -71,7 +71,18 @@ export interface ChatMessage {
   timestamp: number;
   attachments?: ChatMessageAttachment[];
   reasoning?: string;
+  search?: ChatSearchContext;
 }
+
+export interface ChatSearchContext {
+  provider: string;
+  query: string;
+  answer?: string;
+  results: Array<{ title: string; url: string; content: string }>;
+}
+
+let chatRequestSequence = 0;
+let activeChatRequestId: string | null = null;
 
 export interface ChatMessageAttachment {
   type: 'image' | 'text' | 'file';
@@ -188,7 +199,8 @@ interface AIState {
   setProofreadPanelVisible: (visible: boolean) => void;
   setChatbotVisible: (visible: boolean) => void;
   toggleChatbot: () => void;
-  sendChatMessage: (content: string, attachments?: ChatMessageAttachment[], selection?: { provider: AIProviderId; model: string }) => Promise<void>;
+  sendChatMessage: (content: string, attachments?: ChatMessageAttachment[], selection?: { provider: AIProviderId; model: string; searchContext?: string; searchPreview?: ChatSearchContext; skillIds?: string[] }) => Promise<void>;
+  stopChatMessage: () => void;
   clearChatHistory: () => void;
   setReasoningEffort: (effort: ReasoningEffort) => void;
   toggleLinkDocument: () => void;
@@ -601,6 +613,103 @@ export const useAIStore = create<AIState>((set, get) => ({
   },
 
   sendChatMessage: async (content, attachments, selection) => {
+    // Browser preview uses the Vite local proxy. Desktop keeps its native
+    // streaming path below, while browser testing receives a full reply.
+    if (!('__TAURI_INTERNALS__' in window)) {
+      const appSettings = useAppStore.getState().settings;
+      let browserSettings = appSettings.ai;
+      if (selection) {
+        let profiles: Record<string, AIProviderProfile> = {};
+        try {
+          profiles = JSON.parse(appSettings.ai.provider_profiles || '{}');
+        } catch { /* use the active profile below */ }
+        const profile = profiles[selection.provider] || (selection.provider === appSettings.ai.provider
+          ? { api_key: appSettings.ai.api_key, api_endpoint: appSettings.ai.api_endpoint, model: appSettings.ai.model }
+          : undefined);
+        if (profile) {
+          browserSettings = {
+            ...appSettings.ai,
+            provider: selection.provider,
+            api_key: profile.api_key,
+            api_endpoint: profile.api_endpoint,
+            model: selection.model || profile.model,
+          };
+        }
+      }
+      const attachmentContent = attachments?.map((attachment) => {
+        if (attachment.type === 'image' && attachment.dataUrl) return `![${attachment.name}](${attachment.dataUrl})`;
+        if (attachment.type === 'text' && attachment.content) return `> **附件: ${attachment.name}**\n> \`\`\`\n${attachment.content}\n> \`\`\``;
+        return `> 附件: ${attachment.name}`;
+      }).join('\n') || '';
+      const messageContent = [attachmentContent, content].filter(Boolean).join('\n');
+      const timestamp = Date.now();
+      const assistantId = `${timestamp.toString(36)}-browser`;
+      const previousMessages = get().chatbotMessages;
+      set({
+        chatbotMessages: [
+          ...previousMessages,
+          {
+            id: `${timestamp.toString(36)}-user`,
+            role: 'user',
+            content: messageContent,
+            timestamp,
+            attachments: attachments?.map((attachment) => ({ type: attachment.type, name: attachment.name })),
+            search: selection?.searchPreview,
+          },
+          {
+            id: assistantId,
+            role: 'assistant',
+            content: '',
+            timestamp,
+          },
+        ],
+        chatbotLoading: true,
+        chatbotStreamingPhase: 'content',
+      });
+
+      try {
+        if (!browserSettings.enabled) throw new Error('请先在设置中启用 AI 助手');
+        if (!browserSettings.api_key.trim()) throw new Error('请先配置 API 密钥');
+        const enabledSkills = useSkillStore.getState().skills.filter((skill) => skill.enabled && selection?.skillIds?.includes(skill.id));
+        const linkedDoc = get().linkedDocument;
+        const requestContent = selection?.searchContext
+          ? `${messageContent}\n\n---\n\n[网络搜索上下文]\n${selection.searchContext}`
+          : messageContent;
+        const response = await fetch('/api/ai-chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            content: requestContent,
+            context: previousMessages.map((message) => ({ role: message.role, content: message.content })),
+            settings: browserSettings,
+            temperature: get().reasoningEffort === 'deep' ? 0.3 : get().reasoningEffort === 'fast' ? 0.9 : 0.7,
+            maxTokens: get().reasoningEffort === 'deep' ? 4000 : get().reasoningEffort === 'fast' ? 800 : 2000,
+            docContext: linkedDoc?.content,
+            docTitle: linkedDoc?.title,
+            skillContext: enabledSkills.map((skill) => `### ${skill.name}\n${skill.content}`).join('\n\n'),
+          }),
+        });
+        const payload = await response.json().catch(() => ({})) as { content?: string; reasoning?: string; error?: string };
+        if (!response.ok) throw new Error(payload.error || `AI 服务请求失败 (${response.status})`);
+        set((state) => ({
+          chatbotMessages: state.chatbotMessages.map((message) => message.id === assistantId
+            ? { ...message, content: payload.content || 'AI 服务未返回内容', reasoning: payload.reasoning || undefined }
+            : message),
+          chatbotLoading: false,
+          chatbotStreamingPhase: null,
+        }));
+      } catch (error) {
+        set((state) => ({
+          chatbotMessages: state.chatbotMessages.map((message) => message.id === assistantId
+            ? { ...message, content: `**错误:** ${String(error)}` }
+            : message),
+          chatbotLoading: false,
+          chatbotStreamingPhase: null,
+        }));
+      }
+      return;
+    }
+
     const appSettings = useAppStore.getState().settings;
     let settings = appSettings;
     if (selection) {
@@ -643,11 +752,6 @@ export const useAIStore = create<AIState>((set, get) => ({
       return;
     }
 
-    if (!('__TAURI_INTERNALS__' in window)) {
-      set({ status: 'error', statusMessage: '浏览器预览仅支持网络搜索结果展示，AI 对话请使用桌面应用' });
-      return;
-    }
-
     // Build message content with attachments embedded
     let messageContent = content;
     if (attachments && attachments.length > 0) {
@@ -669,10 +773,16 @@ export const useAIStore = create<AIState>((set, get) => ({
       content: messageContent,
       timestamp: Date.now(),
       attachments: attachments ? attachments.map((a) => ({ type: a.type, name: a.name })) : undefined,
+      search: selection?.searchPreview,
     };
 
+    const requestContent = selection?.searchContext
+      ? `${messageContent}\n\n---\n\n[网络搜索上下文]\n${selection.searchContext}`
+      : messageContent;
     const prevMessages = get().chatbotMessages;
     const assistantId = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+    const requestId = `${assistantId}-${++chatRequestSequence}`;
+    activeChatRequestId = requestId;
     const assistantPlaceholder: ChatMessage = {
       id: assistantId,
       role: 'assistant',
@@ -706,12 +816,13 @@ export const useAIStore = create<AIState>((set, get) => ({
       }));
 
       const linkedDoc = get().linkedDocument;
-      const enabledSkills = useSkillStore.getState().skills.filter((skill) => skill.enabled);
+      const enabledSkills = useSkillStore.getState().skills.filter((skill) => skill.enabled && selection?.skillIds?.includes(skill.id));
       const requestArgs: Record<string, unknown> = {
-        content: messageContent,
+        content: requestContent,
         context: JSON.stringify(history),
         settings: settings.ai,
         enableThinking: supportsThinking && effort !== 'off',
+        requestId,
       };
 
       if (enabledSkills.length > 0) {
@@ -731,7 +842,9 @@ export const useAIStore = create<AIState>((set, get) => ({
       }
 
       // Listen for reasoning chunks
-      const unlistenReasoning = await listen<{ content: string }>('ai-chat-reasoning-chunk', (event) => {
+      const unlistenReasoning = await listen<{ content: string; requestId?: string }>('ai-chat-reasoning-chunk', (event) => {
+        if (activeChatRequestId !== requestId) return;
+        if (event.payload.requestId && event.payload.requestId !== requestId) return;
         set((state) => ({
           chatbotMessages: state.chatbotMessages.map((m) =>
             m.id === assistantId
@@ -743,13 +856,17 @@ export const useAIStore = create<AIState>((set, get) => ({
       unlisteners.push(unlistenReasoning);
 
       // Listen for reasoning done
-      const unlistenReasoningDone = await listen('ai-chat-reasoning-done', () => {
+      const unlistenReasoningDone = await listen<{ requestId?: string }>('ai-chat-reasoning-done', (event) => {
+        if (activeChatRequestId !== requestId) return;
+        if (event.payload.requestId && event.payload.requestId !== requestId) return;
         set({ chatbotStreamingPhase: 'content' });
       });
       unlisteners.push(unlistenReasoningDone);
 
       // Listen for content chunks
-      const unlistenContent = await listen<{ content: string }>('ai-chat-content-chunk', (event) => {
+      const unlistenContent = await listen<{ content: string; requestId?: string }>('ai-chat-content-chunk', (event) => {
+        if (activeChatRequestId !== requestId) return;
+        if (event.payload.requestId && event.payload.requestId !== requestId) return;
         set((state) => ({
           chatbotMessages: state.chatbotMessages.map((m) =>
             m.id === assistantId
@@ -761,7 +878,9 @@ export const useAIStore = create<AIState>((set, get) => ({
       unlisteners.push(unlistenContent);
 
       // Listen for stream error
-      const unlistenError = await listen<{ message: string }>('ai-chat-error', (event) => {
+      const unlistenError = await listen<{ message: string; requestId?: string }>('ai-chat-error', (event) => {
+        if (activeChatRequestId !== requestId) return;
+        if (event.payload.requestId && event.payload.requestId !== requestId) return;
         set((state) => ({
           chatbotMessages: state.chatbotMessages.map((m) =>
             m.id === assistantId
@@ -775,7 +894,10 @@ export const useAIStore = create<AIState>((set, get) => ({
       unlisteners.push(unlistenError);
 
       // Listen for stream done
-      const unlistenDone = await listen('ai-chat-done', () => {
+      const unlistenDone = await listen<{ requestId?: string }>('ai-chat-done', (event) => {
+        if (activeChatRequestId !== requestId) return;
+        if (event.payload.requestId && event.payload.requestId !== requestId) return;
+        activeChatRequestId = null;
         set({ chatbotLoading: false, chatbotStreamingPhase: null });
       });
       unlisteners.push(unlistenDone);
@@ -799,6 +921,13 @@ export const useAIStore = create<AIState>((set, get) => ({
         unlisten();
       }
     }
+  },
+
+  stopChatMessage: () => {
+    // The native stream finishes in the background, but its listeners are removed
+    // immediately by the request lifecycle. This releases the composer for the next turn.
+    activeChatRequestId = null;
+    set({ chatbotLoading: false, chatbotStreamingPhase: null });
   },
 
   clearChatHistory: () => {

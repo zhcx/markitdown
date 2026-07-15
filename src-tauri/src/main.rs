@@ -40,6 +40,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             commands::get_settings,
             commands::save_settings,
+            commands::get_local_font_families,
             commands::upload_image,
             commands::export_pdf,
             commands::export_html,
@@ -56,6 +57,7 @@ fn main() {
             commands::get_skills,
             commands::import_skill_package,
             commands::set_skill_enabled,
+            commands::delete_skill,
             commands::web_search,
             commands::check_for_updates,
             commands::download_and_install_update,

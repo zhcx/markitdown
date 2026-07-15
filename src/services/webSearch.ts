@@ -22,13 +22,12 @@ export async function performWebSearch(query: string, settings: WebSearchSetting
   const normalizedQuery = query.trim();
   if (!normalizedQuery) throw new Error('搜索关键词不能为空');
   if (!settings.enabled) throw new Error('请先在设置中启用网络搜索');
-  const effectiveProvider = settings.tavily_api_key.trim() ? 'tavily' : 'searxng';
-  const effectiveSettings = { ...settings, provider: effectiveProvider };
-  if (effectiveProvider === 'searxng' && !settings.searxng_url.trim()) throw new Error('Tavily API Key 未配置，且 SearXNG API 地址为空');
+  if (settings.provider === 'tavily' && !settings.tavily_api_key.trim()) throw new Error('请选择其他首选搜索服务，或先填写 Tavily API Key');
+  if (settings.provider === 'searxng' && !settings.searxng_url.trim()) throw new Error('请先填写 SearXNG API 地址');
 
   if (isTauriRuntime()) {
     const { invoke } = await import('@tauri-apps/api/core');
-    return invoke<WebSearchResponse>('web_search', { query: normalizedQuery, settings: effectiveSettings });
+    return invoke<WebSearchResponse>('web_search', { query: normalizedQuery, settings });
   }
 
   let response: Response;
@@ -36,7 +35,7 @@ export async function performWebSearch(query: string, settings: WebSearchSetting
     response = await fetch('/api/web-search', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query: normalizedQuery, settings: effectiveSettings }),
+      body: JSON.stringify({ query: normalizedQuery, settings }),
     });
   } catch {
     throw new Error('浏览器搜索代理不可用，请确认 MarkitDown 开发服务仍在运行');

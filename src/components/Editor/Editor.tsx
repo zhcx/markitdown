@@ -1,9 +1,9 @@
 import { useEffect, useRef } from 'react';
-import { EditorState, Prec, Compartment, RangeSetBuilder } from '@codemirror/state';
+import { EditorState, Compartment, RangeSetBuilder } from '@codemirror/state';
 import { EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter, Decoration } from '@codemirror/view';
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import { languages } from '@codemirror/language-data';
-import { defaultKeymap, history, historyKeymap, insertNewline } from '@codemirror/commands';
+import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { useAppStore } from '../../stores/appStore';
 import { useAIStore, ProofreadResult } from '../../stores/aiStore';
 
@@ -143,15 +143,9 @@ export function Editor({ className, style }: EditorProps) {
       }
     });
 
-    // High priority keymap to ensure Enter inserts newline immediately
-    const enterKeymap = Prec.high(keymap.of([
-      { key: 'Enter', run: insertNewline },
-    ]));
-
     const state = EditorState.create({
       doc: initialContentRef.current,
       extensions: [
-        enterKeymap,
         lineNumbers(),
         highlightActiveLine(),
         highlightActiveLineGutter(),

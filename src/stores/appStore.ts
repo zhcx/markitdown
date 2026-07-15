@@ -4,10 +4,19 @@ import type { EditorView } from '@codemirror/view';
 
 const isTauriRuntime = () => typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 const browserSettingsKey = 'markitdown.browser.settings';
+let settingsMutationVersion = 0;
+
+const cacheSettingsForStartup = (settings: Settings) => {
+  try {
+    localStorage.setItem(browserSettingsKey, JSON.stringify(settings));
+  } catch { /* Storage can be unavailable in restricted webviews. */ }
+};
 
 export interface Settings {
   appearance: {
     theme: string;
+    /** UI chrome font. Older saved settings omit this and fall back to YaHei. */
+    ui_font_family?: string;
     font_family: string;
     font_size: number;
     line_height: number;
@@ -137,6 +146,7 @@ export interface TimelineEntry {
   content: string;
   timestamp: number;
   label: string;
+  operation: string;
 }
 
 export type UploadStatus = 'idle' | 'uploading' | 'success' | 'error';
@@ -192,6 +202,8 @@ interface AppState {
   updateTabContent: (id: string, content: string) => void;
   updateTabTitle: (id: string, path: string) => void;
   restoreTimelineEntry: (tabId: string, entryId: string) => void;
+  deleteTimelineEntry: (tabId: string, entryId: string) => void;
+  cleanupTimeline: () => void;
   getActiveTab: () => Tab | undefined;
   setUploadStatus: (status: UploadStatus, progress?: number, message?: string) => void;
   setConversionStatus: (status: ConversionStatus, message?: string) => void;
@@ -199,7 +211,8 @@ interface AppState {
 
 const defaultSettings: Settings = {
   appearance: {
-    theme: 'inkwell-light',
+    theme: 'vscode-dark',
+    ui_font_family: 'Microsoft YaHei',
     font_family: 'Microsoft YaHei',
     font_size: 16,
     line_height: 1.6,
@@ -271,10 +284,61 @@ const defaultSettings: Settings = {
   },
 };
 
+const initialSettings = (() => {
+  try {
+    const saved = JSON.parse(localStorage.getItem(browserSettingsKey) || 'null') as Settings | null;
+    return saved || defaultSettings;
+  } catch {
+    return defaultSettings;
+  }
+})();
+
 const generateId = () => Math.random().toString(36).substring(2, 9);
 const TIMELINE_LIMIT = 40;
-const TIMELINE_SNAPSHOT_INTERVAL = 1500;
-const lastTimelineCaptureAt = new Map<string, number>();
+const TIMELINE_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+const TIMELINE_CAPTURE_DELAY = 1500;
+const timelineCaptureTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const pendingTimelineBaselines = new Map<string, string>();
+
+const formatTimelineText = (text: string) => text
+  .replace(/\r?\n/g, '↵')
+  .replace(/\t/g, '⇥');
+
+const shortenTimelineLabel = (text: string, limit = 38) => {
+  const characters = Array.from(text);
+  return characters.length > limit ? `${characters.slice(0, limit - 1).join('')}…` : text;
+};
+
+const pruneTimelineEntries = (entries: TimelineEntry[], now = Date.now()) => entries
+  .filter(entry => now - entry.timestamp <= TIMELINE_RETENTION_MS)
+  .sort((a, b) => b.timestamp - a.timestamp)
+  .slice(0, TIMELINE_LIMIT);
+
+const pruneTimeline = (timeline: Record<string, TimelineEntry[]>, now = Date.now()) => Object.fromEntries(
+  Object.entries(timeline)
+    .map(([tabId, entries]) => [tabId, pruneTimelineEntries(entries, now)] as const)
+    .filter(([, entries]) => entries.length > 0),
+);
+
+const describeTimelineOperation = (previous: string, next: string) => {
+  let prefixLength = 0;
+  const sharedLength = Math.min(previous.length, next.length);
+  while (prefixLength < sharedLength && previous[prefixLength] === next[prefixLength]) prefixLength += 1;
+
+  let suffixLength = 0;
+  while (
+    suffixLength < previous.length - prefixLength
+    && suffixLength < next.length - prefixLength
+    && previous[previous.length - 1 - suffixLength] === next[next.length - 1 - suffixLength]
+  ) suffixLength += 1;
+
+  const removed = previous.slice(prefixLength, previous.length - suffixLength);
+  const inserted = next.slice(prefixLength, next.length - suffixLength);
+  if (removed && inserted) return `替换：${formatTimelineText(removed)} → ${formatTimelineText(inserted)}`;
+  if (inserted) return `插入：${formatTimelineText(inserted)}`;
+  if (removed) return `删除：${formatTimelineText(removed)}`;
+  return '编辑快照';
+};
 
 const initialTab: Tab = {
   id: generateId(),
@@ -289,7 +353,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   mode: 'split',
   splitRatio: 0.5,
   currentFile: null,
-  settings: defaultSettings,
+  settings: initialSettings,
   sidebarVisible: true,
   sidebarWidth: 220,
   outlineVisible: false,
@@ -309,33 +373,45 @@ export const useAppStore = create<AppState>((set, get) => ({
   conversionMessage: '',
 
   setContent: (content) => {
-    const { activeTabId, tabs, timeline } = get();
+    const { activeTabId, tabs } = get();
     const activeTab = tabs.find(tab => tab.id === activeTabId);
-    if (activeTabId) {
-      const now = Date.now();
-      const shouldCapture = Boolean(
-        activeTab
-        && activeTab.content !== content
-        && now - (lastTimelineCaptureAt.get(activeTabId) ?? 0) >= TIMELINE_SNAPSHOT_INTERVAL,
-      );
-      const nextTimeline = shouldCapture && activeTab
-        ? {
-          ...timeline,
-          [activeTabId]: [
-            {
-              id: generateId(),
-              content: activeTab.content,
-              timestamp: now,
-              label: '编辑快照',
-            },
-            ...(timeline[activeTabId] || []),
-          ].slice(0, TIMELINE_LIMIT),
+    if (activeTabId && activeTab) {
+      if (activeTab.content !== content) {
+        if (!pendingTimelineBaselines.has(activeTabId)) {
+          pendingTimelineBaselines.set(activeTabId, activeTab.content);
         }
-        : timeline;
-      if (shouldCapture) lastTimelineCaptureAt.set(activeTabId, now);
+        const pendingTimer = timelineCaptureTimers.get(activeTabId);
+        if (pendingTimer) clearTimeout(pendingTimer);
+        timelineCaptureTimers.set(activeTabId, setTimeout(() => {
+          timelineCaptureTimers.delete(activeTabId);
+          const baseline = pendingTimelineBaselines.get(activeTabId);
+          pendingTimelineBaselines.delete(activeTabId);
+          const { tabs: latestTabs, timeline: latestTimeline } = get();
+          const latestTab = latestTabs.find((tab) => tab.id === activeTabId);
+          if (baseline === undefined || !latestTab || latestTab.content === baseline) return;
+
+          const operation = describeTimelineOperation(baseline, latestTab.content);
+          const now = Date.now();
+          const nextTimeline = pruneTimeline(latestTimeline, now);
+          set({
+            timeline: {
+              ...nextTimeline,
+              [activeTabId]: pruneTimelineEntries([
+                {
+                  id: generateId(),
+                  content: baseline,
+                  timestamp: now,
+                  label: shortenTimelineLabel(operation),
+                  operation,
+                },
+                ...(latestTimeline[activeTabId] || []),
+              ], now),
+            },
+          });
+        }, TIMELINE_CAPTURE_DELAY));
+      }
       set({
         content,
-        timeline: nextTimeline,
         tabs: tabs.map(tab =>
           tab.id === activeTabId
             ? { ...tab, content, modified: true }
@@ -354,7 +430,11 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   setCurrentFile: (file) => set({ currentFile: file }),
 
-  setSettings: (settings) => set({ settings }),
+  setSettings: (settings) => {
+    settingsMutationVersion += 1;
+    cacheSettingsForStartup(settings);
+    set({ settings });
+  },
 
   setSidebarVisible: (visible) => set({ sidebarVisible: visible }),
   setSidebarWidth: (width) => set({ sidebarWidth: Math.max(150, Math.min(400, width)) }),
@@ -368,10 +448,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   setEditorView: (view) => set({ editorView: view }),
 
   loadSettings: async () => {
+    const loadVersion = settingsMutationVersion;
     if (!isTauriRuntime()) {
       try {
         const saved = JSON.parse(localStorage.getItem(browserSettingsKey) || 'null') as Settings | null;
-        if (saved) set({ settings: saved });
+        if (saved && loadVersion === settingsMutationVersion) set({ settings: saved });
       } catch (error) {
         console.warn('Failed to load browser settings:', error);
       }
@@ -379,27 +460,30 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
     try {
       const settings = await invoke<Settings>('get_settings');
+      // Do not let a slow desktop read overwrite a theme/font choice the user
+      // made immediately after the window appeared.
+      if (loadVersion !== settingsMutationVersion) return;
+      cacheSettingsForStartup(settings);
       set({ settings });
     } catch (error) {
       console.error('Failed to load settings:', error);
-      set({ settings: defaultSettings });
+      if (loadVersion === settingsMutationVersion) set({ settings: defaultSettings });
     }
   },
 
   saveSettings: async (settings) => {
+    settingsMutationVersion += 1;
+    cacheSettingsForStartup(settings);
+    // Apply the new settings before desktop persistence completes. UI actions
+    // such as the activity-bar theme toggle should respond on the same click.
+    set({ settings });
     if (!isTauriRuntime()) {
-      localStorage.setItem(browserSettingsKey, JSON.stringify(settings));
-      set({ settings });
       return;
     }
     try {
       await invoke('save_settings', { settings });
-      set({ settings });
     } catch (error) {
       console.error('Failed to save settings:', error);
-      // Browser preview has no Tauri IPC. Keep the selected settings in memory
-      // so themes and layout can be tested without building the desktop app.
-      set({ settings });
     }
   },
 
@@ -613,18 +697,34 @@ export const useAppStore = create<AppState>((set, get) => ({
       content: tab.content,
       timestamp: Date.now(),
       label: '回退前快照',
+      operation: '回退前快照：保留执行回退之前的完整文档内容。',
     };
-    lastTimelineCaptureAt.set(tabId, Date.now());
+    const pendingTimer = timelineCaptureTimers.get(tabId);
+    if (pendingTimer) clearTimeout(pendingTimer);
+    timelineCaptureTimers.delete(tabId);
+    pendingTimelineBaselines.delete(tabId);
     set({
       content: activeTabId === tabId ? entry.content : get().content,
       timeline: {
-        ...timeline,
-        [tabId]: [rollbackEntry, ...(timeline[tabId] || [])].slice(0, TIMELINE_LIMIT),
+        ...pruneTimeline(timeline),
+        [tabId]: pruneTimelineEntries([rollbackEntry, ...(timeline[tabId] || [])]),
       },
       tabs: tabs.map(item => item.id === tabId ? { ...item, content: entry.content, modified: true } : item),
     });
     get().updateWordCount();
   },
+
+  deleteTimelineEntry: (tabId, entryId) => {
+    set(({ timeline }) => {
+      const remaining = (timeline[tabId] || []).filter(entry => entry.id !== entryId);
+      const nextTimeline = { ...timeline };
+      if (remaining.length > 0) nextTimeline[tabId] = remaining;
+      else delete nextTimeline[tabId];
+      return { timeline: nextTimeline };
+    });
+  },
+
+  cleanupTimeline: () => set(({ timeline }) => ({ timeline: pruneTimeline(timeline) })),
 
   setConversionStatus: (status, message = '') => {
     set({ conversionStatus: status, conversionMessage: message });

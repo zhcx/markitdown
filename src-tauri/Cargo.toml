@@ -1,6 +1,6 @@
 [package]
 name = "markitdown"
-version = "0.2.7"
+version = "0.2.8"
 description = "A modern Markdown editor with Notion-style UI"
 authors = ["you"]
 edition = "2021"
@@ -29,6 +29,7 @@ sha2 = "0.10"
 urlencoding = "2.1"
 headless_chrome = "1.0"
 zip = { version = "2", default-features = false, features = ["deflate"] }
+font-kit = "0.14"
 
 [profile.release]
 panic = "abort"

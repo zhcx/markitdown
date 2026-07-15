@@ -614,6 +614,16 @@ export function MenuBar() {
         {
           label: '主题',
           children: [
+            { label: 'VS Code Dark Theme', action: () => {
+              setSettings({ ...settings, appearance: { ...settings.appearance, theme: 'vscode-dark' } });
+              setActiveMenu(null);
+              setMenuOpen(false);
+            }},
+            { label: 'VS Code Light Theme', action: () => {
+              setSettings({ ...settings, appearance: { ...settings.appearance, theme: 'vscode-light' } });
+              setActiveMenu(null);
+              setMenuOpen(false);
+            }},
             { label: 'Inkwell Light Theme', action: () => {
               setSettings({ ...settings, appearance: { ...settings.appearance, theme: 'inkwell-light' } });
               setActiveMenu(null);

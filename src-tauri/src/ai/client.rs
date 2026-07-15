@@ -1192,6 +1192,7 @@ pub async fn chat_streaming(
     doc_title: Option<String>,
     skill_context: Option<String>,
     enable_thinking: bool,
+    request_id: String,
     window: WebviewWindow,
 ) -> Result<(), String> {
     let mut system_prompt = get_prompt(PromptAction::Chat, "", None, settings);
@@ -1216,6 +1217,7 @@ pub async fn chat_streaming(
             max_tokens,
             temperature,
             &window,
+            &request_id,
         )
         .await;
     }
@@ -1251,7 +1253,7 @@ pub async fn chat_streaming(
         let body_text = response.text().await.unwrap_or_default();
         let err_msg = format!("API错误 ({}): {}", status, trim_error_body(&body_text));
         window
-            .emit("ai-chat-error", serde_json::json!({ "message": &err_msg }))
+            .emit("ai-chat-error", serde_json::json!({ "message": &err_msg, "requestId": &request_id }))
             .ok();
         return Err(err_msg);
     }
@@ -1290,7 +1292,7 @@ pub async fn chat_streaming(
                                                 window
                                                     .emit(
                                                         "ai-chat-reasoning-chunk",
-                                                        serde_json::json!({ "content": rc }),
+                                                        serde_json::json!({ "content": rc, "requestId": &request_id }),
                                                     )
                                                     .ok();
                                             }
@@ -1303,14 +1305,14 @@ pub async fn chat_streaming(
                                                     window
                                                         .emit(
                                                             "ai-chat-reasoning-done",
-                                                            serde_json::json!({}),
+                                                            serde_json::json!({ "requestId": &request_id }),
                                                         )
                                                         .ok();
                                                 }
                                                 window
                                                     .emit(
                                                         "ai-chat-content-chunk",
-                                                        serde_json::json!({ "content": c }),
+                                                        serde_json::json!({ "content": c, "requestId": &request_id }),
                                                     )
                                                     .ok();
                                             }
@@ -1328,10 +1330,10 @@ pub async fn chat_streaming(
 
     if !reasoning_done {
         window
-            .emit("ai-chat-reasoning-done", serde_json::json!({}))
+            .emit("ai-chat-reasoning-done", serde_json::json!({ "requestId": &request_id }))
             .ok();
     }
-    window.emit("ai-chat-done", serde_json::json!({})).ok();
+    window.emit("ai-chat-done", serde_json::json!({ "requestId": &request_id })).ok();
 
     Ok(())
 }
@@ -1343,6 +1345,7 @@ async fn chat_streaming_anthropic_fallback(
     max_tokens: Option<u32>,
     temperature: f32,
     window: &WebviewWindow,
+    request_id: &str,
 ) -> Result<(), String> {
     let client = get_client()?;
     let endpoint = get_api_endpoint(settings);
@@ -1376,15 +1379,15 @@ async fn chat_streaming_anthropic_fallback(
     .await?;
 
     window
-        .emit("ai-chat-reasoning-done", serde_json::json!({}))
+        .emit("ai-chat-reasoning-done", serde_json::json!({ "requestId": request_id }))
         .ok();
     window
         .emit(
             "ai-chat-content-chunk",
-            serde_json::json!({ "content": &text }),
+            serde_json::json!({ "content": &text, "requestId": request_id }),
         )
         .ok();
-    window.emit("ai-chat-done", serde_json::json!({})).ok();
+    window.emit("ai-chat-done", serde_json::json!({ "requestId": request_id })).ok();
 
     Ok(())
 }

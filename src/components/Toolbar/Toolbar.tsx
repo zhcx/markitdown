@@ -2,9 +2,39 @@ import { useEffect, useRef, useState } from 'react';
 import { useAppStore } from '../../stores/appStore';
 import { useAIStore } from '../../stores/aiStore';
 import { EditorSelection } from '@codemirror/state';
+import { undo, redo } from '@codemirror/commands';
 import { open } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
 import { TablePicker } from '../Editor/TablePicker';
+
+type ToolbarIconName = 'link' | 'image' | 'table' | 'folder' | 'chat' | 'proofread' | 'sparkle' | 'palette' | 'rewrite' | 'translate' | 'summary' | 'outline';
+
+interface ToolbarButton {
+  label?: string;
+  icon?: ToolbarIconName;
+  title: string;
+  action: () => void | Promise<void>;
+}
+
+interface ToolbarGroup {
+  title: string;
+  buttons: ToolbarButton[];
+}
+
+function ToolbarGlyph({ name }: { name: ToolbarIconName }) {
+  if (name === 'link') return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6.2 9.8 3.6-3.6M5.1 11.9l-1 .9a2.7 2.7 0 0 1-3.8-3.8l2.3-2.3a2.7 2.7 0 0 1 3.8 0M10.9 4.1l1-.9A2.7 2.7 0 0 1 15.7 7l-2.3 2.3a2.7 2.7 0 0 1-3.8 0" /></svg>;
+  if (name === 'image') return <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="1" /><circle cx="5" cy="6" r="1.2" /><path d="m2.5 12 3.6-3.4 2.2 2 2.2-2.4 3 3" /></svg>;
+  if (name === 'table') return <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2" width="13" height="12" rx=".5" /><path d="M1.5 6h13M1.5 10h13M6 2v12m4-12v12" /></svg>;
+  if (name === 'folder') return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 4h5l1.2 1.5h6.8v7.8h-13z" /></svg>;
+  if (name === 'chat') return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 2.5h12v8H7l-3.5 3v-3H2z" /><path d="M5 6.5h6" /></svg>;
+  if (name === 'proofread') return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 8.2 6 11.5 13.5 4" /></svg>;
+  if (name === 'sparkle') return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m8 1.5 1 3.5 3.5 1L9 7l-1 3.5L7 7 3.5 6 7 5zM12.5 10l.5 1.5 1.5.5-1.5.5-.5 1.5-.5-1.5-1.5-.5 1.5-.5z" /></svg>;
+  if (name === 'palette') return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5a6.4 6.4 0 0 0 0 12.8h1.2a1.4 1.4 0 0 0 0-2.8H8.5a1.3 1.3 0 0 1 0-2.6H12A2.5 2.5 0 0 0 14.5 6C13.8 3.4 11.2 1.5 8 1.5Z" /><circle cx="4.5" cy="6.3" r=".7" /><circle cx="6.4" cy="3.9" r=".7" /><circle cx="9.4" cy="3.8" r=".7" /></svg>;
+  if (name === 'rewrite') return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 3.5h7M3 6.5h5M2.5 13.5l.7-3.2L11.5 2l2.5 2.5-8.3 8.3z" /></svg>;
+  if (name === 'translate') return <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.2" /><path d="M1.8 8h12.4M8 1.8c1.6 1.7 2.4 3.7 2.4 6.2S9.6 12.5 8 14.2C6.4 12.5 5.6 10.5 5.6 8S6.4 3.5 8 1.8Z" /></svg>;
+  if (name === 'summary') return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 1.8h7l3 3v9.4H3zM10 1.8v3h3M5.2 8h5.6M5.2 10.5h5.6" /></svg>;
+  return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 2.5h10M4.5 6h7M6 9.5h4M8 9.5v4" /></svg>;
+}
 
 function ImageOptionsModal({ onClose, onInsert }: { onClose: () => void; onInsert: (url: string, alt?: string) => void }) {
   const [mode, setMode] = useState<'link' | 'upload' | null>(null);
@@ -54,12 +84,12 @@ function ImageOptionsModal({ onClose, onInsert }: { onClose: () => void; onInser
           {!mode ? (
             <div className="image-options">
               <button className="image-option-btn" onClick={() => setMode('link')}>
-                <span className="option-icon">🔗</span>
+                <span className="option-icon"><ToolbarGlyph name="link" /></span>
                 <span className="option-text">输入图片链接</span>
                 <span className="option-desc">从网络URL插入图片</span>
               </button>
               <button className="image-option-btn" onClick={handleUpload}>
-                <span className="option-icon">📁</span>
+                <span className="option-icon"><ToolbarGlyph name="folder" /></span>
                 <span className="option-text">本地图片上传</span>
                 <span className="option-desc">选择本地图片上传到图床</span>
               </button>
@@ -97,7 +127,7 @@ function ImageOptionsModal({ onClose, onInsert }: { onClose: () => void; onInser
 }
 
 export function Toolbar() {
-  const { mode, setMode, editorView, setContent, content, sidebarVisible, setSidebarVisible, setSettingsOpen, setSettingsTab, settings } = useAppStore();
+  const { editorView, setContent, content, settings } = useAppStore();
   const [showImageModal, setShowImageModal] = useState(false);
   const [showTablePicker, setShowTablePicker] = useState(false);
   const tablePickerButtonRef = useRef<HTMLButtonElement>(null);
@@ -110,22 +140,9 @@ export function Toolbar() {
     translateText,
     summarizeText,
     generateOutline,
-    currentStyle,
-    setCurrentStyle,
     setChatbotVisible,
-    chatbotVisible,
   } = useAIStore();
-
-  const handleAiEntry = () => {
-    const configured = settings.ai.enabled && Boolean(settings.ai.api_key.trim());
-    if (!configured) {
-      window.alert('请先在设置中启用 AI 并填写 API 密钥。');
-      setSettingsTab('ai');
-      setSettingsOpen(true);
-      return;
-    }
-    setChatbotVisible(true);
-  };
+  const currentStyle = settings.ai.writing_style;
 
   const getSelectedText = () => {
     if (!editorView) return '';
@@ -308,7 +325,46 @@ export function Toolbar() {
     setShowTablePicker(false);
   };
 
-  const toolbarGroups = [
+  const runEditorCommand = (command: typeof undo) => {
+    if (!editorView) return;
+    command(editorView);
+    editorView.focus();
+  };
+
+  const clearInlineFormatting = () => {
+    if (!editorView) return;
+    const selection = editorView.state.selection.main;
+    if (selection.empty) return;
+
+    const selected = editorView.state.sliceDoc(selection.from, selection.to);
+    const plainText = selected
+      .replace(/<\/?(?:u|sup|sub|mark|strong|em|del)>/gi, '')
+      .replace(/(\*\*|__|~~|==|`)/g, '')
+      .replace(/\*([^*]+)\*/g, '$1')
+      .replace(/_([^_]+)_/g, '$1');
+
+    if (plainText === selected) return;
+    editorView.dispatch({
+      changes: { from: selection.from, to: selection.to, insert: plainText },
+      selection: EditorSelection.range(selection.from, selection.from + plainText.length),
+    });
+    editorView.focus();
+  };
+
+  const outdentSelection = () => {
+    if (!editorView) return;
+    const selection = editorView.state.selection.main;
+    const document = editorView.state.doc;
+    const start = document.lineAt(selection.from).from;
+    const end = document.lineAt(selection.to).to;
+    const source = editorView.state.sliceDoc(start, end);
+    const outdented = source.replace(/^(?: {1,2}|\t)/gm, '');
+    if (outdented === source) return;
+    editorView.dispatch({ changes: { from: start, to: end, insert: outdented } });
+    editorView.focus();
+  };
+
+  const toolbarGroups: ToolbarGroup[] = [
     {
       title: '格式',
       buttons: [
@@ -342,11 +398,20 @@ export function Toolbar() {
       ],
     },
     {
+      title: '编辑',
+      buttons: [
+        { label: '↶', title: '撤销 (Ctrl+Z)', action: () => runEditorCommand(undo) },
+        { label: '↷', title: '重做 (Ctrl+Y)', action: () => runEditorCommand(redo) },
+        { label: '↤', title: '减少缩进', action: outdentSelection },
+        { label: '清', title: '清除选中文本的行内格式', action: clearInlineFormatting },
+      ],
+    },
+    {
       title: '插入',
       buttons: [
-        { label: '🔗', title: '链接', action: () => wrapSelection('[', '](url)') },
-        { label: '📷', title: '图片', action: () => setShowImageModal(true) },
-        { label: '📊', title: '表格', action: () => insertAtCursor('\n| 列1 | 列2 | 列3 |\n|---|---|---|\n| 内容 | 内容 | 内容 |\n') },
+        { icon: 'link', title: '链接', action: () => wrapSelection('[', '](url)') },
+        { icon: 'image', title: '图片', action: () => setShowImageModal(true) },
+        { icon: 'table', title: '表格', action: () => insertAtCursor('\n| 列1 | 列2 | 列3 |\n|---|---|---|\n| 内容 | 内容 | 内容 |\n') },
         { label: '</>', title: '代码块', action: () => insertAtCursor('\n```\ncode\n```\n', 5) },
         { label: 'Q', title: '引用', action: () => insertBlock('> ') },
         { label: '—', title: '分割线', action: () => insertAtCursor('\n---\n') },
@@ -360,11 +425,14 @@ export function Toolbar() {
         { label: 'Ⓕ', title: '脚注', action: () => wrapSelection('[^', ']()') },
         { label: 'M', title: 'Mermaid', action: () => insertAtCursor('\n```mermaid\ngraph LR\n  A --> B\n```\n', 20) },
         { label: '❖', title: '目录', action: () => insertAtCursor('\n[TOC]\n') },
+        { label: '▸', title: '插入可折叠内容', action: () => insertAtCursor('\n<details>\n<summary>展开查看</summary>\n\n内容\n\n</details>\n', 32) },
+        { label: '※', title: '插入注释', action: () => insertAtCursor('<!-- 注释 -->', 5) },
+        { label: '⌁', title: '插入分页符', action: () => insertAtCursor('\n<div style="page-break-after: always;"></div>\n') },
       ],
     },
   ];
 
-  toolbarGroups[3].buttons.unshift({ label: '▦', title: '插入表格（拖动选择行列）', action: () => setShowTablePicker((visible) => !visible) });
+  toolbarGroups[3].buttons.unshift({ icon: 'table', title: '插入表格（拖动选择行列）', action: () => setShowTablePicker((visible) => !visible) });
 
   const styleNames: Record<string, string> = {
     formal: '正式',
@@ -376,28 +444,38 @@ export function Toolbar() {
 
   const handleStyleChange = () => {
     const styles = ['formal', 'casual', 'academic', 'creative', 'custom'] as const;
-    const currentIndex = styles.indexOf(currentStyle);
+    const latestSettings = useAppStore.getState().settings;
+    const currentIndex = styles.indexOf(latestSettings.ai.writing_style);
     const nextIndex = (currentIndex + 1) % styles.length;
     const newStyle = styles[nextIndex];
-    setCurrentStyle(newStyle);
+    void useAppStore.getState().saveSettings({
+      ...latestSettings,
+      ai: { ...latestSettings.ai, writing_style: newStyle },
+    });
     // 显示风格切换提示
     const { setStatus } = useAIStore.getState();
-    setStatus('success', `风格切换为: ${styleNames[newStyle]}`);
-    setTimeout(() => setStatus('idle'), 2000);
+    const message = `风格切换为: ${styleNames[newStyle]}`;
+    setStatus('success', message);
+    setTimeout(() => {
+      const aiState = useAIStore.getState();
+      if (aiState.status === 'success' && aiState.statusMessage === message) {
+        aiState.setStatus('idle');
+      }
+    }, 2000);
   };
 
   // AI按钮组 - 仅在启用时显示
-  const aiGroup = settings.ai.enabled ? {
+  const aiGroup: ToolbarGroup | null = settings.ai.enabled ? {
     title: 'AI',
     buttons: [
-      { label: '💬', title: '显示AI对话', action: () => setChatbotVisible(true) },
-      { label: '✓', title: '校对文字', action: handleProofread },
-      { label: '✨', title: '伴写建议', action: handleCompanion },
-      { label: '🎨', title: `风格: ${styleNames[currentStyle] || currentStyle}`, action: handleStyleChange },
-      { label: '📝', title: '重写选中', action: handleRewrite },
-      { label: '🌐', title: '翻译选中', action: handleTranslate },
-      { label: '📋', title: '生成摘要', action: handleSummarize },
-      { label: '💡', title: '生成大纲', action: handleOutline },
+      { icon: 'chat', title: '显示 AI 对话', action: () => setChatbotVisible(true) },
+      { icon: 'proofread', title: '校对文字', action: handleProofread },
+      { icon: 'sparkle', title: '伴写建议', action: handleCompanion },
+      { icon: 'palette', title: `风格: ${styleNames[currentStyle] || currentStyle}`, action: handleStyleChange },
+      { icon: 'rewrite', title: '重写选中', action: handleRewrite },
+      { icon: 'translate', title: '翻译选中', action: handleTranslate },
+      { icon: 'summary', title: '生成摘要', action: handleSummarize },
+      { icon: 'outline', title: '生成大纲', action: handleOutline },
     ],
   } : null;
 
@@ -454,38 +532,16 @@ export function Toolbar() {
                     ref={btn.title.includes('插入表格') ? tablePickerButtonRef : undefined}
                     className="toolbar-btn"
                     title={btn.title}
+                    aria-label={btn.title}
                     onClick={btn.action}
                   >
-                    {btn.label}
+                    {btn.icon ? <ToolbarGlyph name={btn.icon} /> : btn.label}
                   </button>
                 ))}
               </div>
             </div>
           ))}
         </div>
-      </div>
-      <div className="toolbar-right">
-        <button
-          className={`toolbar-btn ai-entry-btn ${chatbotVisible ? 'active' : ''}`}
-          title={chatbotVisible ? 'AI 对话已打开' : '打开 AI 对话'}
-          onClick={handleAiEntry}
-        >
-          AI
-        </button>
-        <button
-          className="toolbar-btn"
-          title={sidebarVisible ? '隐藏侧边栏' : '显示侧边栏'}
-          onClick={() => setSidebarVisible(!sidebarVisible)}
-        >
-          {sidebarVisible ? '📁' : '📂'}
-        </button>
-        <button
-          className="toolbar-btn mode-btn"
-          title={mode === 'split' ? '切换到沉浸模式' : '切换到分屏模式'}
-          onClick={() => setMode(mode === 'split' ? 'immersive' : 'split')}
-        >
-          {mode === 'split' ? '👁 沉浸' : '📝 分屏'}
-        </button>
       </div>
       {showImageModal && (
         <ImageOptionsModal

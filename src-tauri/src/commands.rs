@@ -1,3 +1,4 @@
+use font_kit::source::SystemSource;
 use serde::{Deserialize, Serialize};
 use base64::{engine::general_purpose, Engine as _};
 use std::path::{Path, PathBuf};
@@ -45,8 +46,32 @@ pub struct Settings {
     pub web_search: WebSearchSettings,
 }
 
+fn default_ui_font_family() -> String { "Microsoft YaHei".into() }
+
+/// Returns the font families registered with the operating system.
+/// Desktop WebViews do not consistently expose `window.queryLocalFonts()`.
+#[tauri::command]
+pub fn get_local_font_families() -> Result<Vec<String>, String> {
+    let source = SystemSource::new();
+    let mut families = source
+        .all_families()
+        .map_err(|error| format!("Unable to read system fonts: {error}"))?;
+
+    families.retain(|family| !family.trim().is_empty());
+    families.sort_by_cached_key(|family| family.to_lowercase());
+    families.dedup_by(|left, right| left.eq_ignore_ascii_case(right));
+    Ok(families)
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AppearanceSettings { pub theme: String, pub font_family: String, pub font_size: u32, pub line_height: f32 }
+pub struct AppearanceSettings {
+    pub theme: String,
+    #[serde(default = "default_ui_font_family")]
+    pub ui_font_family: String,
+    pub font_family: String,
+    pub font_size: u32,
+    pub line_height: f32,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EditorSettings { pub auto_save_interval: u32, pub spell_check: bool, pub auto_complete: bool }
@@ -113,7 +138,7 @@ impl Default for WebSearchSettings {
 impl Default for Settings {
     fn default() -> Self {
         Settings {
-            appearance: AppearanceSettings { theme: "inkwell-light".into(), font_family: "Microsoft YaHei".into(), font_size: 16, line_height: 1.6 },
+            appearance: AppearanceSettings { theme: "vscode-dark".into(), ui_font_family: default_ui_font_family(), font_family: "Microsoft YaHei".into(), font_size: 16, line_height: 1.6 },
             editor: EditorSettings { auto_save_interval: 30000, spell_check: false, auto_complete: true },
             image_hosting: ImageHostingSettings {
                 active_service: "local".into(),
@@ -617,6 +642,18 @@ pub async fn set_skill_enabled(app: AppHandle, id: String, enabled: bool) -> Res
     if !skills_dir(&app)?.join(&id).join("SKILL.md").is_file() { return Err("Skill 不存在".into()); }
     let mut state = read_skill_state(&app)?;
     state.insert(id, enabled);
+    write_skill_state(&app, &state)?;
+    get_skills(app).await
+}
+
+#[tauri::command]
+pub async fn delete_skill(app: AppHandle, id: String) -> Result<Vec<SkillInfo>, String> {
+    if id.is_empty() || id.contains(['/', '\\']) || id.contains("..") { return Err("Skill ID 无效".into()); }
+    let path = skills_dir(&app)?.join(&id);
+    if !path.join("SKILL.md").is_file() { return Err("Skill 不存在".into()); }
+    std::fs::remove_dir_all(path).map_err(|e| format!("删除 Skill 失败: {e}"))?;
+    let mut state = read_skill_state(&app)?;
+    state.remove(&id);
     write_skill_state(&app, &state)?;
     get_skills(app).await
 }

@@ -51,26 +51,35 @@ export function TabsBar() {
 
   return (
     <div className="tabsbar">
-      <div className="tabs-container" onDoubleClick={event => {
+      <div className="tabs-container" role="tablist" aria-label="打开的文档" onDoubleClick={event => {
         if (event.target === event.currentTarget) addTab();
       }}>
         {tabs.map(tab => (
           <div
             key={tab.id}
             className={`tab ${tab.id === activeTabId ? 'active' : ''}`}
+            role="tab"
+            tabIndex={tab.id === activeTabId ? 0 : -1}
+            aria-selected={tab.id === activeTabId}
             onClick={() => setActiveTab(tab.id)}
             onDoubleClick={event => handleTabDoubleClick(event, tab.id)}
+            onKeyDown={event => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                setActiveTab(tab.id);
+              }
+            }}
           >
             <span className="tab-file-icon" aria-hidden="true" />
             <span className="tab-title">
               {tab.title}
               {tab.modified && <span className="tab-modified">●</span>}
             </span>
-            <button className="tab-close" onClick={event => handleCloseTab(event, tab.id)} title="关闭标签页" aria-label={`关闭 ${tab.title}`}>×</button>
+            <button type="button" className="tab-close" onClick={event => handleCloseTab(event, tab.id)} title="关闭标签页" aria-label={`关闭 ${tab.title}`}>×</button>
           </div>
         ))}
       </div>
-      <button className="new-tab-btn" onClick={() => addTab()} title="新建标签页" aria-label="新建标签页">+</button>
+      <button type="button" className="new-tab-btn" onClick={() => addTab()} title="新建标签页" aria-label="新建标签页">+</button>
     </div>
   );
 }

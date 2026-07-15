@@ -31,7 +31,12 @@ const md = new MarkdownIt({
 export function Preview({ className, style, onScrollContainerReady }: PreviewProps) {
   const containerRef = useRef<HTMLElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
-  const [resolvedTheme, setResolvedTheme] = useState(() => document.documentElement.dataset.theme || 'light');
+  // CSS variables handle normal Markdown theme changes without touching the
+  // document tree. Mermaid SVGs bake their own colors, so only those need a
+  // refresh when the theme changes.
+  const resolvedThemeRef = useRef(document.documentElement.dataset.theme || 'vscode-dark');
+  const contentRef = useRef('');
+  const [mermaidThemeVersion, setMermaidThemeVersion] = useState(0);
   const { content, settings } = useAppStore();
   const isEmpty = content.trim().length === 0;
 
@@ -41,8 +46,19 @@ export function Preview({ className, style, onScrollContainerReady }: PreviewPro
   }, [onScrollContainerReady]);
 
   useEffect(() => {
+    contentRef.current = content;
+  }, [content]);
+
+  useEffect(() => {
     const handleThemeChange = (event: Event) => {
-      setResolvedTheme((event as CustomEvent<string>).detail);
+      resolvedThemeRef.current = (event as CustomEvent<string>).detail;
+
+      // Avoid reparsing the entire preview on every theme switch. A full
+      // render remains necessary only when rendered Mermaid SVG needs new
+      // theme colors.
+      if (/```mermaid(?:\s|$)/i.test(contentRef.current)) {
+        setMermaidThemeVersion((version) => version + 1);
+      }
     };
 
     window.addEventListener('markitdown-theme-change', handleThemeChange);
@@ -51,6 +67,7 @@ export function Preview({ className, style, onScrollContainerReady }: PreviewPro
 
   useEffect(() => {
     if (!containerRef.current) return;
+    let disposed = false;
 
     // Process math formulas
     let processedContent = content;
@@ -91,11 +108,11 @@ export function Preview({ className, style, onScrollContainerReady }: PreviewPro
         const mermaid = (await import('mermaid')).default;
         mermaid.initialize({
           startOnLoad: false,
-          theme: resolvedTheme.endsWith('-dark') ? 'dark' : 'neutral',
+          theme: resolvedThemeRef.current.endsWith('-dark') ? 'dark' : 'neutral',
         });
         const { svg } = await mermaid.render('mermaid-' + Date.now(), code);
         const pre = block.parentElement;
-        if (pre && pre.parentElement) {
+        if (!disposed && pre && pre.parentElement) {
           pre.parentElement.innerHTML = svg;
         }
       } catch (e) {
@@ -110,7 +127,11 @@ export function Preview({ className, style, onScrollContainerReady }: PreviewPro
         img.setAttribute('data-src', img.src);
       });
     });
-  }, [content, resolvedTheme]);
+
+    return () => {
+      disposed = true;
+    };
+  }, [content, mermaidThemeVersion]);
 
   const containerStyle: React.CSSProperties = {
     fontFamily: settings.appearance.font_family,

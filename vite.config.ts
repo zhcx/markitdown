@@ -25,9 +25,19 @@ type BrowserWebSearchResult = {
   score?: number;
 };
 
-async function fetchSearchService(input: string | URL, init: RequestInit, service: string) {
+type BrowserAISettings = {
+  enabled: boolean;
+  provider: string;
+  api_key: string;
+  api_endpoint: string;
+  model: string;
+};
+
+type BrowserChatMessage = { role: string; content: string };
+
+async function fetchSearchService(input: string | URL, init: RequestInit, service: string, timeoutMs = 30_000) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 30_000);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
     return await fetch(input, { ...init, signal: controller.signal });
   } catch (error) {
@@ -67,15 +77,75 @@ function registerBrowserWebSearch(server: ViteDevServer) {
       const settings = payload.settings;
       if (!query) throw new Error('搜索关键词不能为空');
       if (!settings?.enabled) throw new Error('请先在设置中启用网络搜索');
-      const effectiveSettings = {
-        ...settings,
-        provider: settings.tavily_api_key.trim() ? 'tavily' : 'searxng',
-      } as BrowserWebSearchSettings;
-
-      const result = await fetchBrowserSearch(query, effectiveSettings);
+      const result = await fetchBrowserSearch(query, settings);
       res.statusCode = 200;
       res.setHeader('Content-Type', 'application/json; charset=utf-8');
       res.end(JSON.stringify(result));
+    } catch (error) {
+      res.statusCode = 400;
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
+    }
+  });
+}
+
+function registerBrowserAIChat(server: ViteDevServer) {
+  server.middlewares.use('/api/ai-chat', async (req, res, next) => {
+    if (req.method !== 'POST') {
+      next();
+      return;
+    }
+
+    try {
+      const payload = JSON.parse(await readBody(req)) as {
+        content?: string;
+        context?: BrowserChatMessage[];
+        settings?: BrowserAISettings;
+        temperature?: number;
+        maxTokens?: number;
+        docContext?: string;
+        docTitle?: string;
+        skillContext?: string;
+      };
+      const settings = payload.settings;
+      if (!settings?.enabled) throw new Error('请先在设置中启用 AI 助手');
+      if (!settings.api_key?.trim()) throw new Error('请先配置 API 密钥');
+      if (!settings.api_endpoint?.trim() || !settings.model?.trim()) throw new Error('请先配置 API 端点和模型');
+
+      const endpoint = settings.api_endpoint.replace(/\/+$/, '');
+      const messages: BrowserChatMessage[] = [{
+        role: 'system',
+        content: '你是一位专业、可靠的 AI 助手。请使用用户的语言回答，并在使用网络搜索资料时保留来源链接。',
+      }];
+      if (payload.skillContext?.trim()) messages.push({ role: 'system', content: `## Enabled Skills\n${payload.skillContext}` });
+      if (payload.docContext?.trim()) messages.push({ role: 'system', content: `当前文档《${payload.docTitle || '未命名文档'}》：\n${payload.docContext}` });
+      if (Array.isArray(payload.context)) messages.push(...payload.context.filter((item) => item.role && item.content));
+      if (payload.content?.trim()) messages.push({ role: 'user', content: payload.content });
+      if (messages.length === 1) throw new Error('消息内容不能为空');
+
+      const response = await fetchSearchService(`${endpoint}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${settings.api_key}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: settings.model,
+          messages,
+          temperature: payload.temperature ?? 0.7,
+          max_tokens: payload.maxTokens,
+          stream: false,
+        }),
+      }, 'AI 服务', 120_000);
+      const body = await response.json() as { choices?: Array<{ message?: { content?: string; reasoning_content?: string } }>; error?: { message?: string } };
+      if (!response.ok) throw new Error(body.error?.message || `AI 服务请求失败 (${response.status})`);
+      const message = body.choices?.[0]?.message;
+      const content = message?.content || '';
+      if (!content) throw new Error('AI 服务未返回有效内容');
+
+      res.statusCode = 200;
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      res.end(JSON.stringify({ content, reasoning: message?.reasoning_content || '' }));
     } catch (error) {
       res.statusCode = 400;
       res.setHeader('Content-Type', 'application/json; charset=utf-8');
@@ -154,8 +224,11 @@ export default defineConfig({
   plugins: [
     react(),
     {
-      name: 'browser-web-search',
-      configureServer: registerBrowserWebSearch,
+      name: 'browser-api-proxy',
+      configureServer(server) {
+        registerBrowserWebSearch(server);
+        registerBrowserAIChat(server);
+      },
     },
   ],
   build: {

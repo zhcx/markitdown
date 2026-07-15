@@ -1,8 +1,21 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AI_PROVIDER_DEFINITIONS, useAppStore, type AIProviderId, type AIProviderProfile, type SettingsTab } from '../../stores/appStore';
+import { useSkillStore } from '../../stores/skillStore';
 import { invoke } from '@tauri-apps/api/core';
+import { open } from '@tauri-apps/plugin-dialog';
+import { FontFamilyPicker } from './FontFamilyPicker';
 
 const isTauriRuntime = () => '__TAURI_INTERNALS__' in window;
+
+const DEFAULT_FONT_FAMILIES = [
+  'Microsoft YaHei', 'Microsoft YaHei UI', 'SimSun', 'SimHei', 'KaiTi', 'FangSong',
+  'DengXian', 'Noto Sans SC', 'Noto Serif SC', 'Source Han Sans SC', 'Source Han Serif SC',
+  'PingFang SC', 'Hiragino Sans GB', 'Segoe UI', 'Arial', 'Times New Roman', 'Consolas',
+];
+
+type LocalFontAccessWindow = Window & {
+  queryLocalFonts?: () => Promise<Array<{ family: string }>>;
+};
 
 const fetchModelsFromApi = async (apiKey: string, apiEndpoint: string): Promise<string[]> => {
   if (isTauriRuntime()) {
@@ -31,14 +44,103 @@ const fetchModelsFromApi = async (apiKey: string, apiEndpoint: string): Promise<
   });
 };
 
+function SettingsNavIcon({ type }: { type: SettingsTab }) {
+  if (type === 'appearance') {
+    return <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="3" fill="none" stroke="currentColor" strokeWidth="1.5" /><path d="M10 2.5v2M10 15.5v2M2.5 10h2M15.5 10h2M4.7 4.7l1.4 1.4M13.9 13.9l1.4 1.4M15.3 4.7l-1.4 1.4M6.1 13.9l-1.4 1.4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>;
+  }
+  if (type === 'editor') {
+    return <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 2.5h7l3 3v12H5zM12 2.5V6h3M7.5 9h5M7.5 12h5M7.5 15h3.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>;
+  }
+  if (type === 'image') {
+    return <svg viewBox="0 0 20 20" aria-hidden="true"><rect x="2.8" y="3.5" width="14.4" height="13" rx="2" fill="none" stroke="currentColor" strokeWidth="1.5" /><circle cx="7" cy="7.7" r="1.3" fill="none" stroke="currentColor" strokeWidth="1.4" /><path d="m4.5 14 3.4-3.5 2.4 2.1 2.3-2.7 2.9 4.1" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>;
+  }
+  if (type === 'export') {
+    return <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3v9M6.7 8.7 10 12l3.3-3.3M4 13v3.5h12V13" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>;
+  }
+  return <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.6 11.5 7l4.4 1.5-4.4 1.5-1.5 4.4L8.5 10 4.1 8.5 8.5 7zM15.5 13l.7 2 .8.3-.8.3-.7 2-.7-2-.8-.3.8-.3z" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" /></svg>;
+}
+
 export function SettingsPanel() {
   const { settings, settingsTab, saveSettings, setSettingsOpen } = useAppStore();
+  const { skills, loading: skillsLoading, loadSkills, importSkillPackage, importSkillFile, setSkillEnabled, deleteSkill } = useSkillStore();
   const [localSettings, setLocalSettings] = useState(settings);
   const [activeTab, setActiveTab] = useState<SettingsTab>(settingsTab);
   const [apiKeyVisible, setApiKeyVisible] = useState(false);
   const [models, setModels] = useState<string[]>([]);
   const [fetchingModels, setFetchingModels] = useState(false);
   const [fetchError, setFetchError] = useState('');
+  const [fontFamilies, setFontFamilies] = useState(DEFAULT_FONT_FAMILIES);
+  const [loadingFonts, setLoadingFonts] = useState(false);
+  const [fontNotice, setFontNotice] = useState('可直接输入任意已安装字体名称。');
+  const skillFileInputRef = useRef<HTMLInputElement>(null);
+
+  const loadLocalFonts = async () => {
+    const queryLocalFonts = (window as LocalFontAccessWindow).queryLocalFonts;
+    if (isTauriRuntime()) {
+      setLoadingFonts(true);
+      try {
+        const localFamilies = await invoke<string[]>('get_local_font_families');
+        const families = Array.from(new Set([
+          ...DEFAULT_FONT_FAMILIES,
+          ...localFamilies.filter(Boolean),
+        ])).sort((left, right) => left.localeCompare(right, 'zh-CN'));
+        setFontFamilies(families);
+        setFontNotice(`已读取 ${families.length} 个本机字体，可在下拉建议中选择。`);
+      } catch {
+        setFontNotice('无法读取系统字体列表；可直接输入已安装字体名称。');
+      } finally {
+        setLoadingFonts(false);
+      }
+      return;
+    }
+    if (!queryLocalFonts) {
+      setFontNotice('当前环境不支持读取字体列表；可直接输入已安装字体名称。');
+      return;
+    }
+
+    setLoadingFonts(true);
+    try {
+      const localFonts = await queryLocalFonts();
+      const families = Array.from(new Set([
+        ...DEFAULT_FONT_FAMILIES,
+        ...localFonts.map((font) => font.family).filter(Boolean),
+      ])).sort((left, right) => left.localeCompare(right, 'zh-CN'));
+      setFontFamilies(families);
+      setFontNotice(`已读取 ${families.length} 个本机字体，可在下拉建议中选择。`);
+    } catch {
+      setFontNotice('未获得本机字体访问权限；可直接输入已安装字体名称。');
+    } finally {
+      setLoadingFonts(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'ai') void loadSkills();
+  }, [activeTab, loadSkills]);
+
+  const handleImportSkill = async () => {
+    try {
+      if (!isTauriRuntime()) {
+        skillFileInputRef.current?.click();
+        return;
+      }
+      const selected = await open({ multiple: false, filters: [{ name: 'Skill 包', extensions: ['zip', 'md'] }] });
+      if (selected && !Array.isArray(selected)) await importSkillPackage(selected);
+    } catch (error) {
+      window.alert(`导入 Skill 失败：${String(error)}`);
+    }
+  };
+
+  const handleBrowserSkillFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    try {
+      await importSkillFile(file);
+    } catch (error) {
+      window.alert(`导入 Skill 失败：${String(error)}`);
+    }
+  };
 
   // 解析各服务商保存的 API KEY
   const parseProviderKeys = (): Record<string, string> => {
@@ -79,12 +181,13 @@ export function SettingsPanel() {
   };
 
   const tabs = [
-    { id: 'appearance', label: '外观' },
-    { id: 'editor', label: '编辑器' },
-    { id: 'image', label: '图床' },
-    { id: 'export', label: '导出' },
-    { id: 'ai', label: 'AI助手' },
+    { id: 'appearance', label: '外观', description: '主题、界面字体与内容显示' },
+    { id: 'editor', label: '编辑器', description: '编辑体验与自动保存' },
+    { id: 'image', label: '图床', description: '图片上传与存储服务' },
+    { id: 'export', label: '导出', description: '文档导出与版式设置' },
+    { id: 'ai', label: 'AI 助手', description: '模型、网络搜索与 Skills' },
   ] as const;
+  const activeTabMeta = tabs.find((tab) => tab.id === activeTab) || tabs[0];
 
   const s3Providers = [
     { value: 'aliyun-oss', label: '阿里云OSS' },
@@ -98,22 +201,34 @@ export function SettingsPanel() {
   return (
     <div className="settings-overlay" onClick={() => setSettingsOpen(false)}>
       <div className="settings-panel" onClick={(e) => e.stopPropagation()}>
-        <div className="settings-header">
-          <h2>设置</h2>
-          <button className="close-btn" onClick={() => setSettingsOpen(false)}>×</button>
-        </div>
-
-        <div className="settings-tabs">
+        <aside className="settings-navigation">
+          <div className="settings-navigation-header">
+            <button className="close-btn" onClick={() => setSettingsOpen(false)} aria-label="关闭设置">
+              <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 5 10 10M15 5 5 15" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>
+            </button>
+            <span>设置</span>
+          </div>
+          <nav className="settings-tabs" aria-label="设置分类">
           {tabs.map((tab) => (
             <button
               key={tab.id}
               className={`tab-btn ${activeTab === tab.id ? 'active' : ''}`}
               onClick={() => setActiveTab(tab.id)}
             >
-              {tab.label}
+              <SettingsNavIcon type={tab.id} />
+              <span>{tab.label}</span>
             </button>
           ))}
-        </div>
+          </nav>
+        </aside>
+
+        <section className="settings-main">
+          <div className="settings-header">
+            <div>
+              <h2>{activeTabMeta.label}</h2>
+              <p>{activeTabMeta.description}</p>
+            </div>
+          </div>
 
         <div className="settings-content">
           {activeTab === 'appearance' && (
@@ -129,6 +244,8 @@ export function SettingsPanel() {
                     })
                   }
                 >
+                  <option value="vscode-dark">VS Code Dark Theme</option>
+                  <option value="vscode-light">VS Code Light Theme</option>
                   <option value="inkwell-light">Inkwell Light Theme</option>
                   <option value="inkwell-dark">Inkwell Dark Theme</option>
                   <option value="claude-light">Claude Light Theme</option>
@@ -138,18 +255,47 @@ export function SettingsPanel() {
                   <option value="system">跟随系统</option>
                 </select>
               </div>
-              <div className="setting-item">
-                <label>字体</label>
-                <input
-                  type="text"
-                  value={localSettings.appearance.font_family}
-                  onChange={(e) =>
-                    setLocalSettings({
-                      ...localSettings,
-                      appearance: { ...localSettings.appearance, font_family: e.target.value },
-                    })
-                  }
-                />
+              <div className="setting-item font-setting-item">
+                <label>
+                  界面字体
+                  <small>菜单、工具栏、资源管理器与设置界面</small>
+                </label>
+                <div className="font-setting-control">
+                  <FontFamilyPicker
+                    value={localSettings.appearance.ui_font_family || 'Microsoft YaHei'}
+                    fontFamilies={fontFamilies}
+                    onChange={(v) =>
+                      setLocalSettings({
+                        ...localSettings,
+                        appearance: { ...localSettings.appearance, ui_font_family: v },
+                      })
+                    }
+                    placeholder="输入或选择字体…"
+                  />
+                  <button type="button" className="font-load-btn" onClick={loadLocalFonts} disabled={loadingFonts}>
+                    {loadingFonts ? '读取中…' : '读取本机字体'}
+                  </button>
+                  <small className="font-setting-notice">{fontNotice}</small>
+                </div>
+              </div>
+              <div className="setting-item font-setting-item">
+                <label>
+                  内容字体
+                  <small>编辑器、预览、AI 对话与校对面板</small>
+                </label>
+                <div className="font-setting-control">
+                  <FontFamilyPicker
+                    value={localSettings.appearance.font_family}
+                    fontFamilies={fontFamilies}
+                    onChange={(v) =>
+                      setLocalSettings({
+                        ...localSettings,
+                        appearance: { ...localSettings.appearance, font_family: v },
+                      })
+                    }
+                    placeholder="输入或选择字体…"
+                  />
+                </div>
               </div>
               <div className="setting-item">
                 <label>字号</label>
@@ -596,16 +742,17 @@ export function SettingsPanel() {
               {localSettings.web_search.enabled && (
                 <div className="settings-subsection web-search-settings">
                   <div className="setting-item">
-                    <label>搜索服务</label>
+                    <label>首选搜索服务</label>
                     <select
                       value={localSettings.web_search.provider}
                       onChange={(e) => setLocalSettings({
                         ...localSettings,
                         web_search: { ...localSettings.web_search, provider: e.target.value as 'tavily' | 'searxng' },
                       })}
+                      title="同时配置多个搜索服务时，优先使用此服务"
                     >
-                      <option value="tavily">Tavily</option>
-                      <option value="searxng">SearXNG</option>
+                      <option value="tavily">Tavily（优先）</option>
+                      <option value="searxng">SearXNG（优先）</option>
                     </select>
                   </div>
                   {localSettings.web_search.provider === 'tavily' ? (
@@ -677,6 +824,34 @@ export function SettingsPanel() {
                   )}
                 </div>
               )}
+              <div className="settings-subsection skill-settings">
+                <div className="settings-subsection-header">
+                  <div>
+                    <strong>Skills 管理</strong>
+                    <p>导入后在这里启用、停用或删除；启用的 Skill 可在 Chatbox 中按本轮选择。</p>
+                  </div>
+                  <button className="fetch-models-btn" onClick={() => void handleImportSkill()} disabled={skillsLoading}>
+                    {skillsLoading ? '处理中…' : '导入 Skill'}
+                  </button>
+                </div>
+                {skills.length === 0 ? (
+                  <div className="skill-settings-empty">尚未导入 Skill。支持 .zip 包或 SKILL.md 文件。</div>
+                ) : (
+                  <div className="skill-settings-list">
+                    {skills.map((skill) => (
+                      <div className="skill-settings-item" key={skill.id}>
+                        <label className="skill-settings-main" title={skill.description}>
+                          <input type="checkbox" checked={skill.enabled} onChange={(event) => void setSkillEnabled(skill.id, event.target.checked)} />
+                          <span><strong>{skill.name}</strong><small>{skill.description}</small></span>
+                        </label>
+                        <button className="skill-delete-btn" onClick={() => { if (window.confirm(`删除 Skill“${skill.name}”？`)) void deleteSkill(skill.id); }}>删除</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <input ref={skillFileInputRef} className="chatbot-hidden-file-input" type="file" accept=".zip,.md,text/markdown,application/zip" onChange={handleBrowserSkillFile} />
+              </div>
+
               {localSettings.ai.enabled && (
                 <>
                   <div className="setting-item">
@@ -927,6 +1102,7 @@ export function SettingsPanel() {
             保存
           </button>
         </div>
+        </section>
       </div>
     </div>
   );
