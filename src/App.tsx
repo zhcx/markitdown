@@ -10,6 +10,7 @@ import { StatusBar } from './components/StatusBar/StatusBar';
 import { Sidebar } from './components/Sidebar/Sidebar';
 import { AICompanionPopup } from './components/AI/AICompanionPopup';
 import { AITranslationPopup } from './components/AI/AITranslationPopup';
+import { AIDiffConfirmDialog } from './components/AI/AIDiffConfirmDialog';
 import { AIChatbotPanel } from './components/Chatbot/AIChatbotPanel';
 import { TitleBar } from './components/TitleBar/TitleBar';
 import { ActivityBar } from './components/ActivityBar/ActivityBar';
@@ -612,17 +613,22 @@ function App() {
         position={translationPosition}
         onClose={() => setTranslationVisible(false)}
         onApply={(text) => {
-          const { editorView } = useAppStore.getState();
-          if (editorView) {
-            const selection = editorView.state.selection.main;
-            const transaction = editorView.state.update({
-              changes: { from: selection.from, to: selection.to, insert: text },
-            });
-            editorView.dispatch(transaction);
-            editorView.focus();
-          }
+          const { editorView, content } = useAppStore.getState();
+          const selection = editorView?.state.selection.main;
+          const from = selection?.from ?? content.length;
+          const to = selection?.to ?? content.length;
+          useAIStore.getState().proposeEdit({
+            kind: 'translation',
+            reason: 'AI 翻译：请核对术语、人名和数字等可能影响事实准确性的内容。',
+            before: content.slice(from, to),
+            after: text,
+            from,
+            to,
+          });
+          setTranslationVisible(false);
         }}
       />
+      <AIDiffConfirmDialog />
     </div>
   );
 }

@@ -916,3 +916,56 @@ body {
     animation-iteration-count: 1 !important;
   }
 }
+/* AI edits are intentionally reviewed before they reach the document. */
+.ai-diff-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: color-mix(in srgb, #111827 48%, transparent);
+}
+
+.ai-diff-dialog {
+  width: min(880px, 100%);
+  max-height: min(760px, calc(100vh - 48px));
+  overflow: auto;
+  border: 1px solid var(--border-color, #d8dee9);
+  border-radius: 12px;
+  background: var(--bg-primary, #fff);
+  color: var(--text-primary, #1f2937);
+  box-shadow: 0 22px 70px rgba(0, 0, 0, .28);
+}
+
+.ai-diff-header, .ai-diff-actions { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 18px 20px; }
+.ai-diff-header { border-bottom: 1px solid var(--border-color, #e5e7eb); }
+.ai-diff-header h3, .ai-diff-header p { margin: 0; }
+.ai-diff-header p, .ai-diff-reason { color: var(--text-secondary, #64748b); font-size: 13px; }
+.ai-diff-close { border: 0; background: transparent; font-size: 24px; cursor: pointer; color: inherit; }
+.ai-mode-switch { display: flex; gap: 6px; padding: 14px 20px 0; }
+.ai-mode-switch button, .ai-diff-actions button { border: 1px solid var(--border-color, #cbd5e1); border-radius: 7px; background: transparent; color: inherit; padding: 7px 11px; cursor: pointer; }
+.ai-mode-switch button.active { color: #fff; border-color: #3b82f6; background: #2563eb; }
+.ai-diff-reason { margin: 12px 20px; line-height: 1.55; }
+.ai-diff-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 0 20px 12px; }
+.ai-diff-columns article { min-width: 0; border: 1px solid var(--border-color, #e2e8f0); border-radius: 8px; overflow: hidden; }
+.ai-diff-columns h4 { margin: 0; padding: 9px 12px; font-size: 13px; background: var(--bg-secondary, #f8fafc); }
+.ai-diff-columns pre { min-height: 120px; max-height: 290px; overflow: auto; margin: 0; padding: 12px; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.55 var(--font-mono, ui-monospace, monospace); }
+.ai-diff-columns article:first-child pre { background: color-mix(in srgb, #ef4444 7%, transparent); }
+.ai-diff-columns article:last-child pre { background: color-mix(in srgb, #22c55e 8%, transparent); }
+.ai-diff-actions { border-top: 1px solid var(--border-color, #e5e7eb); justify-content: flex-end; }
+.ai-diff-actions .primary { color: #fff; border-color: #2563eb; background: #2563eb; }
+.ai-diff-actions .secondary { margin-right: auto; }
+@media (max-width: 640px) { .ai-diff-overlay { padding: 12px; } .ai-diff-columns { grid-template-columns: 1fr; } .ai-diff-actions { flex-wrap: wrap; } .ai-diff-actions .secondary { margin-right: 0; } }
+
+.workspace-context-panel { border-top: 1px solid var(--border-color, #e5e7eb); background: var(--bg-secondary, #f8fafc); }
+.workspace-context-toggle { width: 100%; border: 0; padding: 8px 13px; text-align: left; background: transparent; color: var(--text-secondary, #64748b); font-size: 12px; cursor: pointer; }
+.workspace-context-body { display: grid; gap: 8px; padding: 0 13px 11px; font-size: 12px; }
+.workspace-context-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.workspace-context-actions button { border: 1px solid var(--border-color, #cbd5e1); border-radius: 5px; padding: 4px 7px; background: var(--bg-primary, #fff); color: inherit; cursor: pointer; }
+.workspace-context-source { display: grid; gap: 3px; padding: 7px; border: 1px solid var(--border-color, #e2e8f0); border-radius: 6px; background: var(--bg-primary, #fff); }
+.workspace-context-source small { color: var(--text-secondary, #64748b); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.workspace-context-source select { min-height: 54px; font-size: 12px; }
+.workspace-context-body input:not([type="checkbox"]) { width: 100%; box-sizing: border-box; padding: 6px 8px; border: 1px solid var(--border-color, #cbd5e1); border-radius: 5px; background: var(--bg-primary, #fff); color: inherit; }
+.workspace-context-disclosure { margin: 0; padding: 7px 8px; border-left: 3px solid #3b82f6; background: color-mix(in srgb, #3b82f6 7%, transparent); color: var(--text-secondary, #475569); line-height: 1.45; }
+.workspace-ai-scope { padding: 2px 5px; border-radius: 4px; background: color-mix(in srgb, #3b82f6 12%, transparent); color: #2563eb; font-size: 10px; }

@@ -23,6 +23,7 @@ type BrowserWebSearchResult = {
   url: string;
   content: string;
   score?: number;
+  published_at?: string;
 };
 
 type BrowserAISettings = {
@@ -105,7 +106,6 @@ function registerBrowserAIChat(server: ViteDevServer) {
         maxTokens?: number;
         docContext?: string;
         docTitle?: string;
-        skillContext?: string;
       };
       const settings = payload.settings;
       if (!settings?.enabled) throw new Error('请先在设置中启用 AI 助手');
@@ -117,7 +117,6 @@ function registerBrowserAIChat(server: ViteDevServer) {
         role: 'system',
         content: '你是一位专业、可靠的 AI 助手。请使用用户的语言回答，并在使用网络搜索资料时保留来源链接。',
       }];
-      if (payload.skillContext?.trim()) messages.push({ role: 'system', content: `## Enabled Skills\n${payload.skillContext}` });
       if (payload.docContext?.trim()) messages.push({ role: 'system', content: `当前文档《${payload.docTitle || '未命名文档'}》：\n${payload.docContext}` });
       if (Array.isArray(payload.context)) messages.push(...payload.context.filter((item) => item.role && item.content));
       if (payload.content?.trim()) messages.push({ role: 'user', content: payload.content });
@@ -177,11 +176,13 @@ async function fetchBrowserSearch(query: string, settings: BrowserWebSearchSetti
       provider: 'tavily',
       query,
       answer: body.answer,
+      accessed_at: new Date().toISOString(),
       results: (body.results || []).map((item): BrowserWebSearchResult => ({
         title: String(item.title || ''),
         url: String(item.url || ''),
         content: String(item.content || ''),
         score: typeof item.score === 'number' ? item.score : undefined,
+        published_at: typeof item.published_date === 'string' ? item.published_date : undefined,
       })),
     };
   }
@@ -210,11 +211,13 @@ async function fetchBrowserSearch(query: string, settings: BrowserWebSearchSetti
   return {
     provider: 'searxng',
     query,
+    accessed_at: new Date().toISOString(),
     results: (body.results || []).slice(0, limit).map((item): BrowserWebSearchResult => ({
       title: String(item.title || ''),
       url: String(item.url || ''),
       content: String(item.content || item.snippet || ''),
       score: typeof item.score === 'number' ? item.score : undefined,
+      published_at: typeof item.publishedDate === 'string' ? item.publishedDate : typeof item.published_date === 'string' ? item.published_date : undefined,
     })),
   };
 }

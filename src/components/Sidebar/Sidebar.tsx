@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import { useAppStore, type TimelineEntry } from '../../stores/appStore';
@@ -43,8 +43,12 @@ type TimelineDialogState = { entry: TimelineEntry; mode: 'preview' | 'diff' } | 
 type TimelineDiffLine = { kind: 'same' | 'added' | 'removed' | 'collapsed'; text: string };
 
 const OPEN_EDITORS_ID = 'virtual:open-editors';
+const WORKSPACE_ROOTS_KEY = 'markitdown.workspace-roots';
 const isTauriRuntime = () => '__TAURI_INTERNALS__' in window;
 const isDirectOpenFile = (name: string) => /\.(md|markdown|txt)$/i.test(name);
+// Keep this in sync with the desktop command. These are the file types offered
+// by MarkItDown in the workspace, rather than only files the editor can read.
+const isConvertibleFile = (name: string) => /\.(pdf|doc|docx|ppt|pptx|xls|xlsx|html?|csv|json|xml|epub|zip|png|jpe?g|gif|webp|bmp|svg|mp3|wav|m4a|ogg|eml|msg|rss|atom|ipynb)$/i.test(name);
 
 const splitTimelineLines = (value: string) => value.split(/\r?\n/);
 
@@ -153,35 +157,81 @@ function ExplorerActionIcon({ type }: { type: 'newFile' | 'openFile' | 'openFold
 }
 
 function FileIcon({ filename }: { filename: string }) {
-  const extension = filename.split('.').pop()?.toLowerCase();
-  const kind = extension === 'md' || extension === 'markdown' ? 'markdown'
-    : extension === 'txt' ? 'text'
-      : extension === 'json' ? 'json'
-        : 'document';
-  return <span className={`explorer-icon file-icon ${kind}`} aria-hidden="true">{kind === 'markdown' ? 'M' : ''}</span>;
+  const name = filename.toLowerCase();
+  const extension = name.split('.').pop() || '';
+  const [type, label] = name === 'cargo.toml' || name === 'cargo.lock' ? ['cargo', 'C']
+    : name === 'package.json' || name === 'package-lock.json' ? ['npm', 'N']
+      : name.startsWith('.git') ? ['git', '◆']
+        : name.startsWith('.env') ? ['config', '⚙']
+          : name === 'readme.md' ? ['readme', 'i']
+            : extension === 'md' || extension === 'markdown' ? ['markdown', 'M']
+              : extension === 'rs' ? ['rust', '{}']
+                : extension === 'ts' || extension === 'tsx' ? ['typescript', 'TS']
+                  : extension === 'js' || extension === 'jsx' ? ['javascript', 'JS']
+                    : extension === 'py' ? ['python', 'Py']
+                      : extension === 'json' ? ['json', '{}']
+                        : extension === 'yaml' || extension === 'yml' || extension === 'toml' ? ['config', '⚙']
+                          : extension === 'html' || extension === 'htm' || extension === 'xml' ? ['html', '</>']
+                            : extension === 'css' || extension === 'scss' || extension === 'less' ? ['css', '#']
+                              : extension === 'txt' || extension === 'log' ? ['text', '≡']
+                                : extension === 'pdf' ? ['pdf', 'PDF']
+                                  : extension === 'doc' || extension === 'docx' ? ['word', 'W']
+                                    : extension === 'ppt' || extension === 'pptx' ? ['slides', 'P']
+                                      : extension === 'xls' || extension === 'xlsx' || extension === 'csv' ? ['sheet', 'X']
+                                        : /^(png|jpg|jpeg|gif|webp|bmp|svg)$/.test(extension) ? ['image', '▧']
+                                          : /^(mp3|wav|m4a|ogg)$/.test(extension) ? ['audio', '♪']
+                                            : extension === 'zip' ? ['archive', '□'] : ['document', '≡'];
+  return <svg className={`explorer-icon file-icon vscode-file-icon ${type}`} viewBox="0 0 20 20" aria-hidden="true">
+    <path className="vscode-file-paper" d="M4 1.5h7l4 4v12.5H4z" />
+    <path className="vscode-file-fold" d="M11 1.5v4h4" />
+    <text x="9.5" y="14" textAnchor="middle">{label}</text>
+  </svg>;
 }
 
 function SearchSidebar({ style }: SidebarProps) {
-  const { tabs, activeTabId, setActiveTab } = useAppStore();
+  const { openFile } = useAppStore();
   const [query, setQuery] = useState('');
-  const normalizedQuery = query.trim().toLocaleLowerCase();
-  const results = useMemo(() => {
-    if (!normalizedQuery) return [];
-    return tabs.flatMap((tab) => tab.content.split('\n').flatMap((line, index) => {
-      const column = line.toLocaleLowerCase().indexOf(normalizedQuery);
-      return column < 0 ? [] : [{ tabId: tab.id, title: tab.title, lineNumber: index + 1, column, line }];
-    })).slice(0, 100);
-  }, [normalizedQuery, tabs]);
+  const [replaceWith, setReplaceWith] = useState('');
+  const [caseSensitive, setCaseSensitive] = useState(false);
+  const [useRegex, setUseRegex] = useState(false);
+  const [extensions, setExtensions] = useState('md,markdown,txt');
+  const [ignoreDirs, setIgnoreDirs] = useState('.git,node_modules,target,dist');
+  const [results, setResults] = useState<Array<{ path: string; line_number: number; column: number; line: string }>>([]);
+  const [diffs, setDiffs] = useState<Array<{ path: string; replacements: number; diff: string }>>([]);
+  const [status, setStatus] = useState('');
+  const [searching, setSearching] = useState(false);
+  const searchSequence = useRef(0);
+  const [history, setHistory] = useState<string[]>(() => JSON.parse(localStorage.getItem('markitdown.workspace-search-history') || '[]'));
 
-  const openResult = (result: typeof results[number]) => {
-    setActiveTab(result.tabId);
+  const options = (applyReplace = false) => ({
+    roots: JSON.parse(localStorage.getItem(WORKSPACE_ROOTS_KEY) || '[]') as string[], query,
+    caseSensitive, useRegex,
+    extensions: extensions.split(',').map(value => value.trim()).filter(Boolean),
+    ignoreDirs: ignoreDirs.split(',').map(value => value.trim()).filter(Boolean),
+    replaceWith: replaceWith || undefined, applyReplace,
+  });
+
+  const runSearch = async (applyReplace = false) => {
+    if (!query.trim()) return;
+    const currentRequest = ++searchSequence.current;
+    setSearching(true); setStatus('');
+    try {
+      if (!isTauriRuntime()) throw new Error('工作区搜索仅在桌面应用中可用');
+      const response = await invoke<{ matches: typeof results; diffs: typeof diffs; scanned_files: number; truncated: boolean; applied: boolean }>('workspace_search', { options: options(applyReplace) });
+      if (currentRequest !== searchSequence.current) return;
+      setResults(response.matches); setDiffs(response.diffs);
+      setStatus(`${response.scanned_files} 个文件，${response.matches.length} 处匹配${response.truncated ? '（结果已截断）' : ''}${response.applied ? '；替换已写入' : ''}`);
+      const next = [query, ...history.filter(item => item !== query)].slice(0, 12);
+      setHistory(next); localStorage.setItem('markitdown.workspace-search-history', JSON.stringify(next));
+    } catch (error) { setStatus(String(error)); } finally { setSearching(false); }
+  };
+
+  const openResult = async (result: typeof results[number]) => {
+    await openFile(result.path);
     window.setTimeout(() => {
-      const view = useAppStore.getState().editorView;
-      if (!view) return;
-      const line = view.state.doc.line(Math.min(result.lineNumber, view.state.doc.lines));
-      const position = Math.min(line.to + result.column, view.state.doc.length);
-      view.dispatch({ selection: { anchor: position }, scrollIntoView: true });
-      view.focus();
+      const view = useAppStore.getState().editorView; if (!view) return;
+      const line = view.state.doc.line(Math.min(result.line_number, view.state.doc.lines));
+      view.dispatch({ selection: { anchor: Math.min(line.from + result.column - 1, line.to) }, scrollIntoView: true }); view.focus();
     }, 0);
   };
 
@@ -193,23 +243,34 @@ function SearchSidebar({ style }: SidebarProps) {
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="搜索已打开的文件"
-            aria-label="搜索已打开的文件"
+            onKeyDown={(event) => { if (event.key === 'Enter') void runSearch(); }}
+            placeholder="搜索工作区"
+            aria-label="搜索工作区"
             autoFocus
           />
-          {normalizedQuery ? (
+          <input value={replaceWith} onChange={(event) => setReplaceWith(event.target.value)} placeholder="替换为（先生成 Diff）" aria-label="替换为" />
+          <div className="document-search-options">
+            <label><input type="checkbox" checked={caseSensitive} onChange={event => setCaseSensitive(event.target.checked)} /> 区分大小写</label>
+            <label><input type="checkbox" checked={useRegex} onChange={event => setUseRegex(event.target.checked)} /> 正则</label>
+          </div>
+          <input value={extensions} onChange={event => setExtensions(event.target.value)} placeholder="文件类型，如 md,ts" aria-label="文件类型筛选" />
+          <input value={ignoreDirs} onChange={event => setIgnoreDirs(event.target.value)} placeholder="忽略目录，如 node_modules" aria-label="忽略目录" />
+          <div className="document-search-actions"><button onClick={() => void runSearch()} disabled={searching}>{searching ? '搜索中…' : '搜索'}</button><button onClick={() => { searchSequence.current += 1; setSearching(false); setStatus('已取消显示结果'); }}>取消</button>{replaceWith && <button onClick={() => void runSearch(false)} disabled={searching}>预览 Diff</button>}{diffs.length > 0 && <button onClick={() => { if (window.confirm(`确认写入 ${diffs.length} 个文件的替换？`)) void runSearch(true); }} disabled={searching}>确认替换</button>}</div>
+          {history.length > 0 && <div className="document-search-history">历史：{history.map(item => <button key={item} onClick={() => setQuery(item)}>{item}</button>)}</div>}
+          {status && <div className="document-search-count">{status}</div>}
+          {query.trim() ? (
             <div className="document-search-results" role="list">
-              <div className="document-search-count">找到 {results.length}{results.length === 100 ? '+' : ''} 项</div>
               {results.map((result) => (
-                <button key={`${result.tabId}-${result.lineNumber}-${result.column}`} className={`document-search-result ${result.tabId === activeTabId ? 'active' : ''}`} onClick={() => openResult(result)} role="listitem">
-                  <strong>{result.title}</strong>
-                  <small>第 {result.lineNumber} 行</small>
+                <button key={`${result.path}-${result.line_number}-${result.column}`} className="document-search-result" onClick={() => void openResult(result)} role="listitem">
+                  <strong>{getFolderName(result.path)}</strong>
+                  <small>{result.path} · 第 {result.line_number} 行，第 {result.column} 列</small>
                   <span>{result.line || '空行'}</span>
                 </button>
               ))}
-              {!results.length && <div className="explorer-empty-state">没有匹配结果</div>}
+              {diffs.map(diff => <pre className="document-search-diff" key={diff.path}>{diff.diff}</pre>)}
+              {!results.length && !diffs.length && !searching && <div className="explorer-empty-state">没有匹配结果</div>}
             </div>
-          ) : <div className="document-search-empty">输入关键词，可在所有已打开文件中搜索。</div>}
+          ) : <div className="document-search-empty">输入关键词，在已打开的工作区中递归搜索。</div>}
         </div>
       </div>
     </aside>
@@ -257,7 +318,7 @@ function ExplorerSidebar({ style }: SidebarProps) {
       const path = `${parentPath}/${name}`;
       if (entry.kind === 'directory') {
         entries.push({ name, path, isDirectory: true, children: [], directoryHandle: entry as FileSystemDirectoryHandle });
-      } else if (isDirectOpenFile(name)) {
+      } else if (isDirectOpenFile(name) || isConvertibleFile(name)) {
         entries.push({ name, path, isDirectory: false, file: await (entry as FileSystemFileHandle).getFile() });
       }
     }
@@ -281,6 +342,10 @@ function ExplorerSidebar({ style }: SidebarProps) {
       setWorkspaceFolders(previous => previous.some((folder) => folder.path === folderPath)
         ? previous
         : [...previous, { name: browserHandle?.name || getFolderName(folderPath), path: folderPath, tree }]);
+      if (!folderPath.startsWith('web://')) {
+        const roots = JSON.parse(localStorage.getItem(WORKSPACE_ROOTS_KEY) || '[]') as string[];
+        if (!roots.includes(folderPath)) localStorage.setItem(WORKSPACE_ROOTS_KEY, JSON.stringify([...roots, folderPath]));
+      }
       setLoadedFolders(previous => new Set(previous).add(folderPath));
       setExpandedNodes(previous => new Set(previous).add(folderPath));
     } catch (error) {
@@ -349,10 +414,14 @@ function ExplorerSidebar({ style }: SidebarProps) {
   };
 
   const openTreeFile = async (node: FileNode) => {
-    if (node.file) {
+    if (node.file && isDirectOpenFile(node.name)) {
       useAppStore.getState().addTab({ path: node.path, title: node.name, content: await node.file.text(), modified: false });
     } else if (isDirectOpenFile(node.name)) {
       await openFile(node.path);
+    } else if (node.file) {
+      // Browser folders have no native file path, so conversion must run in the
+      // desktop application where the bundled MarkItDown sidecar is available.
+      window.alert('文件转换仅在桌面应用中可用，请使用桌面版打开此文件夹。');
     } else {
       await convertDocument(node.path);
     }
@@ -413,7 +482,7 @@ function ExplorerSidebar({ style }: SidebarProps) {
               setContextMenu({ x: event.clientX, y: event.clientY, node });
             }
           }}
-          title={node.path}
+          title={`${node.path}${!node.isDirectory && !isDirectOpenFile(node.name) ? '\n点击即可转换为 Markdown' : ''}`}
         >
           {node.isDirectory ? <Chevron expanded={expanded} /> : <span className="explorer-chevron-spacer" />}
           {node.isDirectory ? <FolderIcon open={expanded} /> : <FileIcon filename={node.name} />}

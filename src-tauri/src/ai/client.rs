@@ -1082,14 +1082,9 @@ pub async fn chat(
     max_tokens: Option<u32>,
     doc_context: Option<String>,
     doc_title: Option<String>,
-    skill_context: Option<String>,
     enable_thinking: bool,
 ) -> Result<AIResponse, String> {
-    let mut system_prompt = get_prompt(PromptAction::Chat, "", None, settings);
-    if let Some(skills) = skill_context.filter(|value| !value.trim().is_empty()) {
-        system_prompt.push_str("\n\n## Enabled Skills\nFollow these imported skill instructions when relevant:\n");
-        system_prompt.push_str(&skills);
-    }
+    let system_prompt = get_prompt(PromptAction::Chat, "", None, settings);
 
     let mut messages = Vec::new();
 
@@ -1190,16 +1185,11 @@ pub async fn chat_streaming(
     max_tokens: Option<u32>,
     doc_context: Option<String>,
     doc_title: Option<String>,
-    skill_context: Option<String>,
     enable_thinking: bool,
     request_id: String,
     window: WebviewWindow,
 ) -> Result<(), String> {
-    let mut system_prompt = get_prompt(PromptAction::Chat, "", None, settings);
-    if let Some(skills) = skill_context.filter(|value| !value.trim().is_empty()) {
-        system_prompt.push_str("\n\n## Enabled Skills\nFollow these imported skill instructions when relevant:\n");
-        system_prompt.push_str(&skills);
-    }
+    let system_prompt = get_prompt(PromptAction::Chat, "", None, settings);
     let messages = build_chat_messages(
         content,
         context,

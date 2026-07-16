@@ -2845,52 +2845,6 @@ html.panel-resizing .chatbot-side-panel {
 
 .chatbot-linked-doc-unlink:hover { color: var(--text-color); }
 
-.chatbot-skill-panel {
-  margin: 0 var(--panel-padding) 8px;
-  padding: 8px;
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  background: var(--surface-muted);
-  max-height: 180px;
-  overflow: auto;
-}
-
-.chatbot-skill-panel-header,
-.chatbot-skill-item {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-}
-
-.chatbot-skill-panel-header {
-  justify-content: space-between;
-  margin-bottom: 6px;
-  color: var(--text-secondary);
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.chatbot-skill-panel-header button {
-  border: 1px solid var(--border-color);
-  border-radius: 5px;
-  background: var(--surface-raised);
-  color: var(--text-secondary);
-  padding: 3px 7px;
-  cursor: pointer;
-  font-size: 11px;
-}
-
-.chatbot-skill-item {
-  padding: 4px 2px;
-  color: var(--text-color);
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.chatbot-skill-item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.chatbot-skill-empty { color: var(--text-muted); font-size: 11px; line-height: 1.5; }
-.chatbot-skill-count { font-size: 9px; color: var(--accent-color); }
-
 .chatbot-link-btn.linked {
   color: var(--success-color);
   border-color: color-mix(in srgb, var(--success-color) 30%, transparent);
@@ -3733,6 +3687,29 @@ textarea {
 .editor-content .cm-selectionBackground,
 .editor-content .cm-focused .cm-selectionBackground {
   background: var(--accent-light) !important;
+}
+
+/* Keep text selection unmistakable while retaining each theme's accent hue. */
+::selection,
+[data-theme="dark"] ::selection {
+  background: color-mix(in srgb, var(--accent-color) 48%, var(--bg-document, #ffffff));
+  color: var(--text-primary, var(--text-color));
+}
+
+.editor-content .cm-selectionBackground,
+.editor-content .cm-focused .cm-selectionBackground {
+  background: color-mix(in srgb, var(--accent-color) 52%, var(--bg-editor, var(--bg-document, #ffffff))) !important;
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--accent-color) 88%, transparent);
+}
+
+[data-theme$="dark"] ::selection {
+  background: color-mix(in srgb, var(--accent-color) 64%, var(--bg-editor, #111827));
+  color: #ffffff;
+}
+
+[data-theme$="dark"] .editor-content .cm-selectionBackground,
+[data-theme$="dark"] .editor-content .cm-focused .cm-selectionBackground {
+  background: color-mix(in srgb, var(--accent-color) 68%, var(--bg-editor, #111827)) !important;
 }
 
 .editor-content .cm-cursor,
@@ -5784,6 +5761,11 @@ textarea:focus-visible {
   background: var(--bg-elevated);
   border: 1px solid var(--border-soft);
 }
+.preview-document .mermaid-container { overflow-x: auto; text-align: center; }
+.preview-document .mermaid-container figcaption { margin-bottom: .7em; color: var(--text-muted); font-size: .78em; text-align: left; }
+.preview-document .mermaid-container svg { display: inline-block; max-width: 100%; height: auto; }
+.preview-document .mermaid-error { margin: 1.5em 0; padding: 12px; color: #b43d3d; border: 1px solid color-mix(in srgb, #d9534f 42%, var(--border-soft)); border-radius: 8px; background: color-mix(in srgb, #d9534f 8%, var(--bg-elevated)); }
+.preview-document .mermaid-error pre { margin: 8px 0 0; padding: 8px; overflow-x: auto; color: var(--text-primary); background: var(--bg-secondary); border-radius: 5px; text-align: left; }
 
 /* Math block */
 .preview-document .katex-display {
@@ -5792,6 +5774,8 @@ textarea:focus-visible {
   overflow-x: auto;
   overflow-y: hidden;
 }
+.preview-document .katex { font-size: 1.04em; }
+.preview-document .katex-block { padding: .45em 0; }
 
 /* Footnotes */
 .preview-document .footnotes {
@@ -6343,6 +6327,29 @@ textarea:focus-visible {
   background: var(--bg-elevated);
   font-size: 12px;
 }
+.document-search-panel > input { display: block; box-sizing: border-box; margin-bottom: 6px; }
+.document-search-options { display: flex; align-items: center; gap: 14px; min-height: 28px; margin: 2px 0 6px; }
+.document-search-options label { display: inline-flex; align-items: center; gap: 6px; color: var(--text-secondary); font-size: 12px; white-space: nowrap; cursor: pointer; }
+.document-search-panel .document-search-options input[type="checkbox"] { width: 14px; height: 14px; min-width: 14px; margin: 0; padding: 0; accent-color: var(--accent-color); }
+.document-search-actions { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 6px; }
+.document-search-actions button { min-height: 27px; padding: 4px 8px; border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-primary); background: var(--bg-elevated); font-size: 12px; cursor: pointer; }
+.document-search-actions button:first-child, .document-search-actions button:last-child { border-color: var(--accent-color); }
+.document-search-actions button:disabled { opacity: .55; cursor: default; }
+.document-search-history { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin: 6px 0; color: var(--text-muted); font-size: 11px; }
+.document-search-history button { max-width: 120px; overflow: hidden; border: 0; border-radius: 3px; padding: 2px 5px; color: var(--text-secondary); background: var(--bg-hover); text-overflow: ellipsis; white-space: nowrap; cursor: pointer; font-size: 11px; }
+.document-search-diff { margin: 8px 0; padding: 8px; overflow: auto; border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-secondary); background: var(--bg-elevated); font: 11px/1.45 ui-monospace, SFMono-Regular, Consolas, monospace; white-space: pre-wrap; }
+
+.wechat-export-modal { width: min(980px, calc(100vw - 40px)); max-height: calc(100vh - 40px); }
+.wechat-theme-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-bottom: 16px; }
+.wechat-theme-grid button { display: grid; gap: 4px; min-height: 78px; padding: 10px; border: 1px solid var(--border-color); border-top: 4px solid var(--wechat-primary); border-radius: 7px; background: var(--wechat-pale); color: var(--text-primary); text-align: left; cursor: pointer; }
+.wechat-theme-grid button.active { border-color: var(--wechat-primary); box-shadow: 0 0 0 2px color-mix(in srgb, var(--wechat-primary) 24%, transparent); }
+.wechat-theme-grid small { color: var(--text-secondary); font-size: 11px; line-height: 1.35; }
+.wechat-export-preview { max-height: 45vh; overflow: auto; padding: 18px; border: 1px solid var(--border-color); border-radius: 8px; background: #fff; }
+.wechat-export-preview * { box-sizing: border-box; }
+.secondary-btn { padding: 8px 13px; border: 1px solid var(--border-color); border-radius: 5px; color: var(--text-primary); background: var(--bg-elevated); cursor: pointer; }
+.update-toast-error { position: fixed; z-index: 1200; right: 20px; bottom: 20px; max-width: min(420px, calc(100vw - 40px)); padding: 10px 13px; border: 1px solid #d85b5b; border-radius: 7px; color: #7f1d1d; background: #fff1f1; box-shadow: 0 8px 25px rgba(0,0,0,.18); font-size: 12px; line-height: 1.45; }
+[data-theme$="dark"] .update-toast-error { color: #fecaca; background: #481f25; border-color: #b94a57; }
+@media (max-width: 680px) { .wechat-theme-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .document-search-empty { padding: 18px 4px; color: var(--text-muted); font-size: 12px; line-height: 1.5; }
 .document-search-results { margin-top: 9px; }
 .document-search-count { padding: 0 4px 6px; color: var(--text-muted); font-size: 11px; }
@@ -6534,19 +6541,64 @@ textarea:focus-visible {
 }
 .explorer-icon.folder-icon.open { background: #e2b64f; }
 .explorer-icon.file-icon {
-  width: 14px;
-  height: 16px;
+  width: 22px;
+  height: 18px;
   box-sizing: border-box;
-  border: 1px solid var(--text-muted);
-  border-radius: 1px;
-  color: var(--accent-color);
-  font-size: 8px;
-  font-weight: 800;
-  line-height: 14px;
+  border: 0;
+  border-radius: 4px;
+  color: #fff;
+  background: #65758b;
+  font-size: 7px;
+  font-weight: 750;
+  letter-spacing: -.25px;
+  line-height: 18px;
   text-align: center;
 }
-.explorer-icon.file-icon.text { border-color: var(--text-muted); }
-.explorer-icon.file-icon.json { border-color: #d7a63d; }
+.explorer-icon.file-icon.markdown { background: #3f7f6a; }
+.explorer-icon.file-icon.text { background: #77838f; }
+.explorer-icon.file-icon.pdf { background: #cc5252; }
+.explorer-icon.file-icon.word { background: #4f78b5; }
+.explorer-icon.file-icon.slides { background: #d67b45; }
+.explorer-icon.file-icon.sheet { background: #4b976c; }
+.explorer-icon.file-icon.code { background: #8a6bb7; font-size: 6px; }
+.explorer-icon.file-icon.image { background: #b15e9c; font-size: 6px; }
+.explorer-icon.file-icon.audio { background: #6f82bd; font-size: 13px; }
+.explorer-icon.file-icon.archive { background: #9b7a43; font-size: 6px; }
+
+/* VS Code-inspired file glyphs: compact fold-corner pages with type colors. */
+.explorer-icon.vscode-file-icon {
+  flex: 0 0 18px;
+  width: 18px;
+  height: 18px;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent !important;
+  color: #8b97a8;
+}
+.vscode-file-icon .vscode-file-paper { fill: currentColor; }
+.vscode-file-icon .vscode-file-fold { fill: none; stroke: color-mix(in srgb, currentColor 48%, #fff); stroke-width: 1.25; }
+.vscode-file-icon text { fill: #fff; font-family: Arial, sans-serif; font-size: 6.3px; font-weight: 800; letter-spacing: -.35px; }
+.vscode-file-icon.markdown { color: #d85d5d; }
+.vscode-file-icon.readme { color: #4d9ad1; }
+.vscode-file-icon.rust { color: #d19a43; }
+.vscode-file-icon.cargo { color: #e5ae43; }
+.vscode-file-icon.typescript { color: #3178c6; }
+.vscode-file-icon.javascript { color: #d9b722; }
+.vscode-file-icon.python { color: #4b8bbe; }
+.vscode-file-icon.json { color: #d5a92d; }
+.vscode-file-icon.html { color: #e26b43; }
+.vscode-file-icon.css { color: #5d9bd3; }
+.vscode-file-icon.git { color: #ce6c59; }
+.vscode-file-icon.config { color: #8290a2; }
+.vscode-file-icon.image { color: #a970c4; }
+.vscode-file-icon.pdf { color: #d14e4e; }
+.vscode-file-icon.word { color: #4f78b5; }
+.vscode-file-icon.slides { color: #d67b45; }
+.vscode-file-icon.sheet { color: #4b976c; }
+.vscode-file-icon.audio { color: #7f86c7; }
+.vscode-file-icon.archive { color: #a9864b; }
+.vscode-file-icon text { dominant-baseline: middle; }
 .explorer-children { border: 0; margin: 0; }
 .explorer-empty-folder,
 .explorer-empty-state { min-height: 24px; color: var(--text-muted); font-size: 12px; line-height: 24px; }
@@ -6594,24 +6646,12 @@ textarea:focus-visible {
   padding-right: 8px;
 }
 .vscode-explorer .open-editor-row .explorer-icon.file-icon {
-  flex: 0 0 15px;
-  width: 15px;
-  height: 17px;
+  flex: 0 0 18px;
+  width: 18px;
+  height: 18px;
 }
 .vscode-explorer .file-icon.document {
-  border-color: var(--accent-color);
-  background: color-mix(in srgb, var(--accent-color) 7%, transparent);
-  position: relative;
-}
-.vscode-explorer .file-icon.document::after {
-  content: '';
-  position: absolute;
-  top: 4px;
-  left: 3px;
-  width: 7px;
-  height: 1px;
-  background: currentColor;
-  box-shadow: 0 3px 0 currentColor, 0 6px 0 currentColor;
+  color: #8b97a8;
 }
 .vscode-explorer .open-editor-row.active {
   background: color-mix(in srgb, var(--accent-color) 13%, var(--bg-panel));
@@ -7176,13 +7216,6 @@ textarea:focus-visible {
   line-height: 16px;
 }
 
-.chatbot-skill-count {
-  min-width: 9px;
-  font-size: 9px;
-  line-height: 1;
-  color: currentColor;
-}
-
 .chatbot-hidden-file-input {
   position: fixed;
   width: 1px;
@@ -7371,21 +7404,6 @@ textarea:focus-visible {
 .chatbot-search-empty { padding: 12px; color: var(--text-muted); text-align: center; font-size: 11px; }
 .chatbot-searching-label { margin-right: 7px; color: var(--text-secondary); font-size: 12px; }
 
-/* AI settings: persistent Skill library management. */
-.skill-settings { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border-soft); }
-.settings-subsection-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
-.settings-subsection-header strong { color: var(--text-primary); font-size: 13px; }
-.settings-subsection-header p { margin: 4px 0 0; color: var(--text-muted); font-size: 11px; line-height: 1.45; }
-.skill-settings-list { display: grid; gap: 7px; margin-top: 10px; }
-.skill-settings-item { display: flex; align-items: center; gap: 10px; padding: 8px 9px; border: 1px solid var(--border-soft); border-radius: 8px; background: var(--surface-subtle); }
-.skill-settings-main { display: flex; flex: 1; align-items: flex-start; gap: 8px; min-width: 0; cursor: pointer; }
-.skill-settings-main input { margin-top: 3px; }
-.skill-settings-main span { display: grid; gap: 2px; min-width: 0; }
-.skill-settings-main strong { overflow: hidden; color: var(--text-primary); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
-.skill-settings-main small { overflow: hidden; color: var(--text-muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
-.skill-settings-empty { margin-top: 10px; padding: 10px; color: var(--text-muted); border: 1px dashed var(--border-soft); border-radius: 8px; font-size: 11px; }
-.skill-delete-btn { flex: 0 0 auto; padding: 4px 7px; color: var(--danger-color, #d9534f); border: 1px solid currentColor; border-radius: 5px; background: transparent; font-size: 10px; cursor: pointer; }
-
 /* Compact interface geometry — keep affordances clear without the soft-card
    appearance that makes the workspace feel visually busy. */
 :root {
@@ -7410,8 +7428,6 @@ textarea:focus-visible {
   .activity-bar button,
   .explorer-section,
   .explorer-section-heading,
-  .skill-settings-item,
-  .skill-settings-empty,
   .image-format-option,
   .image-export-preview,
   .table-picker,
@@ -8250,7 +8266,6 @@ html[data-theme] .preview-container,
 /* 统一不同图形本身的可见面积，避免相同 viewBox 看起来忽大忽小。 */
 .composer-icon-attach { transform: scale(1.06); }
 .composer-icon-document { transform: scale(1.05); }
-.composer-icon-skills { transform: scale(1.13); }
 .composer-icon-search { transform: scale(1.08); }
 .composer-icon-reasoning { transform: scale(1.06); }
 .reasoning-arrow .composer-icon-chevronDown { transform: scale(.92); }
@@ -8263,12 +8278,3 @@ html[data-theme] .preview-container,
   line-height: 16px;
   white-space: nowrap;
 }
-
-.chatbot-skill-count {
-  position: absolute;
-  top: 3px;
-  right: 3px;
-  min-width: 9px;
-}
-
-.chatbot-skill-count:empty { display: none; }

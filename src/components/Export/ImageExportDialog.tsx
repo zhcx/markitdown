@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import MarkdownIt from 'markdown-it';
+import { applyExportTemplate, EXPORT_TEMPLATES, loadExportTemplate, saveExportTemplate, type ExportTemplate } from './exportTemplates';
 
 type ImageRatio = 'square' | 'landscape' | 'wide' | 'portrait' | 'a4';
 
@@ -29,17 +30,20 @@ function downloadBlob(blob: Blob, filename: string) {
 export function ImageExportDialog({ content, onClose }: ImageExportDialogProps) {
   const [selected, setSelected] = useState<ImageRatio>('square');
   const [exporting, setExporting] = useState(false);
+  const [template, setTemplate] = useState<ExportTemplate>(loadExportTemplate);
   const current = formats.find((format) => format.id === selected) || formats[0];
   const renderedHtml = useMemo(() => md.render(content || '暂无内容'), [content]);
 
   const handleExport = async () => {
+    saveExportTemplate(template);
     setExporting(true);
     const scale = 2;
     const width = current.id === 'a4' ? 794 : 1200;
     const height = Math.round(width / current.ratio);
     const background = getComputedStyle(document.documentElement).getPropertyValue('--bg-document').trim() || '#fffdf8';
     const foreground = getComputedStyle(document.documentElement).getPropertyValue('--text-color').trim() || '#242321';
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width * scale}" height="${height * scale}"><foreignObject width="100%" height="100%"><div xmlns="http://www.w3.org/1999/xhtml" style="box-sizing:border-box;width:100%;height:100%;padding:${Math.round(width * 0.08)}px;background:${background};color:${foreground};font-family:system-ui,-apple-system,'Microsoft YaHei',sans-serif;font-size:${Math.max(18, Math.round(width / 48))}px;line-height:1.7;overflow:hidden"><style>h1,h2,h3{line-height:1.2;margin:0 0 .7em}p{margin:.5em 0}pre{padding:1em;background:#202124;color:#f5f5f5;border-radius:10px;overflow:hidden}code{font-family:ui-monospace,monospace}blockquote{margin:1em 0;padding-left:1em;border-left:4px solid #d97757}table{width:100%;border-collapse:collapse}td,th{border:1px solid #c9c3b7;padding:.4em;text-align:left}img{max-width:100%}</style>${renderedHtml}</div></foreignObject></svg>`;
+    const themedHtml = applyExportTemplate(renderedHtml, 'MarkItDown', template);
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width * scale}" height="${height * scale}"><foreignObject width="100%" height="100%"><div xmlns="http://www.w3.org/1999/xhtml" style="box-sizing:border-box;width:100%;height:100%;padding:${Math.round(width * 0.04)}px;background:${background};color:${foreground};font-size:${Math.max(18, Math.round(width / 48))}px;overflow:hidden"><style>img{max-width:100%}</style>${themedHtml}</div></foreignObject></svg>`;
     const image = new Image();
     image.onload = () => {
       const canvas = document.createElement('canvas');
@@ -62,6 +66,7 @@ export function ImageExportDialog({ content, onClose }: ImageExportDialogProps) 
     <div className="modal-content image-export-modal" onClick={(event) => event.stopPropagation()}>
       <div className="modal-header"><div><h2>导出为图片</h2><p className="export-modal-subtitle">选择适合内容的画布比例</p></div><button className="modal-close" onClick={onClose}>×</button></div>
       <div className="modal-body image-export-body">
+        <div className="option-row"><label>导出模板</label><select value={template.id} onChange={(event) => setTemplate({ ...EXPORT_TEMPLATES.find((item) => item.id === event.target.value)! })}>{EXPORT_TEMPLATES.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></div>
         <div className="image-format-grid">
           {formats.map((format) => <button key={format.id} className={`image-format-option ${selected === format.id ? 'selected' : ''}`} onClick={() => setSelected(format.id)}>
             <span className="image-format-preview" style={{ aspectRatio: format.ratio }}><span className="preview-lines" /></span>

@@ -5,6 +5,7 @@ export interface WebSearchResult {
   url: string;
   content: string;
   score?: number;
+  published_at?: string;
 }
 
 export interface WebSearchResponse {
@@ -12,6 +13,7 @@ export interface WebSearchResponse {
   query: string;
   answer?: string;
   results: WebSearchResult[];
+  accessed_at: string;
 }
 
 function isTauriRuntime() {
@@ -46,22 +48,30 @@ export async function performWebSearch(query: string, settings: WebSearchSetting
 }
 
 export function formatWebSearchMarkdown(response: WebSearchResponse): string {
-  const lines = [`# 网络搜索：${response.query}`, '', `> 搜索服务：${response.provider}`];
+  const lines = [`# 网络搜索：${response.query}`, '', `> 搜索服务：${response.provider}`, `> 访问时间：${response.accessed_at}`];
   if (response.answer) lines.push('', '## 摘要', '', response.answer);
   lines.push('', '## 搜索结果', '');
   response.results.forEach((result, index) => {
-    lines.push(`${index + 1}. [${result.title || result.url}](${result.url})`);
-    if (result.content) lines.push(`   ${result.content.replace(/\s+/g, ' ').trim()}`);
+    const domain = getDomain(result.url);
+    lines.push(`[^${index + 1}]: [${result.title || result.url}](${result.url})（${domain}${result.published_at ? `；发布：${result.published_at}` : ''}；访问：${response.accessed_at}）`);
+    if (result.content) lines.push(`   > ${result.content.replace(/\s+/g, ' ').trim()}`);
     lines.push('');
   });
   return lines.join('\n');
 }
 
 export function formatWebSearchContext(response: WebSearchResponse): string {
-  const lines = [`以下是网络搜索结果。请基于这些资料回答，并在相关陈述后保留来源链接。`];
+  const lines = [
+    '以下是可引用的网络资料。只要陈述事实、数据、日期或可验证结论，必须在该句末尾添加对应的 [^n] 标记。',
+    '不得编造来源或引用编号；资料不足时请明确写“无法根据提供来源验证”。回答末尾保留“### 来源”及 Markdown 脚注列表。',
+  ];
   if (response.answer) lines.push(`\n搜索摘要：${response.answer}`);
   response.results.forEach((result, index) => {
-    lines.push(`\n[来源 ${index + 1}] ${result.title}\nURL: ${result.url}\n${result.content}`);
+    lines.push(`\n[^${index + 1}] ${result.title}\n域名：${getDomain(result.url)}\nURL: ${result.url}\n发布时间：${result.published_at || '未提供'}\n访问时间：${response.accessed_at}\n引用片段：${result.content}`);
   });
   return lines.join('\n');
+}
+
+function getDomain(url: string) {
+  try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return url; }
 }

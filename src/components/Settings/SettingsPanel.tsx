@@ -1,8 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { AI_PROVIDER_DEFINITIONS, useAppStore, type AIProviderId, type AIProviderProfile, type SettingsTab } from '../../stores/appStore';
-import { useSkillStore } from '../../stores/skillStore';
 import { invoke } from '@tauri-apps/api/core';
-import { open } from '@tauri-apps/plugin-dialog';
 import { FontFamilyPicker } from './FontFamilyPicker';
 
 const isTauriRuntime = () => '__TAURI_INTERNALS__' in window;
@@ -62,7 +60,6 @@ function SettingsNavIcon({ type }: { type: SettingsTab }) {
 
 export function SettingsPanel() {
   const { settings, settingsTab, saveSettings, setSettingsOpen } = useAppStore();
-  const { skills, loading: skillsLoading, loadSkills, importSkillPackage, importSkillFile, setSkillEnabled, deleteSkill } = useSkillStore();
   const [localSettings, setLocalSettings] = useState(settings);
   const [activeTab, setActiveTab] = useState<SettingsTab>(settingsTab);
   const [apiKeyVisible, setApiKeyVisible] = useState(false);
@@ -72,7 +69,6 @@ export function SettingsPanel() {
   const [fontFamilies, setFontFamilies] = useState(DEFAULT_FONT_FAMILIES);
   const [loadingFonts, setLoadingFonts] = useState(false);
   const [fontNotice, setFontNotice] = useState('可直接输入任意已安装字体名称。');
-  const skillFileInputRef = useRef<HTMLInputElement>(null);
 
   const loadLocalFonts = async () => {
     const queryLocalFonts = (window as LocalFontAccessWindow).queryLocalFonts;
@@ -111,34 +107,6 @@ export function SettingsPanel() {
       setFontNotice('未获得本机字体访问权限；可直接输入已安装字体名称。');
     } finally {
       setLoadingFonts(false);
-    }
-  };
-
-  useEffect(() => {
-    if (activeTab === 'ai') void loadSkills();
-  }, [activeTab, loadSkills]);
-
-  const handleImportSkill = async () => {
-    try {
-      if (!isTauriRuntime()) {
-        skillFileInputRef.current?.click();
-        return;
-      }
-      const selected = await open({ multiple: false, filters: [{ name: 'Skill 包', extensions: ['zip', 'md'] }] });
-      if (selected && !Array.isArray(selected)) await importSkillPackage(selected);
-    } catch (error) {
-      window.alert(`导入 Skill 失败：${String(error)}`);
-    }
-  };
-
-  const handleBrowserSkillFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    event.target.value = '';
-    if (!file) return;
-    try {
-      await importSkillFile(file);
-    } catch (error) {
-      window.alert(`导入 Skill 失败：${String(error)}`);
     }
   };
 
@@ -185,7 +153,7 @@ export function SettingsPanel() {
     { id: 'editor', label: '编辑器', description: '编辑体验与自动保存' },
     { id: 'image', label: '图床', description: '图片上传与存储服务' },
     { id: 'export', label: '导出', description: '文档导出与版式设置' },
-    { id: 'ai', label: 'AI 助手', description: '模型、网络搜索与 Skills' },
+    { id: 'ai', label: 'AI 助手', description: '模型与网络搜索' },
   ] as const;
   const activeTabMeta = tabs.find((tab) => tab.id === activeTab) || tabs[0];
 
@@ -824,33 +792,6 @@ export function SettingsPanel() {
                   )}
                 </div>
               )}
-              <div className="settings-subsection skill-settings">
-                <div className="settings-subsection-header">
-                  <div>
-                    <strong>Skills 管理</strong>
-                    <p>导入后在这里启用、停用或删除；启用的 Skill 可在 Chatbox 中按本轮选择。</p>
-                  </div>
-                  <button className="fetch-models-btn" onClick={() => void handleImportSkill()} disabled={skillsLoading}>
-                    {skillsLoading ? '处理中…' : '导入 Skill'}
-                  </button>
-                </div>
-                {skills.length === 0 ? (
-                  <div className="skill-settings-empty">尚未导入 Skill。支持 .zip 包或 SKILL.md 文件。</div>
-                ) : (
-                  <div className="skill-settings-list">
-                    {skills.map((skill) => (
-                      <div className="skill-settings-item" key={skill.id}>
-                        <label className="skill-settings-main" title={skill.description}>
-                          <input type="checkbox" checked={skill.enabled} onChange={(event) => void setSkillEnabled(skill.id, event.target.checked)} />
-                          <span><strong>{skill.name}</strong><small>{skill.description}</small></span>
-                        </label>
-                        <button className="skill-delete-btn" onClick={() => { if (window.confirm(`删除 Skill“${skill.name}”？`)) void deleteSkill(skill.id); }}>删除</button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                <input ref={skillFileInputRef} className="chatbot-hidden-file-input" type="file" accept=".zip,.md,text/markdown,application/zip" onChange={handleBrowserSkillFile} />
-              </div>
 
               {localSettings.ai.enabled && (
                 <>

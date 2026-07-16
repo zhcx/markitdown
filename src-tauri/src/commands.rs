@@ -17,6 +17,7 @@ pub struct UpdateInfo {
     pub asset_download_url: String,
     pub asset_name: String,
     pub asset_size: u64,
+    pub auto_install_supported: bool,
     pub release_notes: String,
     pub published_at: String,
 }
@@ -534,7 +535,8 @@ fn is_workspace_file(name: &str) -> bool {
     matches!(name.rsplit('.').next().unwrap_or("").to_ascii_lowercase().as_str(),
         "md" | "markdown" | "txt" | "pdf" | "doc" | "docx" | "ppt" | "pptx" |
         "xls" | "xlsx" | "html" | "htm" | "csv" | "json" | "xml" | "epub" | "zip" |
-        "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" | "wav" | "mp3")
+        "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" | "svg" |
+        "wav" | "mp3" | "m4a" | "ogg" | "eml" | "msg" | "rss" | "atom" | "ipynb")
 }
 
 #[tauri::command] pub async fn read_folder(path: String) -> Result<Vec<FileNode>, String> {
@@ -555,147 +557,110 @@ fn is_workspace_file(name: &str) -> bool {
     Ok(nodes)
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SkillInfo {
-    pub id: String,
-    pub name: String,
-    pub description: String,
-    pub enabled: bool,
-    pub content: String,
+#[derive(Debug, Clone, Deserialize)]
+pub struct WorkspaceSearchOptions {
+    pub roots: Vec<String>,
+    pub query: String,
+    pub case_sensitive: bool,
+    pub use_regex: bool,
+    #[serde(default)] pub extensions: Vec<String>,
+    #[serde(default)] pub ignore_dirs: Vec<String>,
+    pub replace_with: Option<String>,
+    #[serde(default)] pub apply_replace: bool,
 }
 
-fn skills_dir(app: &AppHandle) -> Result<PathBuf, String> {
-    let dir = app.path().app_config_dir().map_err(|e| e.to_string())?.join("skills");
-    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    Ok(dir)
+#[derive(Debug, Clone, Serialize)]
+pub struct WorkspaceSearchMatch {
+    pub path: String,
+    pub line_number: usize,
+    pub column: usize,
+    pub line: String,
 }
 
-fn skill_state_path(app: &AppHandle) -> Result<PathBuf, String> { Ok(skills_dir(app)?.join("state.json")) }
-
-fn read_skill_state(app: &AppHandle) -> Result<std::collections::HashMap<String, bool>, String> {
-    let path = skill_state_path(app)?;
-    if !path.exists() { return Ok(std::collections::HashMap::new()); }
-    Ok(serde_json::from_str(&std::fs::read_to_string(path).map_err(|e| e.to_string())?).unwrap_or_default())
+#[derive(Debug, Clone, Serialize)]
+pub struct WorkspaceSearchDiff {
+    pub path: String,
+    pub replacements: usize,
+    pub diff: String,
 }
 
-fn write_skill_state(app: &AppHandle, state: &std::collections::HashMap<String, bool>) -> Result<(), String> {
-    std::fs::write(skill_state_path(app)?, serde_json::to_string_pretty(state).map_err(|e| e.to_string())?).map_err(|e| e.to_string())
+#[derive(Debug, Clone, Serialize)]
+pub struct WorkspaceSearchResponse {
+    pub matches: Vec<WorkspaceSearchMatch>,
+    pub diffs: Vec<WorkspaceSearchDiff>,
+    pub scanned_files: usize,
+    pub truncated: bool,
+    pub applied: bool,
 }
 
-fn find_skill_file(dir: &Path, depth: usize) -> Option<PathBuf> {
-    if depth > 3 { return None; }
-    let direct = dir.join("SKILL.md");
-    if direct.is_file() { return Some(direct); }
-    for entry in std::fs::read_dir(dir).ok()? {
-        let entry = entry.ok()?;
-        if entry.file_type().ok()?.is_dir() {
-            if let Some(found) = find_skill_file(&entry.path(), depth + 1) { return Some(found); }
-        }
+fn is_searchable_workspace_file(path: &Path, extensions: &[String]) -> bool {
+    let extension = path.extension().and_then(|value| value.to_str()).unwrap_or("").to_ascii_lowercase();
+    if !extensions.is_empty() {
+        return extensions.iter().any(|value| value.trim_start_matches('.').eq_ignore_ascii_case(&extension));
     }
-    None
+    matches!(extension.as_str(), "md" | "markdown" | "txt" | "json" | "yaml" | "yml" | "toml" | "csv" | "html" | "htm" | "xml" | "js" | "jsx" | "ts" | "tsx" | "css" | "rs" | "py" | "go" | "java" | "c" | "cpp" | "h")
 }
 
-fn skill_metadata(content: &str, fallback: &str) -> (String, String) {
-    let mut name = String::new();
-    let mut description = String::new();
-    let mut frontmatter = false;
-    for line in content.lines() {
-        let trimmed = line.trim();
-        if trimmed == "---" { frontmatter = !frontmatter; continue; }
-        if frontmatter {
-            if let Some(value) = trimmed.strip_prefix("name:") { name = value.trim().trim_matches(['"', '\'']).to_string(); }
-            if let Some(value) = trimmed.strip_prefix("description:") { description = value.trim().trim_matches(['"', '\'']).to_string(); }
-        } else if name.is_empty() {
-            if let Some(value) = trimmed.strip_prefix("# ") { name = value.trim().to_string(); }
-        }
+fn short_workspace_diff(before: &str, after: &str, path: &Path) -> String {
+    let before_lines: Vec<_> = before.lines().collect();
+    let after_lines: Vec<_> = after.lines().collect();
+    let mut output = format!("文件：{}\n", path.display());
+    let mut shown = 0usize;
+    for (index, (old, new)) in before_lines.iter().zip(after_lines.iter()).enumerate() {
+        if old == new { continue; }
+        output.push_str(&format!("第 {} 行\n  原文：{}\n  替换后：{}\n", index + 1, old, new));
+        shown += 1;
+        if shown >= 8 { break; }
     }
-    if name.is_empty() { name = fallback.to_string(); }
-    if description.is_empty() { description = "Imported MarkitDown skill".into(); }
-    (name, description.chars().take(240).collect())
-}
-
-fn skill_from_dir(dir: &Path, id: String, enabled: bool) -> Result<SkillInfo, String> {
-    let content = std::fs::read_to_string(dir.join("SKILL.md")).map_err(|e| format!("读取 SKILL.md 失败: {e}"))?;
-    let fallback = dir.file_name().and_then(|n| n.to_str()).unwrap_or("Imported Skill");
-    let (name, description) = skill_metadata(&content, fallback);
-    Ok(SkillInfo { id, name, description, enabled, content })
+    if before_lines.len() != after_lines.len() && shown < 8 { output.push_str("提示：替换前后行数发生变化。\n"); }
+    output
 }
 
 #[tauri::command]
-pub async fn get_skills(app: AppHandle) -> Result<Vec<SkillInfo>, String> {
-    let dir = skills_dir(&app)?;
-    let state = read_skill_state(&app)?;
-    let mut skills = Vec::new();
-    for entry in std::fs::read_dir(dir).map_err(|e| e.to_string())? {
-        let entry = entry.map_err(|e| e.to_string())?;
-        if !entry.file_type().map_err(|e| e.to_string())?.is_dir() { continue; }
-        let id = entry.file_name().to_string_lossy().to_string();
-        if id.starts_with('.') || !entry.path().join("SKILL.md").is_file() { continue; }
-        skills.push(skill_from_dir(&entry.path(), id.clone(), state.get(&id).copied().unwrap_or(true))?);
-    }
-    skills.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
-    Ok(skills)
-}
-
-#[tauri::command]
-pub async fn set_skill_enabled(app: AppHandle, id: String, enabled: bool) -> Result<Vec<SkillInfo>, String> {
-    if !skills_dir(&app)?.join(&id).join("SKILL.md").is_file() { return Err("Skill 不存在".into()); }
-    let mut state = read_skill_state(&app)?;
-    state.insert(id, enabled);
-    write_skill_state(&app, &state)?;
-    get_skills(app).await
-}
-
-#[tauri::command]
-pub async fn delete_skill(app: AppHandle, id: String) -> Result<Vec<SkillInfo>, String> {
-    if id.is_empty() || id.contains(['/', '\\']) || id.contains("..") { return Err("Skill ID 无效".into()); }
-    let path = skills_dir(&app)?.join(&id);
-    if !path.join("SKILL.md").is_file() { return Err("Skill 不存在".into()); }
-    std::fs::remove_dir_all(path).map_err(|e| format!("删除 Skill 失败: {e}"))?;
-    let mut state = read_skill_state(&app)?;
-    state.remove(&id);
-    write_skill_state(&app, &state)?;
-    get_skills(app).await
-}
-
-#[tauri::command]
-pub async fn import_skill_package(app: AppHandle, package_path: String) -> Result<Vec<SkillInfo>, String> {
-    let source = PathBuf::from(package_path);
-    if !source.is_file() { return Err("Skill 包文件不存在".into()); }
-    let root = skills_dir(&app)?;
-    let staging = root.join(format!(".import-{}", uuid::Uuid::new_v4()));
-    std::fs::create_dir_all(&staging).map_err(|e| e.to_string())?;
-    let result = (|| -> Result<(), String> {
-        if source.extension().and_then(|e| e.to_str()).unwrap_or("").eq_ignore_ascii_case("zip") {
-            let file = std::fs::File::open(&source).map_err(|e| e.to_string())?;
-            let mut archive = zip::ZipArchive::new(file).map_err(|e| format!("读取 Skill ZIP 失败: {e}"))?;
-            let mut total = 0u64;
-            for index in 0..archive.len() {
-                let mut entry = archive.by_index(index).map_err(|e| e.to_string())?;
-                let relative = entry.enclosed_name().ok_or("Skill ZIP 包含不安全路径")?.to_path_buf();
-                let output = staging.join(relative);
-                if entry.is_dir() { std::fs::create_dir_all(&output).map_err(|e| e.to_string())?; }
-                else {
-                    total = total.saturating_add(entry.size());
-                    if total > 50 * 1024 * 1024 { return Err("Skill 包超过 50 MB 限制".into()); }
-                    if let Some(parent) = output.parent() { std::fs::create_dir_all(parent).map_err(|e| e.to_string())?; }
-                    let mut target = std::fs::File::create(output).map_err(|e| e.to_string())?;
-                    std::io::copy(&mut entry, &mut target).map_err(|e| e.to_string())?;
+pub async fn workspace_search(options: WorkspaceSearchOptions) -> Result<WorkspaceSearchResponse, String> {
+    tokio::task::spawn_blocking(move || -> Result<WorkspaceSearchResponse, String> {
+        let query = options.query.trim().to_string();
+        if query.is_empty() { return Err("搜索内容不能为空".into()); }
+        if options.roots.is_empty() { return Err("请先在资源管理器中打开一个文件夹".into()); }
+        let pattern = if options.use_regex { query } else { regex::escape(&query) };
+        let matcher = regex::RegexBuilder::new(&pattern).case_insensitive(!options.case_sensitive).build()
+            .map_err(|error| format!("正则表达式无效：{error}"))?;
+        let ignored: std::collections::HashSet<String> = [".git", "node_modules", "target", "dist", ".idea", ".vscode"]
+            .into_iter().map(String::from).chain(options.ignore_dirs.iter().map(|value| value.trim().to_string())).collect();
+        let mut pending = options.roots.into_iter().map(PathBuf::from).collect::<Vec<_>>();
+        let mut matches = Vec::new();
+        let mut diffs = Vec::new();
+        let mut scanned_files = 0usize;
+        let mut truncated = false;
+        while let Some(path) = pending.pop() {
+            let metadata = match std::fs::metadata(&path) { Ok(value) => value, Err(_) => continue };
+            if metadata.is_dir() {
+                if path.file_name().and_then(|value| value.to_str()).map(|name| ignored.contains(name)).unwrap_or(false) { continue; }
+                if let Ok(entries) = std::fs::read_dir(&path) { pending.extend(entries.flatten().map(|entry| entry.path())); }
+                continue;
+            }
+            if !metadata.is_file() || metadata.len() > 5 * 1024 * 1024 || !is_searchable_workspace_file(&path, &options.extensions) { continue; }
+            scanned_files += 1;
+            let original = match std::fs::read_to_string(&path) { Ok(value) => value, Err(_) => continue };
+            for (line_index, line) in original.lines().enumerate() {
+                for found in matcher.find_iter(line) {
+                    matches.push(WorkspaceSearchMatch { path: path.to_string_lossy().to_string(), line_number: line_index + 1, column: found.start() + 1, line: line.to_string() });
+                    if matches.len() >= 2000 { truncated = true; break; }
+                }
+                if truncated { break; }
+            }
+            if let Some(replace_with) = &options.replace_with {
+                let changed = matcher.replace_all(&original, replace_with.as_str()).to_string();
+                if changed != original {
+                    let replacements = matcher.find_iter(&original).count();
+                    diffs.push(WorkspaceSearchDiff { path: path.to_string_lossy().to_string(), replacements, diff: short_workspace_diff(&original, &changed, &path) });
+                    if options.apply_replace { std::fs::write(&path, changed).map_err(|error| format!("写入 {} 失败：{error}", path.display()))?; }
                 }
             }
-        } else if source.file_name().and_then(|n| n.to_str()).unwrap_or("").eq_ignore_ascii_case("SKILL.md") {
-            std::fs::copy(source, staging.join("SKILL.md")).map_err(|e| e.to_string())?;
-        } else { return Err("仅支持 .zip Skill 包或直接导入 SKILL.md".into()); }
-
-        let skill_file = find_skill_file(&staging, 0).ok_or("Skill 包中未找到 SKILL.md")?;
-        let skill_source = skill_file.parent().ok_or("Skill 包目录无效")?;
-        let destination = root.join(uuid::Uuid::new_v4().simple().to_string());
-        if skill_source == staging { std::fs::rename(&staging, destination).map_err(|e| e.to_string())?; }
-        else { std::fs::rename(skill_source, destination).map_err(|e| e.to_string())?; std::fs::remove_dir_all(&staging).ok(); }
-        Ok(())
-    })();
-    if let Err(error) = result { std::fs::remove_dir_all(&staging).ok(); return Err(error); }
-    get_skills(app).await
+            if truncated { break; }
+        }
+        Ok(WorkspaceSearchResponse { matches, diffs, scanned_files, truncated, applied: options.apply_replace && options.replace_with.is_some() })
+    }).await.map_err(|error| format!("工作区搜索任务异常：{error}"))?
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -704,6 +669,7 @@ pub struct WebSearchResult {
     pub url: String,
     pub content: String,
     pub score: Option<f64>,
+    pub published_at: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -712,6 +678,7 @@ pub struct WebSearchResponse {
     pub query: String,
     pub answer: Option<String>,
     pub results: Vec<WebSearchResult>,
+    pub accessed_at: String,
 }
 
 #[tauri::command]
@@ -724,6 +691,7 @@ pub async fn web_search(query: String, settings: WebSearchSettings) -> Result<We
         .connect_timeout(Duration::from_secs(10))
         .build()
         .map_err(|e| format!("创建搜索客户端失败: {e}"))?;
+    let accessed_at = chrono::Local::now().to_rfc3339();
 
     match settings.provider.as_str() {
         "tavily" => {
@@ -747,8 +715,9 @@ pub async fn web_search(query: String, settings: WebSearchSettings) -> Result<We
                 url: item["url"].as_str().unwrap_or("").to_string(),
                 content: item["content"].as_str().unwrap_or("").to_string(),
                 score: item["score"].as_f64(),
+                published_at: item["published_date"].as_str().map(ToString::to_string),
             }).collect();
-            Ok(WebSearchResponse { provider: "tavily".into(), query, answer: body["answer"].as_str().map(ToString::to_string), results })
+            Ok(WebSearchResponse { provider: "tavily".into(), query, answer: body["answer"].as_str().map(ToString::to_string), results, accessed_at })
         }
         "searxng" => {
             let base = settings.searxng_url.trim().trim_end_matches('/');
@@ -773,8 +742,9 @@ pub async fn web_search(query: String, settings: WebSearchSettings) -> Result<We
                 url: item["url"].as_str().unwrap_or("").to_string(),
                 content: item["content"].as_str().or_else(|| item["snippet"].as_str()).unwrap_or("").to_string(),
                 score: item["score"].as_f64(),
+                published_at: item["publishedDate"].as_str().or_else(|| item["published_date"].as_str()).map(ToString::to_string),
             }).collect();
-            Ok(WebSearchResponse { provider: "searxng".into(), query, answer: None, results })
+            Ok(WebSearchResponse { provider: "searxng".into(), query, answer: None, results, accessed_at })
         }
         _ => Err("不支持的网络搜索服务商".into()),
     }
@@ -799,12 +769,20 @@ pub async fn web_search(query: String, settings: WebSearchSettings) -> Result<We
     if let Some(assets) = rel["assets"].as_array() {
         for asset in assets {
             let name = asset["name"].as_str().unwrap_or("");
-            if name.ends_with(".exe") || name.ends_with(".msi") {
+            let lower = name.to_ascii_lowercase();
+            let is_current_platform_asset = if cfg!(target_os = "windows") {
+                lower.ends_with(".exe") || lower.ends_with(".msi")
+            } else if cfg!(target_os = "macos") {
+                lower.ends_with(".dmg")
+            } else {
+                lower.ends_with(".appimage") || lower.ends_with(".deb") || lower.ends_with(".rpm")
+            };
+            if is_current_platform_asset {
                 asset_download_url = asset["browser_download_url"].as_str().unwrap_or("").to_string();
                 asset_name = name.to_string();
                 asset_size = asset["size"].as_u64().unwrap_or(0);
-                // Prefer .exe (NSIS) over .msi
-                if name.ends_with(".exe") {
+                // Prefer the NSIS installer over MSI on Windows.
+                if lower.ends_with(".exe") {
                     break;
                 }
             }
@@ -819,6 +797,7 @@ pub async fn web_search(query: String, settings: WebSearchSettings) -> Result<We
         asset_download_url,
         asset_name,
         asset_size,
+        auto_install_supported: cfg!(target_os = "windows"),
         release_notes: rel["body"].as_str().unwrap_or("暂无更新说明").into(),
         published_at: rel["published_at"].as_str().unwrap_or("").into(),
     })
@@ -847,6 +826,7 @@ async fn check_updates_from_atom(client: &reqwest::Client, current: String, api_
         asset_download_url: String::new(),
         asset_name: String::new(),
         asset_size: 0,
+        auto_install_supported: cfg!(target_os = "windows"),
         release_notes: "GitHub API 暂时不可用，已通过 Release feed 检测到该版本。请前往 Release 页面下载安装包。".into(),
         published_at: String::new(),
     })
@@ -947,13 +927,19 @@ pub async fn download_and_install_update(app: AppHandle, download_url: String, f
     let installer = installer_path.to_string_lossy().to_string();
     app.emit("update-download-complete", serde_json::json!({ "path": &installer })).ok();
 
-    // Use cmd /c start to launch installer independently
+    // Launch the installer directly. `cmd /c start` is unreliable when the
+    // path contains spaces and can leave the update UI appearing unresponsive.
     #[cfg(target_os = "windows")]
     {
-        std::process::Command::new("cmd")
-            .args(["/C", "start", "", &installer])
-            .spawn()
-            .map_err(|e| format!("启动安装程序失败: {}", e))?;
+        let lower = installer.to_ascii_lowercase();
+        let mut command = if lower.ends_with(".msi") {
+            let mut command = std::process::Command::new("msiexec.exe");
+            command.args(["/i", &installer]);
+            command
+        } else {
+            std::process::Command::new(&installer)
+        };
+        command.spawn().map_err(|e| format!("启动安装程序失败: {}", e))?;
     }
     #[cfg(not(target_os = "windows"))]
     {

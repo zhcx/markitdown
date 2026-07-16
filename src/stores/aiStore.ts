@@ -2,7 +2,6 @@ import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { useAppStore, type AIProviderId, type AIProviderProfile } from './appStore';
-import { useSkillStore } from './skillStore';
 
 export interface ProofreadResult {
   from: number;
@@ -78,7 +77,8 @@ export interface ChatSearchContext {
   provider: string;
   query: string;
   answer?: string;
-  results: Array<{ title: string; url: string; content: string }>;
+  accessed_at: string;
+  results: Array<{ title: string; url: string; content: string; published_at?: string }>;
 }
 
 let chatRequestSequence = 0;
@@ -94,6 +94,32 @@ export interface ChatMessageAttachment {
 export type ReasoningEffort = 'off' | 'fast' | 'balanced' | 'deep';
 
 export type AIStatus = 'idle' | 'loading' | 'proofreading' | 'companion' | 'success' | 'error';
+export type AIEditMode = 'ask' | 'suggest' | 'agent';
+export type AIChangeKind = 'polish' | 'translation' | 'fact' | 'structure' | 'continuation' | 'proofread';
+
+export interface AIEditProposal {
+  id: string;
+  kind: AIChangeKind;
+  reason: string;
+  before: string;
+  after: string;
+  from: number;
+  to: number;
+  createdAt: number;
+}
+
+export interface WorkspaceContextPayload {
+  content: string;
+  tokenEstimate: number;
+  sourceNames: string[];
+  retrievalOnly: boolean;
+}
+
+interface AIAppliedRound {
+  tabId: string;
+  content: string;
+  proposal: AIEditProposal;
+}
 
 // 校对重试配置
 const PROOFREAD_MAX_RETRIES = 2;
@@ -160,6 +186,9 @@ function cacheCompanionSuggestions(key: string, suggestions: string[]) {
 interface AIState {
   status: AIStatus;
   statusMessage: string;
+  editMode: AIEditMode;
+  pendingEdit: AIEditProposal | null;
+  lastAppliedRound: AIAppliedRound | null;
 
   // 校对结果
   proofreadResults: ProofreadResult[];
@@ -188,6 +217,11 @@ interface AIState {
 
   // 操作
   setStatus: (status: AIStatus, message?: string) => void;
+  setEditMode: (mode: AIEditMode) => void;
+  proposeEdit: (proposal: Omit<AIEditProposal, 'id' | 'createdAt'>) => void;
+  acceptPendingEdit: () => void;
+  rejectPendingEdit: () => void;
+  undoLastAiRound: () => void;
   checkProofread: (content: string, baseOffset?: number) => Promise<void>;
   getCompanionSuggestion: (content: string, context?: string) => Promise<void>;
   rewriteSelection: (text: string) => Promise<string>;
@@ -199,7 +233,7 @@ interface AIState {
   setProofreadPanelVisible: (visible: boolean) => void;
   setChatbotVisible: (visible: boolean) => void;
   toggleChatbot: () => void;
-  sendChatMessage: (content: string, attachments?: ChatMessageAttachment[], selection?: { provider: AIProviderId; model: string; searchContext?: string; searchPreview?: ChatSearchContext; skillIds?: string[] }) => Promise<void>;
+  sendChatMessage: (content: string, attachments?: ChatMessageAttachment[], selection?: { provider: AIProviderId; model: string; searchContext?: string; searchPreview?: ChatSearchContext; workspaceContext?: WorkspaceContextPayload | null }) => Promise<void>;
   stopChatMessage: () => void;
   clearChatHistory: () => void;
   setReasoningEffort: (effort: ReasoningEffort) => void;
@@ -217,6 +251,9 @@ interface AIState {
 export const useAIStore = create<AIState>((set, get) => ({
   status: 'idle',
   statusMessage: '',
+  editMode: 'suggest',
+  pendingEdit: null,
+  lastAppliedRound: null,
   proofreadResults: [],
   errorCount: 0,
   proofreadPanelVisible: false,
@@ -237,6 +274,56 @@ export const useAIStore = create<AIState>((set, get) => ({
 
   setStatus: (status, message = '') => {
     set({ status, statusMessage: message });
+  },
+
+  setEditMode: (mode) => set({ editMode: mode }),
+
+  proposeEdit: (proposal) => {
+    if (get().editMode === 'ask') {
+      set({ status: 'success', statusMessage: '询问模式不会修改文档；已保留 AI 回复供你参考。' });
+      return;
+    }
+
+    set({
+      pendingEdit: { ...proposal, id: `ai-edit-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, createdAt: Date.now() },
+      status: 'success',
+      statusMessage: get().editMode === 'agent' ? '代理任务到达写入点，等待确认。' : 'AI 修改建议等待确认。',
+    });
+  },
+
+  acceptPendingEdit: () => {
+    const proposal = get().pendingEdit;
+    if (!proposal) return;
+    const { editorView, content, activeTabId, setContent } = useAppStore.getState();
+    if (!activeTabId || proposal.from < 0 || proposal.to < proposal.from || proposal.to > content.length || content.slice(proposal.from, proposal.to) !== proposal.before) {
+      set({ pendingEdit: null, status: 'error', statusMessage: '文档已发生变化，无法安全应用此建议。请重新生成。' });
+      return;
+    }
+
+    set({ lastAppliedRound: { tabId: activeTabId, content, proposal }, pendingEdit: null });
+    if (editorView) {
+      editorView.dispatch(editorView.state.update({
+        changes: { from: proposal.from, to: proposal.to, insert: proposal.after },
+        selection: { anchor: proposal.from, head: proposal.from + proposal.after.length },
+      }));
+      editorView.focus();
+    } else {
+      setContent(content.slice(0, proposal.from) + proposal.after + content.slice(proposal.to));
+    }
+    set({ status: 'success', statusMessage: '已应用此处 AI 修改；可一键撤销本轮。' });
+  },
+
+  rejectPendingEdit: () => set({ pendingEdit: null, status: 'idle', statusMessage: '已拒绝 AI 修改建议。' }),
+
+  undoLastAiRound: () => {
+    const round = get().lastAppliedRound;
+    const { activeTabId, setContent } = useAppStore.getState();
+    if (!round || round.tabId !== activeTabId) {
+      set({ status: 'error', statusMessage: '当前文档没有可撤销的 AI 修改。' });
+      return;
+    }
+    setContent(round.content);
+    set({ lastAppliedRound: null, status: 'success', statusMessage: '已还原本轮 AI 修改前版本。' });
   },
 
   checkProofread: async (content, baseOffset = 0) => {
@@ -661,6 +748,7 @@ export const useAIStore = create<AIState>((set, get) => ({
             role: 'assistant',
             content: '',
             timestamp,
+            search: selection?.searchPreview,
           },
         ],
         chatbotLoading: true,
@@ -670,11 +758,7 @@ export const useAIStore = create<AIState>((set, get) => ({
       try {
         if (!browserSettings.enabled) throw new Error('请先在设置中启用 AI 助手');
         if (!browserSettings.api_key.trim()) throw new Error('请先配置 API 密钥');
-        const enabledSkills = useSkillStore.getState().skills.filter((skill) => skill.enabled && selection?.skillIds?.includes(skill.id));
-        const linkedDoc = get().linkedDocument;
-        const requestContent = selection?.searchContext
-          ? `${messageContent}\n\n---\n\n[网络搜索上下文]\n${selection.searchContext}`
-          : messageContent;
+        const requestContent = [messageContent, selection?.workspaceContext?.content ? `[本地工作区上下文：${selection.workspaceContext.retrievalOnly ? '仅检索片段' : '所选内容'}]\n${selection.workspaceContext.content}` : '', selection?.searchContext ? `[网络搜索上下文]\n${selection.searchContext}` : ''].filter(Boolean).join('\n\n---\n\n');
         const response = await fetch('/api/ai-chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -684,9 +768,6 @@ export const useAIStore = create<AIState>((set, get) => ({
             settings: browserSettings,
             temperature: get().reasoningEffort === 'deep' ? 0.3 : get().reasoningEffort === 'fast' ? 0.9 : 0.7,
             maxTokens: get().reasoningEffort === 'deep' ? 4000 : get().reasoningEffort === 'fast' ? 800 : 2000,
-            docContext: linkedDoc?.content,
-            docTitle: linkedDoc?.title,
-            skillContext: enabledSkills.map((skill) => `### ${skill.name}\n${skill.content}`).join('\n\n'),
           }),
         });
         const payload = await response.json().catch(() => ({})) as { content?: string; reasoning?: string; error?: string };
@@ -776,9 +857,7 @@ export const useAIStore = create<AIState>((set, get) => ({
       search: selection?.searchPreview,
     };
 
-    const requestContent = selection?.searchContext
-      ? `${messageContent}\n\n---\n\n[网络搜索上下文]\n${selection.searchContext}`
-      : messageContent;
+    const requestContent = [messageContent, selection?.workspaceContext?.content ? `[本地工作区上下文：${selection.workspaceContext.retrievalOnly ? '仅检索片段' : '所选内容'}]\n${selection.workspaceContext.content}` : '', selection?.searchContext ? `[网络搜索上下文]\n${selection.searchContext}` : ''].filter(Boolean).join('\n\n---\n\n');
     const prevMessages = get().chatbotMessages;
     const assistantId = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
     const requestId = `${assistantId}-${++chatRequestSequence}`;
@@ -788,6 +867,7 @@ export const useAIStore = create<AIState>((set, get) => ({
       role: 'assistant',
       content: '',
       timestamp: Date.now(),
+      search: selection?.searchPreview,
     };
     set({
       chatbotMessages: [...prevMessages, userMessage, assistantPlaceholder],
@@ -815,8 +895,6 @@ export const useAIStore = create<AIState>((set, get) => ({
         content: m.content,
       }));
 
-      const linkedDoc = get().linkedDocument;
-      const enabledSkills = useSkillStore.getState().skills.filter((skill) => skill.enabled && selection?.skillIds?.includes(skill.id));
       const requestArgs: Record<string, unknown> = {
         content: requestContent,
         context: JSON.stringify(history),
@@ -825,16 +903,7 @@ export const useAIStore = create<AIState>((set, get) => ({
         requestId,
       };
 
-      if (enabledSkills.length > 0) {
-        requestArgs.skill_context = enabledSkills
-          .map((skill) => `### ${skill.name}\n${skill.content}`)
-          .join('\n\n');
-      }
 
-      if (linkedDoc) {
-        requestArgs.doc_context = linkedDoc.content;
-        requestArgs.doc_title = linkedDoc.title;
-      }
       if (effort !== 'off') {
         const config = effortConfig[effort];
         requestArgs.temperature = config.temperature;
@@ -985,51 +1054,29 @@ export const useAIStore = create<AIState>((set, get) => ({
   },
 
   applySuggestion: (suggestion) => {
-    const { editorView, setContent, content } = useAppStore.getState();
-    if (!editorView) {
-      setContent(content + suggestion);
-      return;
-    }
-
-    const selection = editorView.state.selection.main;
-    const transaction = editorView.state.update({
-      changes: {
-        from: selection.to,
-        to: selection.to,
-        insert: suggestion,
-      },
+    const { editorView, content } = useAppStore.getState();
+    const position = editorView?.state.selection.main.to ?? content.length;
+    get().proposeEdit({
+      kind: 'continuation',
+      reason: 'AI 伴写：基于当前光标前的上下文续写，不包含事实核验。',
+      before: '',
+      after: suggestion,
+      from: position,
+      to: position,
     });
-    editorView.dispatch(transaction);
-    editorView.focus();
-
     set({ companionVisible: false, companionSuggestions: [] });
   },
 
   applyProofreadFix: (result) => {
-    const { editorView } = useAppStore.getState();
-    if (!editorView) return;
+    get().proposeEdit({
+      kind: 'proofread',
+      reason: `AI 校对依据：${result.explanation}`,
+      before: result.original,
+      after: result.suggestion,
+      from: result.from,
+      to: result.to,
+    });
 
-    try {
-      const docLen = editorView.state.doc.length;
-      // 防御性校验：范围必须合法
-      if (result.from < 0 || result.to > docLen || result.from >= result.to) {
-        console.warn('[proofread] 忽略非法范围:', result.from, result.to, '文档长度:', docLen);
-      } else {
-        const transaction = editorView.state.update({
-          changes: {
-            from: result.from,
-            to: result.to,
-            insert: result.suggestion,
-          },
-        });
-        editorView.dispatch(transaction);
-      }
-    } catch (err) {
-      console.error('[proofread] 应用修复失败:', err);
-    }
-    editorView.focus();
-
-    // Remove this result from the list
     const newResults = get().proofreadResults.filter(r => r !== result);
     set({
       proofreadResults: newResults,

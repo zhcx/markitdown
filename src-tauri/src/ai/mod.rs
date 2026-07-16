@@ -18,7 +18,6 @@ async fn run_ai_action_safely(
     max_tokens: Option<u32>,
     doc_context: Option<String>,
     doc_title: Option<String>,
-    skill_context: Option<String>,
     enable_thinking: bool,
 ) -> Result<AIResponse, String> {
     let action_for_log = action.clone();
@@ -30,7 +29,7 @@ async fn run_ai_action_safely(
             "translate" => client::translate(&content, context.as_deref(), &settings).await,
             "summarize" => client::summarize(&content, &settings).await,
             "outline" => client::outline(&content, &settings).await,
-            "chat" => client::chat(&content, context.as_deref(), &settings, temperature, max_tokens, doc_context, doc_title, skill_context, enable_thinking).await,
+            "chat" => client::chat(&content, context.as_deref(), &settings, temperature, max_tokens, doc_context, doc_title, enable_thinking).await,
             _ => Err(format!("未知的AI操作: {}", action)),
         }
     });
@@ -66,7 +65,6 @@ pub async fn ai_request(
     max_tokens: Option<u32>,
     doc_context: Option<String>,
     doc_title: Option<String>,
-    skill_context: Option<String>,
     enable_thinking: Option<bool>,
 ) -> Result<AIResponse, String> {
     if !settings.enabled {
@@ -86,7 +84,6 @@ pub async fn ai_request(
         max_tokens,
         doc_context,
         doc_title,
-        skill_context,
         enable_thinking.unwrap_or(false),
     )
     .await
@@ -101,7 +98,6 @@ pub async fn ai_chat_streaming(
     max_tokens: Option<u32>,
     doc_context: Option<String>,
     doc_title: Option<String>,
-    skill_context: Option<String>,
     enable_thinking: Option<bool>,
     request_id: String,
     window: WebviewWindow,
@@ -124,8 +120,7 @@ pub async fn ai_chat_streaming(
             max_tokens,
             doc_context,
             doc_title,
-            skill_context,
-            enable_thinking.unwrap_or(false),
+                enable_thinking.unwrap_or(false),
             request_id,
             window,
         )

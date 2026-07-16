@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { save } from '@tauri-apps/plugin-dialog';
 import MarkdownIt from 'markdown-it';
+import { applyExportTemplate, EXPORT_TEMPLATES, loadExportTemplate, saveExportTemplate, type ExportTemplate } from './exportTemplates';
 
 interface ProgressEvent {
   stage: string;
@@ -51,6 +52,7 @@ export function PdfExportDialog({ content, filePath, onClose }: PdfExportDialogP
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<ProgressEvent | null>(null);
   const [success, setSuccess] = useState(false);
+  const [template, setTemplate] = useState<ExportTemplate>(loadExportTemplate);
 
   useEffect(() => {
     let unlisten: (() => void) | null = null;
@@ -71,6 +73,7 @@ export function PdfExportDialog({ content, filePath, onClose }: PdfExportDialogP
   }, []);
 
   const handleExport = async () => {
+    saveExportTemplate(template);
     setExporting(true);
     setError(null);
     setProgress({ stage: 'init', progress: 0, message: '准备导出...' });
@@ -78,7 +81,8 @@ export function PdfExportDialog({ content, filePath, onClose }: PdfExportDialogP
 
     try {
       const md = new MarkdownIt({ html: true, linkify: true, typographer: true, breaks: true });
-      const htmlBody = md.render(content);
+      const title = filePath?.split(/[\\/]/).pop()?.replace(/\.md$/i, '') || '文档';
+      const htmlBody = applyExportTemplate(md.render(content), title, template);
 
       const defaultFilename = filePath
         ? filePath.split(/[\\/]/).pop()?.replace(/\.md$/i, '') || 'document'
@@ -99,7 +103,7 @@ export function PdfExportDialog({ content, filePath, onClose }: PdfExportDialogP
         page_format: options.pageFormat,
         orientation: options.orientation,
         margin_mm: options.margin_mm,
-        include_header_footer: options.include_header_footer,
+        include_header_footer: options.include_header_footer || template.headerFooter,
       };
 
       await invoke<string>('export_pdf_direct', {
@@ -178,6 +182,13 @@ export function PdfExportDialog({ content, filePath, onClose }: PdfExportDialogP
           {/* Options Section */}
           {!exporting && !success && (
             <div className="export-section">
+              <label className="section-label">导出模板</label>
+              <div className="option-row"><label>预设</label><select value={template.id} onChange={(event) => setTemplate({ ...EXPORT_TEMPLATES.find((item) => item.id === event.target.value)! })}>{EXPORT_TEMPLATES.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></div>
+              <div className="option-row"><label>字体</label><input value={template.font} onChange={(event) => setTemplate({ ...template, font: event.target.value })} /></div>
+              <div className="option-row"><label>行距</label><input type="number" step="0.05" min="1" max="3" value={template.lineHeight} onChange={(event) => setTemplate({ ...template, lineHeight: Number(event.target.value) || 1.7 })} /></div>
+              <div className="option-row"><label>水印</label><input value={template.watermark} placeholder="可选" onChange={(event) => setTemplate({ ...template, watermark: event.target.value })} /></div>
+              <div className="option-row checkbox"><label><input type="checkbox" checked={template.toc} onChange={(event) => setTemplate({ ...template, toc: event.target.checked })} /> 包含目录</label><label><input type="checkbox" checked={template.cover} onChange={(event) => setTemplate({ ...template, cover: event.target.checked })} /> 包含封面</label></div>
+              {template.id === 'custom' && <textarea className="export-template-css" value={template.customCss} placeholder="自定义 CSS" onChange={(event) => setTemplate({ ...template, customCss: event.target.value })} />}
               <label className="section-label">页面设置</label>
               <div className="option-row">
                 <label>页面格式</label>

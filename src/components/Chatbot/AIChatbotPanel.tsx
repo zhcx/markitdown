@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, useCallback, useMemo, type PointerEvent as ReactPointerEvent } from 'react';
-import { useAIStore, type ChatMessage, type ReasoningEffort } from '../../stores/aiStore';
+import { useAIStore, type ChatMessage, type ReasoningEffort, type WorkspaceContextPayload } from '../../stores/aiStore';
 import { AI_PROVIDER_DEFINITIONS, useAppStore, type AIProviderId, type AIProviderProfile } from '../../stores/appStore';
-import { useSkillStore } from '../../stores/skillStore';
-import { formatWebSearchContext, performWebSearch, type WebSearchResponse } from '../../services/webSearch';
+import { WorkspaceContextPanel } from './WorkspaceContextPanel';
+import { formatWebSearchContext, formatWebSearchMarkdown, performWebSearch, type WebSearchResponse } from '../../services/webSearch';
 import { open } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
 import MarkdownIt from 'markdown-it';
@@ -23,7 +23,7 @@ interface PendingAttachment {
   content?: string;
 }
 
-function ComposerIcon({ type }: { type: 'attach' | 'document' | 'image' | 'chat' | 'send' | 'stop' | 'skills' | 'search' | 'reasoning' | 'chevronDown' }) {
+function ComposerIcon({ type }: { type: 'attach' | 'document' | 'image' | 'chat' | 'send' | 'stop' | 'search' | 'reasoning' | 'chevronDown' }) {
   if (type === 'attach') {
     return <svg className={`composer-icon composer-icon-${type}`} viewBox="0 0 16 16" aria-hidden="true"><path d="M5.2 8.8 9.7 4.3a2.35 2.35 0 1 1 3.3 3.3l-5.4 5.4a3.6 3.6 0 0 1-5.1-5.1l5-5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>;
   }
@@ -41,9 +41,6 @@ function ComposerIcon({ type }: { type: 'attach' | 'document' | 'image' | 'chat'
   }
   if (type === 'stop') {
     return <svg className={`composer-icon composer-icon-${type}`} viewBox="0 0 16 16" aria-hidden="true"><rect x="4" y="4" width="8" height="8" rx="1" fill="currentColor" /></svg>;
-  }
-  if (type === 'skills') {
-    return <svg className={`composer-icon composer-icon-${type}`} viewBox="0 0 16 16" aria-hidden="true"><path d="m8 1.8 5 2.55L8 6.9 3 4.35 8 1.8Z" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" /><path d="m3 7.05 5 2.55 5-2.55M3 9.75l5 2.55 5-2.55" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" /></svg>;
   }
   if (type === 'search') {
     return <svg className={`composer-icon composer-icon-${type}`} viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.2" fill="none" stroke="currentColor" strokeWidth="1.4" /><path d="m10.2 10.2 3.2 3.2" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>;
@@ -82,7 +79,6 @@ export function AIChatbotPanel() {
   } = useAIStore();
 
   const { settings } = useAppStore();
-  const { skills, loadSkills } = useSkillStore();
   const [chatProvider, setChatProvider] = useState<AIProviderId>(settings.ai.provider);
   const [chatModel, setChatModel] = useState(settings.ai.model);
   const listRef = useRef<HTMLDivElement>(null);
@@ -91,20 +87,29 @@ export function AIChatbotPanel() {
   const [inputValue, setInputValue] = useState('');
   const [composerHeight, setComposerHeight] = useState(84);
   const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
-  const [skillMenuOpen, setSkillMenuOpen] = useState(false);
-  const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([]);
   const [webSearchActive, setWebSearchActive] = useState(false);
   const [webSearchLoading, setWebSearchLoading] = useState(false);
+  const [workspaceContext, setWorkspaceContext] = useState<WorkspaceContextPayload | null>(null);
   const webSearchEnabled = settings.web_search.enabled;
-  const enabledSelectedSkillIds = useMemo(
-    () => selectedSkillIds.filter((id) => skills.some((skill) => skill.id === id && skill.enabled)),
-    [selectedSkillIds, skills],
-  );
+  const workspaceConfigKey = useMemo(() => {
+    try {
+      const roots = JSON.parse(localStorage.getItem('markitdown.workspace-roots') || '[]') as Array<{ path?: string }>;
+      return roots[0]?.path ? `markitdown.workspace-ai-config:${roots[0].path}` : '';
+    } catch { return ''; }
+  }, []);
 
   useEffect(() => {
-    void loadSkills();
-  }, [loadSkills]);
+    if (!workspaceConfigKey) return;
+    try {
+      const config = JSON.parse(localStorage.getItem(workspaceConfigKey) || '{}') as { provider?: AIProviderId; model?: string };
+      if (config.provider) setChatProvider(config.provider);
+      if (config.model) setChatModel(config.model);
+    } catch { /* Ignore malformed local workspace preferences. */ }
+  }, [workspaceConfigKey]);
 
+  useEffect(() => {
+    if (workspaceConfigKey) localStorage.setItem(workspaceConfigKey, JSON.stringify({ provider: chatProvider, model: chatModel }));
+  }, [workspaceConfigKey, chatProvider, chatModel]);
   useEffect(() => {
     if (listRef.current) {
       listRef.current.scrollTop = listRef.current.scrollHeight;
@@ -138,8 +143,8 @@ export function AIChatbotPanel() {
         setWebSearchLoading(false);
       }
     }
-    sendChatMessage(text, attachments, { provider: chatProvider, model: chatModel, searchContext, searchPreview, skillIds: enabledSelectedSkillIds });
-  }, [inputValue, pendingAttachments, chatbotLoading, sendChatMessage, chatProvider, chatModel, settings.web_search, webSearchActive, webSearchEnabled, enabledSelectedSkillIds, webSearchLoading]);
+    sendChatMessage(text, attachments, { provider: chatProvider, model: chatModel, searchContext, searchPreview, workspaceContext });
+  }, [inputValue, pendingAttachments, chatbotLoading, sendChatMessage, chatProvider, chatModel, settings.web_search, webSearchActive, webSearchEnabled, webSearchLoading, workspaceContext]);
 
   const providerProfiles = useMemo<Record<string, AIProviderProfile>>(() => {
     try {
@@ -280,6 +285,7 @@ export function AIChatbotPanel() {
                 <option key={model} value={model}>{model}</option>
               )) : <option value="">请先在设置中配置模型</option>}
             </select>
+            {workspaceConfigKey && <span className="workspace-ai-scope" title="服务商与模型偏好仅保存于当前工作区">工作区</span>}
           </div>
         </div>
         <button className="chatbot-close-btn" onClick={() => setChatbotVisible(false)} title="关闭">
@@ -344,25 +350,12 @@ export function AIChatbotPanel() {
         </div>
       )}
 
-      {skillMenuOpen && (
-        <div className="chatbot-skill-panel">
-          <div className="chatbot-skill-panel-header">
-            <span>选择本轮 Skills</span>
-          </div>
-          {skills.length === 0 ? (
-            <div className="chatbot-skill-empty">请先在 AI 设置中导入并启用 Skill。</div>
-          ) : skills.filter((skill) => skill.enabled).map((skill) => (
-            <label key={skill.id} className="chatbot-skill-item" title={skill.description}>
-              <input
-                type="checkbox"
-                checked={selectedSkillIds.includes(skill.id)}
-                onChange={() => setSelectedSkillIds((ids) => ids.includes(skill.id) ? ids.filter((id) => id !== skill.id) : [...ids, skill.id])}
-              />
-              <span>{skill.name}</span>
-            </label>
-          ))}
-        </div>
-      )}
+      <WorkspaceContextPanel
+        linkedDocument={linkedDocument}
+        query={inputValue}
+        providerLabel={selectedDefinition?.label || chatProvider}
+        onChange={setWorkspaceContext}
+      />
 
       <div className="chatbot-input-area">
         <div
@@ -386,14 +379,6 @@ export function AIChatbotPanel() {
             title={linkedDocument ? '取消关联文档' : '关联当前文档'}
           >
             <span className="chatbot-toolbar-icon"><ComposerIcon type="document" /></span>
-          </button>
-          <button
-            className={`chatbot-toolbar-btn ${skillMenuOpen ? 'active' : ''}`}
-            onClick={() => setSkillMenuOpen((open) => !open)}
-            title="选择本轮使用的 Skills"
-          >
-            <span className="chatbot-toolbar-icon"><ComposerIcon type="skills" /></span>
-            <span className="chatbot-skill-count">{enabledSelectedSkillIds.length || ''}</span>
           </button>
           <button
             className={`chatbot-toolbar-btn web-search-btn ${webSearchEnabled && webSearchActive ? 'active' : ''}`}
@@ -471,6 +456,13 @@ export function AIChatbotPanel() {
 
 function WebSearchPreview({ response }: { response: WebSearchResponse }) {
   const [expanded, setExpanded] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const copySources = async () => {
+    await navigator.clipboard.writeText(formatWebSearchMarkdown(response));
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1800);
+  };
 
   return (
     <section className="chatbot-search-preview" aria-label="网络搜索结果">
@@ -489,6 +481,9 @@ function WebSearchPreview({ response }: { response: WebSearchResponse }) {
         >
           {expanded ? '收起' : '展开'}
         </button>
+        <button className="chatbot-search-preview-toggle" onClick={() => void copySources()} title="复制为 Markdown 脚注来源">
+          {copied ? '已复制' : '导出来源'}
+        </button>
       </div>
       {expanded && (
         <div className="chatbot-search-preview-content">
@@ -506,7 +501,7 @@ function WebSearchPreview({ response }: { response: WebSearchResponse }) {
                 <span className="chatbot-search-result-body">
                   <strong>{result.title || result.url}</strong>
                   {result.content && <span>{result.content.replace(/\s+/g, ' ').trim()}</span>}
-                  <small>{getSearchDomain(result.url)}</small>
+                  <small>{getSearchDomain(result.url)} · {result.published_at ? `发布：${result.published_at}` : '发布时间未提供'} · 访问：{response.accessed_at}</small>
                 </span>
                 <span className="chatbot-search-result-arrow" aria-hidden="true">↗</span>
               </a>
@@ -619,7 +614,7 @@ function ChatBubble({ message }: { message: ChatMessage }) {
             )}
           </div>
         </div>
-        {isUser && message.search && <WebSearchPreview response={message.search} />}
+        {message.search && <WebSearchPreview response={message.search} />}
         <div className={`chatbot-message-time ${isUser ? 'user' : 'assistant'}`}>
           {timeStr}
         </div>

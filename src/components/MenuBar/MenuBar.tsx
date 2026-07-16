@@ -8,6 +8,8 @@ import MarkdownIt from 'markdown-it';
 import hljs from 'highlight.js';
 import { PdfExportDialog } from '../Export/PdfExportDialog';
 import { ImageExportDialog } from '../Export/ImageExportDialog';
+import { WeChatExportDialog } from '../Export/WeChatExportDialog';
+import { applyExportTemplate, loadExportTemplate } from '../Export/exportTemplates';
 
 interface MenuItem {
   label: string;
@@ -31,6 +33,7 @@ interface UpdateInfo {
   asset_download_url: string;
   asset_name: string;
   asset_size: number;
+  auto_install_supported: boolean;
   release_notes: string;
   published_at: string;
 }
@@ -273,7 +276,7 @@ https://github.com/zhcx/markitdown
                           <p><span>文件名</span><strong>{updateInfo.asset_name}</strong></p>
                           <p><span>类型</span>{getInstallerType(updateInfo.asset_name)}</p>
                           <p><span>大小</span>{formatSize(updateInfo.asset_size)}</p>
-                          <p className="update-installer-summary">{getInstallerSummary(updateInfo.asset_name)}</p>
+                          <p className="update-installer-summary">{updateInfo.auto_install_supported ? getInstallerSummary(updateInfo.asset_name) : '该平台可直接下载对应安装包；下载完成后请按系统提示完成安装。'}</p>
                         </>
                       ) : (
                         <p className="update-installer-summary">
@@ -297,12 +300,12 @@ https://github.com/zhcx/markitdown
                       </div>
                     ) : (
                       <div className="update-actions">
-                        <button
-                          className="update-download-btn"
-                          onClick={onDownloadAndInstall}
-                          disabled={!updateInfo.asset_download_url}
-                        >
-                          {updateInfo.asset_download_url ? '下载并安装' : '前往下载'}
+                        <button className="update-download-btn" onClick={() => {
+                          if (!updateInfo.asset_download_url) { void open(updateInfo.download_url); return; }
+                          if (updateInfo.auto_install_supported) { onDownloadAndInstall?.(); return; }
+                          void open(updateInfo.asset_download_url);
+                        }}>
+                          {!updateInfo.asset_download_url ? '前往下载' : updateInfo.auto_install_supported ? '下载并安装' : '下载安装包'}
                         </button>
                         {updateInfo.asset_download_url && (
                           <button className="update-cancel-btn" onClick={onClose}>
@@ -367,8 +370,10 @@ export function MenuBar() {
   const [updateError, setUpdateError] = useState<string | null>(null);
   const [pdfExportOpen, setPdfExportOpen] = useState(false);
   const [imageExportOpen, setImageExportOpen] = useState(false);
+  const [weChatExportOpen, setWeChatExportOpen] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState<DownloadProgress | null>(null);
   const [downloadDone, setDownloadDone] = useState(false);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
   const menubarRef = useRef<HTMLDivElement>(null);
   const mouseOverMenuRef = useRef(false);
 
@@ -381,6 +386,7 @@ export function MenuBar() {
     setHelpModal('update');
     setUpdateInfo(null);
     setUpdateError(null);
+    setDownloadError(null);
     try {
       const info = await invoke<UpdateInfo>('check_for_updates');
       setUpdateInfo(info);
@@ -392,6 +398,7 @@ export function MenuBar() {
 
   const handleDownloadAndInstall = async () => {
     if (!updateInfo?.asset_download_url) return;
+    setDownloadError(null);
     setDownloadProgress({ downloaded: 0, total: updateInfo.asset_size, progress: 0 });
     setDownloadDone(false);
 
@@ -410,6 +417,7 @@ export function MenuBar() {
       });
     } catch (error) {
       console.error('下载更新失败:', error);
+      setDownloadError(`下载或启动安装程序失败：${String(error)}`);
       setDownloadProgress(null);
     } finally {
       unlistenProgress();
@@ -441,7 +449,7 @@ export function MenuBar() {
       const selected = await openDialog({
         filters: [{
           name: 'Documents',
-          extensions: ['pdf', 'docx', 'doc', 'pptx', 'ppt', 'xlsx', 'xls', 'html', 'htm', 'csv', 'json', 'xml', 'epub', 'zip', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'wav', 'mp3'],
+          extensions: ['pdf', 'docx', 'doc', 'pptx', 'ppt', 'xlsx', 'xls', 'html', 'htm', 'csv', 'json', 'xml', 'epub', 'zip', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg', 'wav', 'mp3', 'm4a', 'ogg', 'eml', 'msg', 'rss', 'atom', 'ipynb'],
         }],
         multiple: true,
       });
@@ -504,7 +512,8 @@ export function MenuBar() {
       const filePath = activeTab?.path || null;
 
       // Render markdown to HTML on the front-end using markdown-it
-      const htmlBody = renderMarkdown(content);
+      const documentTitle = getActiveTab()?.title?.replace(/\.md$/i, '') || 'document';
+      const htmlBody = applyExportTemplate(renderMarkdown(content), documentTitle, loadExportTemplate());
 
       if (format === 'html') {
         const defaultFilename = getExportFilename('html');
@@ -664,6 +673,7 @@ export function MenuBar() {
 
   const fileMenu = menus[1];
   const exportMenu = fileMenu.items.find((item) => item.children)?.children;
+  exportMenu?.push({ label: '导出公众号排版 HTML...', action: () => { setWeChatExportOpen(true); setActiveMenu(null); setMenuOpen(false); } });
   exportMenu?.push({ label: '导出为图片...', action: () => { setImageExportOpen(true); setActiveMenu(null); setMenuOpen(false); } });
 
   useEffect(() => {
@@ -679,7 +689,7 @@ export function MenuBar() {
   }, []);
 
   const shouldHideLegacyExportItem = (item: MenuItem) => {
-    return !item.children && !item.divider && (item.label.includes('HTML') || item.label.includes('PDF'));
+    return !item.children && !item.divider && (item.label === '导出为 HTML' || item.label === '导出为 PDF...');
   };
 
   return (
@@ -778,6 +788,7 @@ export function MenuBar() {
           onClose={() => setHelpModal(null)}
         />
       )}
+      {downloadError && helpModal === 'update' && <div className="update-toast-error" role="alert">{downloadError}</div>}
       {pdfExportOpen && (
         <PdfExportDialog
           content={content}
@@ -786,6 +797,7 @@ export function MenuBar() {
         />
       )}
       {imageExportOpen && <ImageExportDialog content={content} onClose={() => setImageExportOpen(false)} />}
+      {weChatExportOpen && <WeChatExportDialog content={content} title={getActiveTab()?.title?.replace(/\.md$/i, '') || 'MarkItDown 文章'} onClose={() => setWeChatExportOpen(false)} />}
     </>
   );
 }

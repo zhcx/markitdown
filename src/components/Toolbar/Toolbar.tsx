@@ -140,6 +140,9 @@ export function Toolbar() {
     translateText,
     summarizeText,
     generateOutline,
+    proposeEdit,
+    editMode,
+    setEditMode,
     setChatbotVisible,
   } = useAIStore();
   const currentStyle = settings.ai.writing_style;
@@ -184,10 +187,14 @@ export function Toolbar() {
     const rewritten = await rewriteSelection(selectedText);
     if (rewritten && rewritten !== selectedText) {
       const selection = editorView!.state.selection.main;
-      const transaction = editorView!.state.update({
-        changes: { from: selection.from, to: selection.to, insert: rewritten },
+      proposeEdit({
+        kind: 'polish',
+        reason: 'AI 重写：用于语言润色与表达优化，不应将其视为事实修改。',
+        before: selectedText,
+        after: rewritten,
+        from: selection.from,
+        to: selection.to,
       });
-      editorView!.dispatch(transaction);
     }
   };
 
@@ -218,20 +225,30 @@ export function Toolbar() {
   const handleSummarize = async () => {
     const summary = await summarizeText(content);
     if (summary) {
-      // 在文档开头插入摘要
-      const transaction = editorView?.state.update({
-        changes: { from: 0, to: 0, insert: `## 摘要\n\n${summary}\n\n---\n\n` },
+      proposeEdit({
+        kind: 'structure',
+        reason: 'AI 摘要：自动提炼原文，关键结论与数字请人工复核。',
+        before: '',
+        after: `## 摘要\n\n${summary}\n\n---\n\n`,
+        from: 0,
+        to: 0,
       });
-      if (transaction && editorView) {
-        editorView.dispatch(transaction);
-      }
     }
   };
 
   const handleOutline = async () => {
     const outline = await generateOutline(content);
     if (outline) {
-      insertAtCursor(outline);
+      const selection = editorView?.state.selection.main;
+      const position = selection?.from ?? content.length;
+      proposeEdit({
+        kind: 'structure',
+        reason: 'AI 大纲：根据现有文档组织结构，内容准确性仍需人工确认。',
+        before: selection ? content.slice(selection.from, selection.to) : '',
+        after: outline,
+        from: position,
+        to: selection?.to ?? position,
+      });
     }
   };
 
@@ -423,7 +440,9 @@ export function Toolbar() {
         { label: '∑', title: '行内公式', action: () => wrapSelection('$', '$') },
         { label: 'Σ', title: '公式块', action: () => insertBlock('$$\n', '\n$$\n') },
         { label: 'Ⓕ', title: '脚注', action: () => wrapSelection('[^', ']()') },
-        { label: 'M', title: 'Mermaid', action: () => insertAtCursor('\n```mermaid\ngraph LR\n  A --> B\n```\n', 20) },
+        { label: 'M', title: 'Mermaid 流程图', action: () => insertAtCursor('\n```mermaid\nflowchart LR\n  A[开始] --> B{判断}\n  B -->|是| C[执行]\n  B -->|否| D[结束]\n```\n', 24) },
+        { label: '↔', title: 'Mermaid 时序图', action: () => insertAtCursor('\n```mermaid\nsequenceDiagram\n  participant 用户\n  participant 服务\n  用户->>服务: 请求\n  服务-->>用户: 响应\n```\n', 28) },
+        { label: '▥', title: 'Mermaid 甘特图', action: () => insertAtCursor('\n```mermaid\ngantt\n  title 项目计划\n  dateFormat YYYY-MM-DD\n  section 开发\n  功能开发 :a1, 2026-01-01, 7d\n  测试 :a2, after a1, 3d\n```\n', 22) },
         { label: '❖', title: '目录', action: () => insertAtCursor('\n[TOC]\n') },
         { label: '▸', title: '插入可折叠内容', action: () => insertAtCursor('\n<details>\n<summary>展开查看</summary>\n\n内容\n\n</details>\n', 32) },
         { label: '※', title: '插入注释', action: () => insertAtCursor('<!-- 注释 -->', 5) },
@@ -464,10 +483,19 @@ export function Toolbar() {
     }, 2000);
   };
 
+  const handleEditModeChange = () => {
+    const modes = ['ask', 'suggest', 'agent'] as const;
+    const nextMode = modes[(modes.indexOf(editMode) + 1) % modes.length];
+    setEditMode(nextMode);
+    const labels = { ask: '询问模式：只回答', suggest: '建议模式：先审 Diff', agent: '代理模式：关键写入仍需确认' };
+    useAIStore.getState().setStatus('success', labels[nextMode]);
+  };
+
   // AI按钮组 - 仅在启用时显示
   const aiGroup: ToolbarGroup | null = settings.ai.enabled ? {
     title: 'AI',
     buttons: [
+      { label: editMode === 'ask' ? '问' : editMode === 'suggest' ? '建' : '代', title: `AI 操作模式：${editMode === 'ask' ? '询问（只回答）' : editMode === 'suggest' ? '建议（先审 Diff）' : '代理（关键写入确认）'}`, action: handleEditModeChange },
       { icon: 'chat', title: '显示 AI 对话', action: () => setChatbotVisible(true) },
       { icon: 'proofread', title: '校对文字', action: handleProofread },
       { icon: 'sparkle', title: '伴写建议', action: handleCompanion },
