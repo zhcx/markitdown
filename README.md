@@ -121,23 +121,6 @@
 | macOS | Apple Silicon arm64 | `.dmg` / `.app.tar.gz` |
 | Linux | x86_64 | `.deb` / `.rpm` / `.AppImage` |
 
-## v0.2.5 更新
-
-- 新增 Claude 与 Notion 两套明暗主题，可在“功能 → 主题”菜单中独立选择。
-- 修复分屏预览右侧空白和 Markdown 表格宽度异常问题。
-- 插入表格改为工具栏下方菜单式网格选择器，支持鼠标移动、拖动选择行列。
-- 新增 Markdown 内容按多种比例导出 PNG，并提供比例预览。
-- 编辑器显示行号；关于页面的项目链接在桌面端通过系统浏览器打开。
-
-### v0.2.5 平台安装包
-
-| 平台 | 架构 | 安装包 |
-| --- | --- | --- |
-| Windows | x86_64 | NSIS `.exe` / `.msi` |
-| macOS | Intel x86_64 | `.dmg` / `.app.tar.gz` |
-| macOS | Apple Silicon arm64 | `.dmg` / `.app.tar.gz` |
-| Linux | x86_64 | `.deb` / `.rpm` / `.AppImage` |
-
 完整安装包请前往 [GitHub Releases](https://github.com/zhcx/markitdown/releases)。
 
 ## Contributors

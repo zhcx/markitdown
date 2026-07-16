@@ -151,7 +151,7 @@ export interface TimelineEntry {
 
 export type UploadStatus = 'idle' | 'uploading' | 'success' | 'error';
 export type ConversionStatus = 'idle' | 'converting' | 'success' | 'error';
-export type SettingsTab = 'appearance' | 'editor' | 'image' | 'export' | 'ai';
+export type SettingsTab = 'appearance' | 'editor' | 'image' | 'export' | 'ai' | 'web_search';
 
 interface AppState {
   content: string;

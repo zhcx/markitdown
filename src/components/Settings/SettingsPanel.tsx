@@ -55,6 +55,9 @@ function SettingsNavIcon({ type }: { type: SettingsTab }) {
   if (type === 'export') {
     return <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3v9M6.7 8.7 10 12l3.3-3.3M4 13v3.5h12V13" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>;
   }
+  if (type === 'web_search') {
+    return <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="7.2" fill="none" stroke="currentColor" strokeWidth="1.5" /><path d="M2.8 10h14.4M10 2.8c2 2 2 12.4 0 14.4M10 2.8c-2 2-2 12.4 0 14.4" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" /></svg>;
+  }
   return <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.6 11.5 7l4.4 1.5-4.4 1.5-1.5 4.4L8.5 10 4.1 8.5 8.5 7zM15.5 13l.7 2 .8.3-.8.3-.7 2-.7-2-.8-.3.8-.3z" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" /></svg>;
 }
 
@@ -153,7 +156,8 @@ export function SettingsPanel() {
     { id: 'editor', label: '编辑器', description: '编辑体验与自动保存' },
     { id: 'image', label: '图床', description: '图片上传与存储服务' },
     { id: 'export', label: '导出', description: '文档导出与版式设置' },
-    { id: 'ai', label: 'AI 助手', description: '模型与网络搜索' },
+    { id: 'ai', label: 'AI 助手', description: '模型、提示与伴写设置' },
+    { id: 'web_search', label: '网络搜索', description: '搜索服务与结果偏好' },
   ] as const;
   const activeTabMeta = tabs.find((tab) => tab.id === activeTab) || tabs[0];
 
@@ -694,105 +698,6 @@ export function SettingsPanel() {
                   启用AI助手
                 </label>
               </div>
-              <div className="setting-item">
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={localSettings.web_search.enabled}
-                    onChange={(e) => setLocalSettings({
-                      ...localSettings,
-                      web_search: { ...localSettings.web_search, enabled: e.target.checked },
-                    })}
-                  />
-                  启用网络搜索
-                </label>
-              </div>
-              {localSettings.web_search.enabled && (
-                <div className="settings-subsection web-search-settings">
-                  <div className="setting-item">
-                    <label>首选搜索服务</label>
-                    <select
-                      value={localSettings.web_search.provider}
-                      onChange={(e) => setLocalSettings({
-                        ...localSettings,
-                        web_search: { ...localSettings.web_search, provider: e.target.value as 'tavily' | 'searxng' },
-                      })}
-                      title="同时配置多个搜索服务时，优先使用此服务"
-                    >
-                      <option value="tavily">Tavily（优先）</option>
-                      <option value="searxng">SearXNG（优先）</option>
-                    </select>
-                  </div>
-                  {localSettings.web_search.provider === 'tavily' ? (
-                    <>
-                      <div className="setting-item">
-                        <label>Tavily API Key</label>
-                        <input
-                          type="password"
-                          value={localSettings.web_search.tavily_api_key}
-                          onChange={(e) => setLocalSettings({ ...localSettings, web_search: { ...localSettings.web_search, tavily_api_key: e.target.value } })}
-                          placeholder="tvly-..."
-                        />
-                      </div>
-                      <div className="setting-item">
-                        <label>搜索深度</label>
-                        <select
-                          value={localSettings.web_search.tavily_search_depth}
-                          onChange={(e) => setLocalSettings({ ...localSettings, web_search: { ...localSettings.web_search, tavily_search_depth: e.target.value as 'basic' | 'advanced' | 'fast' | 'ultra-fast' } })}
-                        >
-                          <option value="basic">Basic</option>
-                          <option value="fast">Fast</option>
-                          <option value="advanced">Advanced</option>
-                          <option value="ultra-fast">Ultra fast</option>
-                        </select>
-                      </div>
-                      <div className="setting-item">
-                        <label>最大结果数</label>
-                        <input type="number" min="1" max="20" value={localSettings.web_search.tavily_max_results} onChange={(e) => setLocalSettings({ ...localSettings, web_search: { ...localSettings.web_search, tavily_max_results: Number(e.target.value) } })} />
-                      </div>
-                      <div className="setting-item">
-                        <label><input type="checkbox" checked={localSettings.web_search.tavily_include_answer} onChange={(e) => setLocalSettings({ ...localSettings, web_search: { ...localSettings.web_search, tavily_include_answer: e.target.checked } })} /> 请求摘要答案</label>
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <div className="setting-item">
-                        <label>SearXNG API 地址</label>
-                        <input type="url" value={localSettings.web_search.searxng_url} onChange={(e) => setLocalSettings({ ...localSettings, web_search: { ...localSettings.web_search, searxng_url: e.target.value } })} placeholder="http://localhost:8080" />
-                      </div>
-                      <div className="setting-item">
-                        <label>SearXNG API Key（可选）</label>
-                        <input type="password" value={localSettings.web_search.searxng_api_key} onChange={(e) => setLocalSettings({ ...localSettings, web_search: { ...localSettings.web_search, searxng_api_key: e.target.value } })} />
-                      </div>
-                      <div className="setting-item">
-                        <label>语言</label>
-                        <input type="text" value={localSettings.web_search.searxng_language} onChange={(e) => setLocalSettings({ ...localSettings, web_search: { ...localSettings.web_search, searxng_language: e.target.value } })} placeholder="auto / zh-CN / en" />
-                      </div>
-                      <div className="setting-item">
-                        <label>分类</label>
-                        <input type="text" value={localSettings.web_search.searxng_categories} onChange={(e) => setLocalSettings({ ...localSettings, web_search: { ...localSettings.web_search, searxng_categories: e.target.value } })} placeholder="general" />
-                      </div>
-                      <div className="setting-item">
-                        <label>安全搜索</label>
-                        <select value={localSettings.web_search.searxng_safesearch} onChange={(e) => setLocalSettings({ ...localSettings, web_search: { ...localSettings.web_search, searxng_safesearch: Number(e.target.value) } })}>
-                          <option value={0}>关闭</option><option value={1}>中等</option><option value={2}>严格</option>
-                        </select>
-                      </div>
-                      <div className="setting-item">
-                        <label>时间范围</label>
-                        <select value={localSettings.web_search.searxng_time_range} onChange={(e) => setLocalSettings({ ...localSettings, web_search: { ...localSettings.web_search, searxng_time_range: e.target.value } })}>
-                          <option value="">不限</option><option value="day">一天</option><option value="month">一个月</option><option value="year">一年</option>
-                        </select>
-                      </div>
-                      <div className="setting-item">
-                        <label>最大结果数</label>
-                        <input type="number" min="1" max="20" value={localSettings.web_search.searxng_max_results} onChange={(e) => setLocalSettings({ ...localSettings, web_search: { ...localSettings.web_search, searxng_max_results: Number(e.target.value) } })} />
-                      </div>
-                    </>
-                  )}
-                </div>
-              )}
-
               {localSettings.ai.enabled && (
                 <>
                   <div className="setting-item">
@@ -1028,6 +933,103 @@ export function SettingsPanel() {
                         placeholder="例如：请以幽默风趣的方式..."
                       />
                     </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'web_search' && (
+            <div className="settings-section">
+              <div className="setting-item">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={localSettings.web_search.enabled}
+                    onChange={(e) => setLocalSettings({
+                      ...localSettings,
+                      web_search: { ...localSettings.web_search, enabled: e.target.checked },
+                    })}
+                  />
+                  启用网络搜索
+                </label>
+              </div>
+
+              {localSettings.web_search.enabled && (
+                <>
+                  <div className="setting-item">
+                    <label>首选搜索服务</label>
+                    <select
+                      value={localSettings.web_search.provider}
+                      onChange={(e) => setLocalSettings({
+                        ...localSettings,
+                        web_search: { ...localSettings.web_search, provider: e.target.value as 'tavily' | 'searxng' },
+                      })}
+                      title="同时配置多个搜索服务时，优先使用此服务"
+                    >
+                      <option value="tavily">Tavily（优先）</option>
+                      <option value="searxng">SearXNG（优先）</option>
+                    </select>
+                  </div>
+
+                  {localSettings.web_search.provider === 'tavily' ? (
+                    <>
+                      <div className="setting-item">
+                        <label>Tavily API Key</label>
+                        <input type="password" value={localSettings.web_search.tavily_api_key} onChange={(e) => setLocalSettings({ ...localSettings, web_search: { ...localSettings.web_search, tavily_api_key: e.target.value } })} placeholder="tvly-..." />
+                      </div>
+                      <div className="setting-item">
+                        <label>搜索深度</label>
+                        <select value={localSettings.web_search.tavily_search_depth} onChange={(e) => setLocalSettings({ ...localSettings, web_search: { ...localSettings.web_search, tavily_search_depth: e.target.value as 'basic' | 'advanced' | 'fast' | 'ultra-fast' } })}>
+                          <option value="basic">Basic</option>
+                          <option value="fast">Fast</option>
+                          <option value="advanced">Advanced</option>
+                          <option value="ultra-fast">Ultra fast</option>
+                        </select>
+                      </div>
+                      <div className="setting-item">
+                        <label>最大结果数</label>
+                        <input type="number" min="1" max="20" value={localSettings.web_search.tavily_max_results} onChange={(e) => setLocalSettings({ ...localSettings, web_search: { ...localSettings.web_search, tavily_max_results: Number(e.target.value) } })} />
+                      </div>
+                      <div className="setting-item">
+                        <label><input type="checkbox" checked={localSettings.web_search.tavily_include_answer} onChange={(e) => setLocalSettings({ ...localSettings, web_search: { ...localSettings.web_search, tavily_include_answer: e.target.checked } })} /> 请求摘要答案</label>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="setting-item">
+                        <label>SearXNG API 地址</label>
+                        <input type="url" value={localSettings.web_search.searxng_url} onChange={(e) => setLocalSettings({ ...localSettings, web_search: { ...localSettings.web_search, searxng_url: e.target.value } })} placeholder="http://localhost:8080" />
+                      </div>
+                      <div className="setting-item">
+                        <label>SearXNG API Key（可选）</label>
+                        <input type="password" value={localSettings.web_search.searxng_api_key} onChange={(e) => setLocalSettings({ ...localSettings, web_search: { ...localSettings.web_search, searxng_api_key: e.target.value } })} />
+                      </div>
+                      <div className="setting-item">
+                        <label>语言</label>
+                        <input type="text" value={localSettings.web_search.searxng_language} onChange={(e) => setLocalSettings({ ...localSettings, web_search: { ...localSettings.web_search, searxng_language: e.target.value } })} placeholder="auto / zh-CN / en" />
+                      </div>
+                      <div className="setting-item">
+                        <label>分类</label>
+                        <input type="text" value={localSettings.web_search.searxng_categories} onChange={(e) => setLocalSettings({ ...localSettings, web_search: { ...localSettings.web_search, searxng_categories: e.target.value } })} placeholder="general" />
+                      </div>
+                      <div className="setting-item">
+                        <label>安全搜索</label>
+                        <select value={localSettings.web_search.searxng_safesearch} onChange={(e) => setLocalSettings({ ...localSettings, web_search: { ...localSettings.web_search, searxng_safesearch: Number(e.target.value) } })}>
+                          <option value={0}>关闭</option><option value={1}>中等</option><option value={2}>严格</option>
+                        </select>
+                      </div>
+                      <div className="setting-item">
+                        <label>时间范围</label>
+                        <select value={localSettings.web_search.searxng_time_range} onChange={(e) => setLocalSettings({ ...localSettings, web_search: { ...localSettings.web_search, searxng_time_range: e.target.value } })}>
+                          <option value="">不限</option><option value="day">一天</option><option value="month">一个月</option><option value="year">一年</option>
+                        </select>
+                      </div>
+                      <div className="setting-item">
+                        <label>最大结果数</label>
+                        <input type="number" min="1" max="20" value={localSettings.web_search.searxng_max_results} onChange={(e) => setLocalSettings({ ...localSettings, web_search: { ...localSettings.web_search, searxng_max_results: Number(e.target.value) } })} />
+                      </div>
+                    </>
                   )}
                 </>
               )}
