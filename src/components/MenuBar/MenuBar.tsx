@@ -10,6 +10,7 @@ import { PdfExportDialog } from '../Export/PdfExportDialog';
 import { ImageExportDialog } from '../Export/ImageExportDialog';
 import { WeChatExportDialog } from '../Export/WeChatExportDialog';
 import { applyExportTemplate, loadExportTemplate } from '../Export/exportTemplates';
+import { MarkdownSyntaxGuide } from '../Help/MarkdownSyntaxGuide';
 
 interface MenuItem {
   label: string;
@@ -102,7 +103,7 @@ function HelpModal({ type, updateInfo, updateError, downloadProgress, downloadDo
       `
     },
     syntax: {
-      title: 'Markdown 语法说明',
+      title: 'Markdown 语法入门与速查',
       body: `
 **标题**
 # 一级标题
@@ -147,12 +148,13 @@ graph TD
     about: {
       title: '关于 MarkitDown',
       body: `
-**MarkitDown v0.2.5**
+**MarkitDown v0.3.0**
 
 一款现代化的 Markdown 编辑器
 
 **功能特点**
-- 实时预览 / 沉浸模式（类 Typora）
+- Monaco 编辑器 / GitHub 风格 Markdown 实时预览
+- 沉浸阅读 / 沉浸写作 / AI Chatbox
 - 多标签页编辑，可调节布局
 - 数学公式（KaTeX）、Mermaid 图表、代码高亮
 - 多主题：浅色 / 深色 / Solarized
@@ -165,7 +167,7 @@ graph TD
 - GitHub Release 自动检查更新
 
 **技术栈**
-Tauri 2.0 + React 18 + TypeScript + CodeMirror 6 + markdown-it
+Tauri 2.0 + React 18 + TypeScript + Monaco Editor + markdown-it
 
 **开发者**
 [七月](https://github.com/zhcx)
@@ -236,10 +238,10 @@ https://github.com/zhcx/markitdown
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+      <div className={`modal-content${type === 'syntax' ? ' markdown-syntax-modal' : ''}`} onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h2>{title}</h2>
-          <button className="modal-close" onClick={onClose}>×</button>
+          <button className="modal-close" onClick={onClose} aria-label="关闭">×</button>
         </div>
         <div className="modal-body">
           {type === 'update' ? (
@@ -338,6 +340,8 @@ https://github.com/zhcx/markitdown
                 正在检查更新...
               </div>
             )
+          ) : type === 'syntax' ? (
+            <MarkdownSyntaxGuide />
           ) : (
             <div
               className="help-content"
@@ -602,7 +606,7 @@ export function MenuBar() {
       ],
     },
     {
-      label: '编辑',
+      label: '功能',
       items: [
         { label: '撤销', action: () => document.execCommand('undo'), shortcut: 'Ctrl+Z' },
         { label: '重做', action: () => document.execCommand('redo'), shortcut: 'Ctrl+Y' },
@@ -612,13 +616,10 @@ export function MenuBar() {
         { label: '粘贴', action: () => document.execCommand('paste'), shortcut: 'Ctrl+V' },
         { divider: true, label: '' },
         { label: '全选', action: () => document.execCommand('selectAll'), shortcut: 'Ctrl+A' },
-      ],
-    },
-    {
-      label: '功能',
-      items: [
+        { divider: true, label: '' },
         { label: '分屏模式', action: () => useAppStore.getState().setMode('split') },
-        { label: '沉浸模式', action: () => useAppStore.getState().setMode('immersive') },
+        { label: '沉浸阅读', action: () => useAppStore.getState().setMode('immersive') },
+        { label: '沉浸写作', action: () => useAppStore.getState().setMode('zen') },
         { divider: true, label: '' },
         {
           label: '主题',

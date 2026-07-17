@@ -12,9 +12,12 @@ import { AICompanionPopup } from './components/AI/AICompanionPopup';
 import { AITranslationPopup } from './components/AI/AITranslationPopup';
 import { AIDiffConfirmDialog } from './components/AI/AIDiffConfirmDialog';
 import { AIChatbotPanel } from './components/Chatbot/AIChatbotPanel';
+import { ImmersiveOutline } from './components/Immersive/ImmersiveOutline';
 import { TitleBar } from './components/TitleBar/TitleBar';
 import { ActivityBar } from './components/ActivityBar/ActivityBar';
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
+import { createElementScrollViewport, getSyncedScrollTop, type ObservableScrollViewport, type ScrollAnchor } from './utils/scrollSync';
+import { getImmersiveWorkspacePolicy } from './utils/immersiveWorkspace';
 import './styles/main.css';
 import './styles/workbench.css';
 
@@ -93,11 +96,19 @@ function App() {
   const [proofreadPanelWidth, setProofreadPanelWidth] = useState(280);
   const [chatbotPanelWidth, setChatbotPanelWidth] = useState(340);
   const [previewScrollElement, setPreviewScrollElement] = useState<HTMLDivElement | null>(null);
+  const [previewRenderVersion, setPreviewRenderVersion] = useState(0);
   const [activityView, setActivityView] = useState<'explorer' | 'search'>('explorer');
+  const [immersiveOutlineCollapsed, setImmersiveOutlineCollapsed] = useState(false);
+  const [immersivePreviewScrollElement, setImmersivePreviewScrollElement] = useState<HTMLDivElement | null>(null);
   const scrollSyncFrame = useRef<number | null>(null);
-  const pendingScrollSync = useRef<{ source: HTMLElement; target: HTMLElement } | null>(null);
-  const programmaticScrollRef = useRef<{ element: HTMLElement; top: number } | null>(null);
+  const pendingScrollSync = useRef<{
+    source: ObservableScrollViewport;
+    target: ObservableScrollViewport;
+    anchors: ScrollAnchor[];
+  } | null>(null);
+  const programmaticScrollRef = useRef<{ viewport: ObservableScrollViewport; top: number } | null>(null);
   const dragValues = useRef({ splitRatio, sidebarWidth, proofreadPanelWidth, chatbotPanelWidth });
+  const immersivePolicy = getImmersiveWorkspacePolicy(mode, chatbotVisible);
 
   const balanceDocumentPanes = useCallback((proofreadWidth = proofreadPanelWidth, chatWidth = chatbotPanelWidth) => {
     const appBody = dividerRef.current?.closest('.app-body') as HTMLElement | null;
@@ -170,6 +181,15 @@ function App() {
   }, [loadSettings]);
 
   useEffect(() => {
+    if (mode === 'split') return;
+    const exitImmersiveWorkspace = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') useAppStore.getState().setMode('split');
+    };
+    window.addEventListener('keydown', exitImmersiveWorkspace);
+    return () => window.removeEventListener('keydown', exitImmersiveWorkspace);
+  }, [mode]);
+
+  useEffect(() => {
     let wasCompact = false;
     const syncCompactLayout = () => {
       const compact = window.innerWidth < 900;
@@ -195,7 +215,14 @@ function App() {
     const root = document.documentElement;
     root.style.setProperty('--font-sans', toFontStack(settings.appearance.ui_font_family));
     root.style.setProperty('--font-content', toFontStack(settings.appearance.font_family));
-  }, [settings.appearance.font_family, settings.appearance.ui_font_family]);
+    root.style.setProperty('--font-content-size', `${settings.appearance.font_size}px`);
+    root.style.setProperty('--font-content-line-height', String(settings.appearance.line_height));
+  }, [
+    settings.appearance.font_family,
+    settings.appearance.font_size,
+    settings.appearance.line_height,
+    settings.appearance.ui_font_family,
+  ]);
 
   useEffect(() => {
     const preference = settings.appearance.theme;
@@ -413,23 +440,53 @@ function App() {
     setPreviewScrollElement(element);
   }, []);
 
+  const handlePreviewContentRendered = useCallback(() => {
+    setPreviewRenderVersion((version) => version + 1);
+  }, []);
+
   useEffect(() => {
     if (mode !== 'split' || !editorView || !previewScrollElement) return undefined;
 
-    const editorScrollElement = editorView.scrollDOM;
+    const editorViewport: ObservableScrollViewport = editorView;
+    const previewViewport = createElementScrollViewport(previewScrollElement);
 
-    const getScrollRatio = (element: HTMLElement) => {
-      const maxScrollTop = element.scrollHeight - element.clientHeight;
-      return maxScrollTop > 0 ? element.scrollTop / maxScrollTop : 0;
-    };
+    const editorMax = Math.max(0, editorViewport.getScrollHeight() - editorViewport.getClientHeight());
+    const previewMax = Math.max(0, previewViewport.getScrollHeight() - previewViewport.getClientHeight());
+    const previewBounds = previewScrollElement.getBoundingClientRect();
+    const headingAnchors: ScrollAnchor[] = Array.from(
+      previewScrollElement.querySelectorAll<HTMLElement>('[data-source-line]'),
+    ).flatMap((heading) => {
+      const lineNumber = Number(heading.dataset.sourceLine);
+      if (!Number.isFinite(lineNumber)) return [];
+      const targetTop = heading.getBoundingClientRect().top
+        - previewBounds.top
+        + previewScrollElement.scrollTop;
+      return [{
+        sourceTop: Math.max(0, Math.min(editorView.getTopForLineNumber(lineNumber), editorMax)),
+        targetTop: Math.max(0, Math.min(targetTop, previewMax)),
+      }];
+    });
+    const editorToPreviewAnchors = [
+      { sourceTop: 0, targetTop: 0 },
+      ...headingAnchors,
+      { sourceTop: editorMax, targetTop: previewMax },
+    ];
+    const previewToEditorAnchors = editorToPreviewAnchors.map((anchor) => ({
+      sourceTop: anchor.targetTop,
+      targetTop: anchor.sourceTop,
+    }));
 
-    const syncScroll = (source: HTMLElement, target: HTMLElement) => {
+    const syncScroll = (
+      source: ObservableScrollViewport,
+      target: ObservableScrollViewport,
+      anchors: ScrollAnchor[],
+    ) => {
       const ignored = programmaticScrollRef.current;
-      if (ignored?.element === source && Math.abs(source.scrollTop - ignored.top) < 2) {
+      if (ignored?.viewport === source && Math.abs(source.getScrollTop() - ignored.top) < 2) {
         return;
       }
 
-      pendingScrollSync.current = { source, target };
+      pendingScrollSync.current = { source, target, anchors };
       if (scrollSyncFrame.current !== null) return;
 
       scrollSyncFrame.current = window.requestAnimationFrame(() => {
@@ -438,28 +495,28 @@ function App() {
         pendingScrollSync.current = null;
         if (!request) return;
 
-        const { source: latestSource, target: latestTarget } = request;
-        const targetMaxScrollTop = latestTarget.scrollHeight - latestTarget.clientHeight;
-        const nextTop = targetMaxScrollTop > 0 ? getScrollRatio(latestSource) * targetMaxScrollTop : 0;
+        const { source: latestSource, target: latestTarget, anchors: latestAnchors } = request;
+        const nextTop = getSyncedScrollTop(latestSource, latestTarget, latestAnchors);
 
         // A tiny threshold avoids expensive layout work from sub-pixel scroll events
         // while preserving the feel of one-to-one scrolling for long documents.
-        if (Math.abs(latestTarget.scrollTop - nextTop) < 2) return;
+        if (Math.abs(latestTarget.getScrollTop() - nextTop) < 2) return;
 
-        programmaticScrollRef.current = { element: latestTarget, top: nextTop };
-        latestTarget.scrollTop = nextTop;
+        programmaticScrollRef.current = { viewport: latestTarget, top: nextTop };
+        latestTarget.setScrollTop(nextTop);
       });
     };
 
-    const handleEditorScroll = () => syncScroll(editorScrollElement, previewScrollElement);
-    const handlePreviewScroll = () => syncScroll(previewScrollElement, editorScrollElement);
+    const stopEditorScroll = editorViewport.onScroll(() => syncScroll(editorViewport, previewViewport, editorToPreviewAnchors));
+    const stopPreviewScroll = previewViewport.onScroll(() => syncScroll(previewViewport, editorViewport, previewToEditorAnchors));
 
-    editorScrollElement.addEventListener('scroll', handleEditorScroll, { passive: true });
-    previewScrollElement.addEventListener('scroll', handlePreviewScroll, { passive: true });
+    // Rendering Markdown, images or diagrams changes preview geometry. Keep
+    // the editor as the source of truth and realign once the new layout exists.
+    syncScroll(editorViewport, previewViewport, editorToPreviewAnchors);
 
     return () => {
-      editorScrollElement.removeEventListener('scroll', handleEditorScroll);
-      previewScrollElement.removeEventListener('scroll', handlePreviewScroll);
+      stopEditorScroll();
+      stopPreviewScroll();
 
       if (scrollSyncFrame.current !== null) {
         window.cancelAnimationFrame(scrollSyncFrame.current);
@@ -469,10 +526,10 @@ function App() {
       pendingScrollSync.current = null;
       programmaticScrollRef.current = null;
     };
-  }, [mode, editorView, previewScrollElement]);
+  }, [mode, editorView, previewScrollElement, previewRenderVersion]);
 
   return (
-    <div className="app">
+    <div className={`app ${immersivePolicy.active ? 'immersive-mode-active' : ''} ${mode === 'zen' ? 'zen-mode' : ''}`}>
       <TitleBar />
       <div className="app-workbench">
         <ActivityBar
@@ -480,16 +537,19 @@ function App() {
           chatbotVisible={chatbotVisible}
           settingsOpen={settingsOpen}
           immersive={mode === 'immersive'}
+          zen={mode === 'zen'}
           theme={settings.appearance.theme}
           onSelectView={selectActivityView}
           onOpenChat={() => setChatbotVisible(!chatbotVisible)}
           onOpenSettings={() => setSettingsOpen(true)}
           onToggleTheme={toggleThemeVariant}
-          onToggleImmersive={() => useAppStore.getState().setMode(mode === 'split' ? 'immersive' : 'split')}
+          onSelectImmersive={() => useAppStore.getState().setMode('immersive')}
+          onSelectZen={() => useAppStore.getState().setMode('zen')}
+          onExitImmersive={() => useAppStore.getState().setMode('split')}
         />
         <div className="app-workbench-content">
           <div className="app-body">
-          {(sidebarVisible || outlineVisible) && (
+          {mode === 'split' && (sidebarVisible || outlineVisible) && (
           <>
             <Sidebar style={{ width: sidebarWidth }} view={activityView} />
             <div
@@ -526,6 +586,7 @@ function App() {
                     className="preview-pane"
                     style={{ flex: 1 }}
                     onScrollContainerReady={handlePreviewScrollContainerReady}
+                    onContentRendered={handlePreviewContentRendered}
                   />
                   {proofreadResults.length > 0 && (
                     <>
@@ -585,7 +646,64 @@ function App() {
               </section>
             </>
           ) : (
-            <Preview className="immersive-preview" />
+            <section
+              className={`immersive-workspace immersive-${immersivePolicy.kind}`}
+              aria-label={mode === 'zen' ? '沉浸写作' : '沉浸阅读'}
+            >
+              {immersivePolicy.showOutline && (
+                <ImmersiveOutline
+                  mode={mode}
+                  collapsed={immersiveOutlineCollapsed}
+                  previewScrollElement={immersivePreviewScrollElement}
+                  onToggle={() => setImmersiveOutlineCollapsed((collapsed) => !collapsed)}
+                />
+              )}
+              <div className="immersive-document-area">
+                <header className="immersive-command-strip">
+                  {immersivePolicy.showEditorToolbar ? (
+                    <div className="immersive-writing-toolbar" aria-label="编辑器快捷工具栏">
+                      <Toolbar />
+                    </div>
+                  ) : (
+                    <div className="immersive-reading-label">
+                      <span aria-hidden="true">◫</span>
+                      <strong>沉浸阅读</strong>
+                    </div>
+                  )}
+                  <div className="immersive-command-actions">
+                    <button
+                      className={`immersive-control-button ${chatbotVisible ? 'is-active' : ''}`}
+                      type="button"
+                      onClick={() => setChatbotVisible(!chatbotVisible)}
+                      title={chatbotVisible ? '收起 AI 对话' : '打开 AI 对话'}
+                      aria-pressed={chatbotVisible}
+                    >
+                      <span className="immersive-ai-button-mark" aria-hidden="true">AI</span>
+                      <span>对话</span>
+                    </button>
+                    <button
+                      className="immersive-control-button"
+                      type="button"
+                      onClick={() => useAppStore.getState().setMode('split')}
+                      title={`退出${mode === 'zen' ? '沉浸写作' : '沉浸阅读'} (Esc)`}
+                    >
+                      <span aria-hidden="true">↙</span>
+                      <span>退出</span>
+                    </button>
+                  </div>
+                </header>
+                <div className="immersive-document-surface">
+                  {mode === 'zen' ? (
+                    <Editor className="zen-editor-pane" />
+                  ) : (
+                    <Preview
+                      className="immersive-preview"
+                      onScrollContainerReady={setImmersivePreviewScrollElement}
+                    />
+                  )}
+                </div>
+              </div>
+            </section>
           )}
         </main>
           </div>
@@ -593,10 +711,10 @@ function App() {
           <>
             <div
               ref={chatbotDividerRef}
-              className="chatbot-divider resizable"
+              className={`chatbot-divider resizable ${immersivePolicy.active ? 'immersive-chatbot-divider' : ''}`}
               onMouseDown={handleChatbotMouseDown}
             />
-            <div className="chatbot-side-panel" style={{ width: chatbotPanelWidth }}>
+            <div className={`chatbot-side-panel ${immersivePolicy.active ? 'immersive-chatbot-panel' : ''}`} style={{ width: chatbotPanelWidth }}>
               <AIChatbotPanel />
             </div>
           </>

@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
-import type { EditorView } from '@codemirror/view';
+import type { EditorController } from '../types/editor';
+import { formatTextStatistics } from '../utils/textStatistics';
+import { DEFAULT_FONT_SIZE, DEFAULT_LINE_HEIGHT } from '../utils/appearanceSettings';
 
 const isTauriRuntime = () => typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 const browserSettingsKey = 'markitdown.browser.settings';
@@ -25,6 +27,7 @@ export interface Settings {
     auto_save_interval: number;
     spell_check: boolean;
     auto_complete: boolean;
+    favorite_emojis: string[];
   };
   image_hosting: {
     active_service: string;
@@ -155,7 +158,7 @@ export type SettingsTab = 'appearance' | 'editor' | 'image' | 'export' | 'ai' | 
 
 interface AppState {
   content: string;
-  mode: 'split' | 'immersive';
+  mode: 'split' | 'immersive' | 'zen';
   splitRatio: number;
   currentFile: string | null;
   settings: Settings;
@@ -167,7 +170,7 @@ interface AppState {
   isSaving: boolean;
   wordCount: string;
   activeImageService: 'cloudinary' | 'picgo' | 's3' | 'local';
-  editorView: EditorView | null;
+  editorView: EditorController | null;
   tabs: Tab[];
   activeTabId: string | null;
   timeline: Record<string, TimelineEntry[]>;
@@ -178,7 +181,7 @@ interface AppState {
   conversionMessage: string;
 
   setContent: (content: string) => void;
-  setMode: (mode: 'split' | 'immersive') => void;
+  setMode: (mode: 'split' | 'immersive' | 'zen') => void;
   setSplitRatio: (ratio: number) => void;
   setCurrentFile: (file: string | null) => void;
   setSettings: (settings: Settings) => void;
@@ -188,7 +191,7 @@ interface AppState {
   setSettingsOpen: (open: boolean) => void;
   setSettingsTab: (tab: SettingsTab) => void;
   setActiveImageService: (service: 'cloudinary' | 'picgo' | 's3' | 'local') => void;
-  setEditorView: (view: EditorView | null) => void;
+  setEditorView: (view: EditorController | null) => void;
   loadSettings: () => Promise<void>;
   saveSettings: (settings: Settings) => Promise<void>;
   openFile: (path: string) => Promise<void>;
@@ -214,13 +217,14 @@ const defaultSettings: Settings = {
     theme: 'vscode-dark',
     ui_font_family: 'Microsoft YaHei',
     font_family: 'Microsoft YaHei',
-    font_size: 16,
-    line_height: 1.6,
+    font_size: DEFAULT_FONT_SIZE,
+    line_height: DEFAULT_LINE_HEIGHT,
   },
   editor: {
     auto_save_interval: 30000,
     spell_check: false,
     auto_complete: true,
+    favorite_emojis: ['😀', '👍', '❤️', '🎉', '✅', '⚠️', '💡', '🚀'],
   },
   image_hosting: {
     active_service: 'local',
@@ -284,10 +288,21 @@ const defaultSettings: Settings = {
   },
 };
 
+const normalizeSettings = (saved: Settings): Settings => ({
+  ...defaultSettings,
+  ...saved,
+  appearance: { ...defaultSettings.appearance, ...saved.appearance },
+  editor: { ...defaultSettings.editor, ...saved.editor },
+  image_hosting: { ...defaultSettings.image_hosting, ...saved.image_hosting },
+  export: { ...defaultSettings.export, ...saved.export },
+  web_search: { ...defaultSettings.web_search, ...saved.web_search },
+  ai: { ...defaultSettings.ai, ...saved.ai },
+});
+
 const initialSettings = (() => {
   try {
     const saved = JSON.parse(localStorage.getItem(browserSettingsKey) || 'null') as Settings | null;
-    return saved || defaultSettings;
+    return saved ? normalizeSettings(saved) : defaultSettings;
   } catch {
     return defaultSettings;
   }
@@ -360,7 +375,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   settingsOpen: false,
   settingsTab: 'appearance',
   isSaving: false,
-  wordCount: '0 字, 0 字符',
+  wordCount: formatTextStatistics(''),
   activeImageService: 'local',
   editorView: null,
   tabs: [initialTab],
@@ -452,7 +467,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!isTauriRuntime()) {
       try {
         const saved = JSON.parse(localStorage.getItem(browserSettingsKey) || 'null') as Settings | null;
-        if (saved && loadVersion === settingsMutationVersion) set({ settings: saved });
+        if (saved && loadVersion === settingsMutationVersion) set({ settings: normalizeSettings(saved) });
       } catch (error) {
         console.warn('Failed to load browser settings:', error);
       }
@@ -463,8 +478,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       // Do not let a slow desktop read overwrite a theme/font choice the user
       // made immediately after the window appeared.
       if (loadVersion !== settingsMutationVersion) return;
-      cacheSettingsForStartup(settings);
-      set({ settings });
+      const normalized = normalizeSettings(settings);
+      cacheSettingsForStartup(normalized);
+      set({ settings: normalized });
     } catch (error) {
       console.error('Failed to load settings:', error);
       if (loadVersion === settingsMutationVersion) set({ settings: defaultSettings });
@@ -583,9 +599,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   updateWordCount: () => {
     const { content } = get();
-    const words = content.trim().split(/\s+/).filter(Boolean).length;
-    const chars = content.length;
-    set({ wordCount: chars > 0 ? `${words} 字, ${chars} 字符` : '0 字, 0 字符' });
+    set({ wordCount: formatTextStatistics(content) });
   },
 
   addTab: (tab?: Partial<Tab>) => {

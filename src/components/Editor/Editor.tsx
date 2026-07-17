@@ -1,289 +1,371 @@
 import { useEffect, useRef } from 'react';
-import { EditorState, Compartment, RangeSetBuilder } from '@codemirror/state';
-import { EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter, Decoration } from '@codemirror/view';
-import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
-import { languages } from '@codemirror/language-data';
-import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
-import { useAppStore } from '../../stores/appStore';
-import { useAIStore, ProofreadResult } from '../../stores/aiStore';
+import * as monaco from 'monaco-editor/esm/vs/editor/editor.api.js';
+import 'monaco-editor/esm/vs/basic-languages/markdown/markdown.contribution';
+import EditorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker';
+import { invoke } from '@tauri-apps/api/core';
+import { useAppStore, type Settings } from '../../stores/appStore';
+import { useAIStore, type ProofreadResult } from '../../stores/aiStore';
+import type { EditorController, EditorDispatchSpec, EditorLine } from '../../types/editor';
+import { EDITOR_OVERFLOW_OPTIONS, EDITOR_UNICODE_HIGHLIGHT_OPTIONS } from '../../utils/editorLayout';
+
+(self as typeof self & { MonacoEnvironment: { getWorker: () => Worker } }).MonacoEnvironment = {
+  getWorker: () => new EditorWorker(),
+};
 
 interface EditorProps {
   className?: string;
   style?: React.CSSProperties;
 }
 
-// 创建校对错误高亮装饰
-const proofreadErrorMark = Decoration.mark({
-  class: 'cm-proofread-error',
-  attributes: { 'data-error': 'true' }
-});
-
-// 创建装饰函数 — 对所有范围做防御性校验，防止 CodeMirror panic
-const createProofreadDecorations = (results: ProofreadResult[]) => {
-  return EditorView.decorations.of((view) => {
-    const builder = new RangeSetBuilder<Decoration>();
-    const doc = view.state.doc;
-    const docLen = doc.length;
-
-    // 按 from 升序排列，确保 RangeSetBuilder 不会因乱序而崩溃
-    const sorted = [...results]
-      .filter(r => typeof r.from === 'number' && typeof r.to === 'number' && !isNaN(r.from) && !isNaN(r.to))
-      .sort((a, b) => a.from - b.from);
-
-    for (const result of sorted) {
-      const from = result.from;
-      const to = result.to;
-      // 严格校验：from >= 0, to <= docLen, from < to（合法范围）
-      if (from < 0 || from >= docLen || to <= 0 || to > docLen || from >= to) {
-        continue;
-      }
-      try {
-        builder.add(from, to, proofreadErrorMark);
-      } catch {
-        // 单个装饰失败不应导致整个面板崩溃
-        continue;
-      }
-    }
-
-    return builder.finish();
-  });
-};
-
 const MIN_AUTO_COMPANION_CHARS = 6;
 const AUTO_COMPANION_CONTEXT_LIMIT = 800;
 const AUTO_COMPANION_MIN_INTERVAL = 1200;
 
+const isTauriRuntime = () => '__TAURI_INTERNALS__' in window;
+
+function imageHostConfigured(settings: Settings) {
+  const hosting = settings.image_hosting;
+  switch (hosting.active_service) {
+    case 'local': return Boolean(hosting.local.save_directory.trim());
+    case 'picgo': return Boolean(hosting.picgo.server_url.trim());
+    case 'cloudinary': return Boolean(hosting.cloudinary.cloud_name.trim() && hosting.cloudinary.api_key.trim() && hosting.cloudinary.api_secret.trim());
+    case 's3': return Boolean(hosting.s3.endpoint.trim() && hosting.s3.bucket.trim() && hosting.s3.access_key.trim() && hosting.s3.secret_key.trim());
+    default: return false;
+  }
+}
+
+function offsetToPosition(model: monaco.editor.ITextModel, offset: number) {
+  return model.getPositionAt(Math.max(0, Math.min(offset, model.getValueLength())));
+}
+
+function toLine(model: monaco.editor.ITextModel, lineNumber: number): EditorLine {
+  const safeLine = Math.max(1, Math.min(lineNumber, model.getLineCount()));
+  return {
+    number: safeLine,
+    from: model.getOffsetAt({ lineNumber: safeLine, column: 1 }),
+    to: model.getOffsetAt({ lineNumber: safeLine, column: model.getLineMaxColumn(safeLine) }),
+    text: model.getLineContent(safeLine),
+  };
+}
+
+function createController(editor: monaco.editor.IStandaloneCodeEditor, model: monaco.editor.ITextModel, root: HTMLElement): EditorController {
+  const getSelection = () => {
+    const selection = editor.getSelection();
+    if (!selection) return { from: 0, to: 0, empty: true };
+    const from = model.getOffsetAt(selection.getStartPosition());
+    const to = model.getOffsetAt(selection.getEndPosition());
+    return { from, to, empty: from === to };
+  };
+
+  const setSelection = (from: number, to = from) => {
+    const start = offsetToPosition(model, from);
+    const end = offsetToPosition(model, to);
+    editor.setSelection(new monaco.Selection(start.lineNumber, start.column, end.lineNumber, end.column));
+  };
+
+  const applyDispatch = (spec: EditorDispatchSpec) => {
+    const change = spec?.changes;
+    if (change && typeof change.from === 'number') {
+      const text = change.insert ?? '';
+      editor.executeEdits('markitdown', [{ range: monaco.Range.fromPositions(offsetToPosition(model, change.from), offsetToPosition(model, change.to ?? change.from)), text, forceMoveMarkers: true }]);
+    }
+    const selected = spec?.selection?.main || spec?.selection;
+    const anchor = selected?.anchor ?? selected?.from;
+    const head = selected?.head ?? selected?.to ?? anchor;
+    if (typeof anchor === 'number') setSelection(anchor, head);
+    if (spec?.scrollIntoView && typeof anchor === 'number') editor.revealPositionInCenter(offsetToPosition(model, anchor));
+  };
+
+  const controller = {
+    scrollDOM: root.querySelector<HTMLElement>('.monaco-scrollable-element.editor-scrollable') || root,
+    getScrollTop: () => editor.getScrollTop(),
+    getScrollHeight: () => editor.getScrollHeight(),
+    getClientHeight: () => editor.getLayoutInfo().height,
+    getTopForLineNumber: (lineNumber: number) => editor.getTopForLineNumber(
+      Math.max(1, Math.min(lineNumber, model.getLineCount())),
+    ),
+    setScrollTop: (top: number) => editor.setScrollTop(top, monaco.editor.ScrollType.Immediate),
+    onScroll: (listener: () => void) => {
+      const disposable = editor.onDidScrollChange((event) => {
+        if (event.scrollTopChanged || event.scrollHeightChanged) listener();
+      });
+      return () => disposable.dispose();
+    },
+    getValue: () => model.getValue(),
+    getSelection,
+    getText: (from, to) => model.getValueInRange(monaco.Range.fromPositions(offsetToPosition(model, from), offsetToPosition(model, to))),
+    replaceRange: (from, to, text, selection) => {
+      editor.executeEdits('markitdown', [{ range: monaco.Range.fromPositions(offsetToPosition(model, from), offsetToPosition(model, to)), text, forceMoveMarkers: true }]);
+      if (selection) setSelection(selection.from, selection.to);
+    },
+    setSelection,
+    lineAt: (offset) => toLine(model, offsetToPosition(model, offset).lineNumber),
+    line: (lineNumber) => toLine(model, lineNumber),
+    coordsAtPos: (offset) => {
+      const position = offsetToPosition(model, offset);
+      const visible = editor.getScrolledVisiblePosition(position);
+      const node = editor.getDomNode();
+      if (!visible || !node) return null;
+      const rect = node.getBoundingClientRect();
+      const left = rect.left + visible.left;
+      const bottom = rect.top + visible.top + visible.height;
+      return { left, bottom, x: left, y: bottom };
+    },
+    focus: () => editor.focus(),
+    undo: () => editor.trigger('markitdown', 'undo', null),
+    redo: () => editor.trigger('markitdown', 'redo', null),
+    revealOffset: (offset) => editor.revealPositionInCenter(offsetToPosition(model, offset)),
+    dispatch: applyDispatch,
+  } as EditorController;
+
+  Object.defineProperty(controller, 'state', {
+    enumerable: true,
+    get: () => ({
+      selection: { main: getSelection() },
+      sliceDoc: (from: number, to: number) => controller.getText(from, to),
+      doc: {
+        length: model.getValueLength(),
+        lines: model.getLineCount(),
+        lineAt: (offset: number) => controller.lineAt(offset),
+        line: (lineNumber: number) => controller.line(lineNumber),
+      },
+      update: (spec: unknown) => spec,
+    }),
+  });
+  return controller;
+}
+
+async function fileAsDataUrl(file: File) {
+  return await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
 export function Editor({ className, style }: EditorProps) {
   const editorRef = useRef<HTMLDivElement>(null);
-  const viewRef = useRef<EditorView | null>(null);
-  const decorationsCompartmentRef = useRef(new Compartment());
+  const monacoRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
+  const modelRef = useRef<monaco.editor.ITextModel | null>(null);
+  const controllerRef = useRef<EditorController | null>(null);
+  const decorationIdsRef = useRef<string[]>([]);
   const autoCompanionTimerRef = useRef<number | null>(null);
   const autoCompanionLastPromptRef = useRef('');
   const autoCompanionLastRequestAtRef = useRef(0);
   const { content, setContent, settings, setEditorView } = useAppStore();
   const { proofreadResults } = useAIStore();
   const initialContentRef = useRef(content);
-  const initialAppearanceRef = useRef(settings.appearance);
 
   useEffect(() => {
-    if (!editorRef.current || viewRef.current) return;
-    const initialAppearance = initialAppearanceRef.current;
+    const root = editorRef.current;
+    if (!root || monacoRef.current) return;
 
-    const clearAutoCompanionTimer = () => {
-      if (autoCompanionTimerRef.current !== null) {
-        window.clearTimeout(autoCompanionTimerRef.current);
-        autoCompanionTimerRef.current = null;
-      }
+    const isDark = (document.documentElement.dataset.theme || '').endsWith('-dark');
+    const model = monaco.editor.createModel(initialContentRef.current, 'markdown');
+    const editor = monaco.editor.create(root, {
+      model,
+      theme: isDark ? 'vs-dark' : 'vs',
+      automaticLayout: true,
+      fontFamily: 'var(--font-content)',
+      fontSize: useAppStore.getState().settings.appearance.font_size,
+      lineHeight: Math.round(useAppStore.getState().settings.appearance.font_size * useAppStore.getState().settings.appearance.line_height),
+      lineNumbers: 'on',
+      minimap: { enabled: false },
+      wordWrap: 'wordWrapColumn',
+      wordWrapColumn: 80,
+      wrappingIndent: 'same',
+      renderWhitespace: 'selection',
+      renderLineHighlight: 'line',
+      renderLineHighlightOnlyWhenFocus: true,
+      scrollBeyondLastLine: false,
+      ...EDITOR_OVERFLOW_OPTIONS,
+      smoothScrolling: true,
+      padding: { top: 24, bottom: 40 },
+      quickSuggestions: false,
+      suggestOnTriggerCharacters: false,
+      accessibilitySupport: 'auto',
+      unicodeHighlight: EDITOR_UNICODE_HIGHLIGHT_OPTIONS,
+    });
+    const controller = createController(editor, model, root);
+    monacoRef.current = editor;
+    modelRef.current = model;
+    controllerRef.current = controller;
+    setEditorView(controller);
+
+    let currentWrapColumn = 0;
+    let viewportSignature = '';
+    let fitFrame: number | null = null;
+
+    const fitRenderedText = () => {
+      fitFrame = null;
+      const scrollbar = root.querySelector<HTMLElement>('.monaco-scrollable-element > .scrollbar.vertical');
+      const renderedRuns = root.querySelectorAll<HTMLElement>('.view-lines .view-line span span');
+      if (!scrollbar || renderedRuns.length === 0) return;
+
+      const textLimit = scrollbar.getBoundingClientRect().left - 6;
+      const maxTextRight = Math.max(...Array.from(renderedRuns, (run) => run.getBoundingClientRect().right));
+      if (maxTextRight <= textLimit + 0.5) return;
+
+      const fontInfo = editor.getOption(monaco.editor.EditorOption.fontInfo);
+      const overflowColumns = Math.max(1, Math.ceil((maxTextRight - textLimit) / fontInfo.typicalHalfwidthCharacterWidth));
+      const nextWrapColumn = Math.max(20, currentWrapColumn - overflowColumns);
+      if (nextWrapColumn === currentWrapColumn) return;
+      currentWrapColumn = nextWrapColumn;
+      editor.updateOptions({ wordWrapColumn: nextWrapColumn });
+      fitFrame = window.requestAnimationFrame(fitRenderedText);
     };
 
-    const scheduleAutoCompanion = (view: EditorView) => {
-      const { settings: currentSettings } = useAppStore.getState();
+    const scheduleTextFit = () => {
+      if (fitFrame !== null) window.cancelAnimationFrame(fitFrame);
+      fitFrame = window.requestAnimationFrame(fitRenderedText);
+    };
 
-      if (!currentSettings.ai.enabled || !currentSettings.ai.auto_suggest) {
-        clearAutoCompanionTimer();
+    const syncEditorViewport = (layout = editor.getLayoutInfo()) => {
+      root.style.setProperty('--monaco-vertical-scrollbar-width', `${layout.verticalScrollbarWidth}px`);
+      const fontInfo = editor.getOption(monaco.editor.EditorOption.fontInfo);
+      const visibleTextWidth = Math.max(1, layout.contentWidth - layout.verticalScrollbarWidth - 8);
+      root.style.setProperty('--monaco-visible-text-width', `${visibleTextWidth}px`);
+      const signature = `${layout.contentWidth}:${layout.verticalScrollbarWidth}:${fontInfo.fontFamily}:${fontInfo.fontSize}:${fontInfo.typicalHalfwidthCharacterWidth}`;
+      const nextWrapColumn = Math.max(20, Math.floor(visibleTextWidth / fontInfo.typicalHalfwidthCharacterWidth) - 1);
+      if (signature !== viewportSignature) {
+        viewportSignature = signature;
+        currentWrapColumn = nextWrapColumn;
+        editor.updateOptions({ wordWrapColumn: nextWrapColumn });
+      }
+      scheduleTextFit();
+    };
+    syncEditorViewport();
+    const layoutDisposable = editor.onDidLayoutChange(syncEditorViewport);
+
+    const clearCompanionTimer = () => {
+      if (autoCompanionTimerRef.current !== null) window.clearTimeout(autoCompanionTimerRef.current);
+      autoCompanionTimerRef.current = null;
+    };
+
+    const scheduleCompanion = () => {
+      const currentSettings = useAppStore.getState().settings;
+      const selection = controller.getSelection();
+      if (!currentSettings.ai.enabled || !currentSettings.ai.auto_suggest || !selection.empty) {
+        clearCompanionTimer();
         return;
       }
-
-      const selection = view.state.selection.main;
-      if (!selection.empty) {
-        clearAutoCompanionTimer();
-        return;
-      }
-
-      const cursor = selection.to;
-      const textBefore = view.state.sliceDoc(Math.max(0, cursor - AUTO_COMPANION_CONTEXT_LIMIT), cursor);
-      if (textBefore.trim().length < MIN_AUTO_COMPANION_CHARS) {
-        clearAutoCompanionTimer();
-        useAIStore.getState().setCompanionVisible(false);
-        return;
-      }
-
-      clearAutoCompanionTimer();
+      const before = controller.getText(Math.max(0, selection.to - AUTO_COMPANION_CONTEXT_LIMIT), selection.to).trim();
+      if (before.length < MIN_AUTO_COMPANION_CHARS) return;
+      clearCompanionTimer();
       autoCompanionTimerRef.current = window.setTimeout(() => {
-        const latestView = viewRef.current;
-        const { settings: latestSettings } = useAppStore.getState();
-        if (!latestView || !latestSettings.ai.enabled || !latestSettings.ai.auto_suggest) return;
-
-        const latestSelection = latestView.state.selection.main;
-        if (!latestSelection.empty) return;
-
-        const latestCursor = latestSelection.to;
-        const latestTextBefore = latestView.state.sliceDoc(Math.max(0, latestCursor - AUTO_COMPANION_CONTEXT_LIMIT), latestCursor);
-        const latestPrompt = latestTextBefore.trim();
-        if (latestPrompt.length < MIN_AUTO_COMPANION_CHARS) return;
-
+        const latest = controller.getSelection();
+        const prompt = controller.getText(Math.max(0, latest.to - AUTO_COMPANION_CONTEXT_LIMIT), latest.to).trim();
         const now = Date.now();
-        if (
-          latestPrompt === autoCompanionLastPromptRef.current ||
-          now - autoCompanionLastRequestAtRef.current < AUTO_COMPANION_MIN_INTERVAL
-        ) {
-          return;
-        }
-
-        autoCompanionLastPromptRef.current = latestPrompt;
+        if (!latest.empty || prompt.length < MIN_AUTO_COMPANION_CHARS || prompt === autoCompanionLastPromptRef.current || now - autoCompanionLastRequestAtRef.current < AUTO_COMPANION_MIN_INTERVAL) return;
+        autoCompanionLastPromptRef.current = prompt;
         autoCompanionLastRequestAtRef.current = now;
-
-        const coords = latestView.coordsAtPos(latestCursor);
-        useAIStore.getState().setCompanionVisible(true, coords ? {
-          x: coords.left,
-          y: coords.bottom,
-        } : undefined);
-        useAIStore.getState().getCompanionSuggestion(latestPrompt);
+        useAIStore.getState().setCompanionVisible(true, controller.coordsAtPos(latest.to) || undefined);
+        useAIStore.getState().getCompanionSuggestion(prompt);
       }, Math.max(500, currentSettings.ai.suggest_delay || 2000));
     };
 
-    const updateListener = EditorView.updateListener.of((update) => {
-      if (update.docChanged) {
-        const newContent = update.state.doc.toString();
-        setContent(newContent);
+    const contentDisposable = editor.onDidChangeModelContent(() => {
+      setContent(model.getValue());
+      scheduleCompanion();
+      scheduleTextFit();
+    });
+    const cursorDisposable = editor.onDidChangeCursorSelection(scheduleCompanion);
+    const scrollDisposable = editor.onDidScrollChange(scheduleTextFit);
+
+    const handleTheme = (event: Event) => {
+      const theme = (event as CustomEvent<string>).detail;
+      monaco.editor.setTheme(theme.endsWith('-dark') ? 'vs-dark' : 'vs');
+    };
+    window.addEventListener('markitdown-theme-change', handleTheme);
+
+    const handlePaste = async (event: ClipboardEvent) => {
+      const image = Array.from(event.clipboardData?.items || []).find((item) => item.type.startsWith('image/'))?.getAsFile();
+      if (!image) return;
+      event.preventDefault();
+
+      const store = useAppStore.getState();
+      if (!imageHostConfigured(store.settings)) {
+        store.setUploadStatus('error', 0, '请先启用并配置图床服务');
+        store.setSettingsTab('image');
+        store.setSettingsOpen(true);
+        return;
       }
 
-      if (update.docChanged || update.selectionSet) {
-        scheduleAutoCompanion(update.view);
+      const selection = controller.getSelection();
+      store.setUploadStatus('uploading', 15, '正在上传剪贴板图片…');
+      try {
+        const dataUrl = await fileAsDataUrl(image);
+        let url = dataUrl;
+        if (isTauriRuntime()) {
+          const extension = image.type.split('/')[1]?.replace('jpeg', 'jpg') || 'png';
+          url = await invoke<string>('upload_image_bytes', {
+            dataBase64: dataUrl.split(',')[1],
+            extension,
+            service: store.settings.image_hosting.active_service,
+            settings: store.settings,
+          });
+        }
+        const markdown = `![粘贴的图片](${url})`;
+        controller.replaceRange(selection.from, selection.to, markdown, { from: selection.from + markdown.length, to: selection.from + markdown.length });
+        controller.focus();
+        store.setUploadStatus('success', 100, isTauriRuntime() ? '图片已上传并插入' : '图片已嵌入文档');
+      } catch (error) {
+        store.setUploadStatus('error', 0, String(error));
       }
-    });
-
-    const state = EditorState.create({
-      doc: initialContentRef.current,
-      extensions: [
-        lineNumbers(),
-        highlightActiveLine(),
-        highlightActiveLineGutter(),
-        history(),
-        markdown({
-          base: markdownLanguage,
-          codeLanguages: languages,
-        }),
-        keymap.of([...defaultKeymap, ...historyKeymap]),
-        updateListener,
-        EditorView.theme({
-          '&': {
-            height: '100%',
-            fontSize: `${initialAppearance.font_size}px`,
-            fontFamily: initialAppearance.font_family,
-          },
-          '.cm-content': {
-            caretColor: 'var(--text-color)',
-            lineHeight: String(initialAppearance.line_height),
-            whiteSpace: 'pre-wrap',
-            wordBreak: 'break-word',
-          },
-          '.cm-gutters': {
-            backgroundColor: 'var(--bg-secondary)',
-            color: 'var(--text-secondary)',
-            border: 'none',
-          },
-          '.cm-proofread-error': {
-            backgroundColor: 'rgba(255, 107, 107, 0.2)',
-            borderBottom: '2px solid #ff6b6b',
-            cursor: 'pointer',
-          },
-        }),
-        EditorView.lineWrapping,
-        // 使用 Compartment 来动态更新装饰
-        decorationsCompartmentRef.current.of(createProofreadDecorations([])),
-      ],
-    });
-
-    const view = new EditorView({
-      state,
-      parent: editorRef.current,
-    });
-
-    viewRef.current = view;
-    setEditorView(view);
+    };
+    root.addEventListener('paste', handlePaste, true);
 
     return () => {
-      clearAutoCompanionTimer();
-      view.destroy();
-      viewRef.current = null;
+      clearCompanionTimer();
+      if (fitFrame !== null) window.cancelAnimationFrame(fitFrame);
+      root.removeEventListener('paste', handlePaste, true);
+      window.removeEventListener('markitdown-theme-change', handleTheme);
+      contentDisposable.dispose();
+      cursorDisposable.dispose();
+      scrollDisposable.dispose();
+      layoutDisposable.dispose();
+      editor.dispose();
+      model.dispose();
+      monacoRef.current = null;
+      modelRef.current = null;
+      controllerRef.current = null;
       setEditorView(null);
     };
   }, [setContent, setEditorView]);
 
   useEffect(() => {
-    if (autoCompanionTimerRef.current !== null) {
-      window.clearTimeout(autoCompanionTimerRef.current);
-      autoCompanionTimerRef.current = null;
-    }
-
-    if (!settings.ai.enabled || !settings.ai.auto_suggest || !viewRef.current) {
-      useAIStore.getState().setCompanionVisible(false);
-      return;
-    }
-
-    const view = viewRef.current;
-    const selection = view.state.selection.main;
-    if (!selection.empty) return;
-
-    const textBefore = view.state.sliceDoc(Math.max(0, selection.to - AUTO_COMPANION_CONTEXT_LIMIT), selection.to);
-    if (textBefore.trim().length < MIN_AUTO_COMPANION_CHARS) return;
-
-    autoCompanionTimerRef.current = window.setTimeout(() => {
-      const latestView = viewRef.current;
-      const { settings: latestSettings } = useAppStore.getState();
-      if (!latestView || !latestSettings.ai.enabled || !latestSettings.ai.auto_suggest) return;
-
-      const latestSelection = latestView.state.selection.main;
-      if (!latestSelection.empty) return;
-
-      const latestTextBefore = latestView.state.sliceDoc(Math.max(0, latestSelection.to - AUTO_COMPANION_CONTEXT_LIMIT), latestSelection.to);
-      const latestPrompt = latestTextBefore.trim();
-      if (latestPrompt.length < MIN_AUTO_COMPANION_CHARS) return;
-
-      const now = Date.now();
-      if (
-        latestPrompt === autoCompanionLastPromptRef.current ||
-        now - autoCompanionLastRequestAtRef.current < AUTO_COMPANION_MIN_INTERVAL
-      ) {
-        return;
-      }
-
-      autoCompanionLastPromptRef.current = latestPrompt;
-      autoCompanionLastRequestAtRef.current = now;
-
-      const coords = latestView.coordsAtPos(latestSelection.to);
-      useAIStore.getState().setCompanionVisible(true, coords ? {
-        x: coords.left,
-        y: coords.bottom,
-      } : undefined);
-      useAIStore.getState().getCompanionSuggestion(latestPrompt);
-    }, Math.max(500, settings.ai.suggest_delay || 2000));
-  }, [settings.ai.enabled, settings.ai.auto_suggest, settings.ai.suggest_delay]);
-
-  useEffect(() => {
-    if (viewRef.current) {
-      const currentContent = viewRef.current.state.doc.toString();
-      if (currentContent !== content) {
-        viewRef.current.dispatch({
-          changes: {
-            from: 0,
-            to: currentContent.length,
-            insert: content,
-          },
-        });
-      }
-    }
+    const model = modelRef.current;
+    const editor = monacoRef.current;
+    if (!model || !editor || model.getValue() === content) return;
+    editor.executeEdits('external-update', [{ range: model.getFullModelRange(), text: content, forceMoveMarkers: true }]);
   }, [content]);
 
-  // 更新校对高亮 — 外层 try-catch 防止任何未预料的 CodeMirror panic 向上传播
   useEffect(() => {
-    if (!viewRef.current) return;
-    try {
-      viewRef.current.dispatch({
-        effects: decorationsCompartmentRef.current.reconfigure(
-          createProofreadDecorations(proofreadResults)
-        ),
-      });
-    } catch (err) {
-      console.error('[proofread] 装饰更新失败，已忽略:', err);
-    }
+    monacoRef.current?.updateOptions({
+      fontSize: settings.appearance.font_size,
+      lineHeight: Math.round(settings.appearance.font_size * settings.appearance.line_height),
+      fontFamily: settings.appearance.font_family,
+    });
+  }, [settings.appearance.font_family, settings.appearance.font_size, settings.appearance.line_height]);
+
+  useEffect(() => {
+    const editor = monacoRef.current;
+    const model = modelRef.current;
+    if (!editor || !model) return;
+    const decorations: monaco.editor.IModelDeltaDecoration[] = proofreadResults
+      .filter((result: ProofreadResult) => result.from >= 0 && result.to > result.from && result.to <= model.getValueLength())
+      .map((result: ProofreadResult) => ({
+        range: monaco.Range.fromPositions(offsetToPosition(model, result.from), offsetToPosition(model, result.to)),
+        options: { inlineClassName: 'monaco-proofread-error', hoverMessage: { value: result.explanation || result.suggestion } },
+      }));
+    decorationIdsRef.current = editor.deltaDecorations(decorationIdsRef.current, decorations);
   }, [proofreadResults]);
 
   return (
-    <div className={`editor-container ${className || ''}`} style={style}>
-      <div className="editor-document-card">
-        <div ref={editorRef} className="editor-content" />
+    <div className={`editor-container monaco-editor-container ${className || ''}`} style={style}>
+      <div className="editor-document-card monaco-document-card">
+        <div ref={editorRef} className="editor-content monaco-host" />
       </div>
     </div>
   );

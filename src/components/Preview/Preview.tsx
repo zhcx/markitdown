@@ -1,5 +1,6 @@
-import { useDeferredValue, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import MarkdownIt from 'markdown-it';
+import taskLists from 'markdown-it-task-lists';
 import hljs from 'highlight.js';
 import katex from 'katex';
 import 'katex/dist/katex.min.css';
@@ -9,6 +10,7 @@ interface PreviewProps {
   className?: string;
   style?: React.CSSProperties;
   onScrollContainerReady?: (element: HTMLDivElement | null) => void;
+  onContentRendered?: () => void;
 }
 
 const md = new MarkdownIt({
@@ -17,9 +19,12 @@ const md = new MarkdownIt({
   typographer: true,
   breaks: true,
   highlight: (str, lang) => {
+    if (lang === 'mermaid') {
+      return `<pre class="hljs"><code class="language-mermaid">${md.utils.escapeHtml(str)}</code></pre>`;
+    }
     if (lang && hljs.getLanguage(lang)) {
       try {
-        return `<pre class="hljs"><code>${hljs.highlight(str, { language: lang, ignoreIllegals: true }).value}</code></pre>`;
+        return `<pre class="hljs"><code class="language-${md.utils.escapeHtml(lang)}">${hljs.highlight(str, { language: lang, ignoreIllegals: true }).value}</code></pre>`;
       } catch {
         // ignore
       }
@@ -27,6 +32,57 @@ const md = new MarkdownIt({
     return `<pre class="hljs"><code>${md.utils.escapeHtml(str)}</code></pre>`;
   },
 });
+md.use(taskLists);
+md.renderer.rules.heading_open = (tokens, index, options, _env, self) => {
+  const token = tokens[index];
+  if (token.map) token.attrSet('data-source-line', String(token.map[0] + 1));
+  return self.renderToken(tokens, index, options);
+};
+
+function videoEmbedUrl(rawUrl: string) {
+  try {
+    const url = new URL(rawUrl);
+    const host = url.hostname.toLowerCase().replace(/^www\./, '');
+    if (host === 'youtube.com' || host === 'm.youtube.com') {
+      const id = url.pathname.startsWith('/shorts/') ? url.pathname.split('/')[2] : url.searchParams.get('v');
+      if (id && /^[\w-]{6,}$/.test(id)) return { src: `https://www.youtube-nocookie.com/embed/${id}`, title: 'YouTube 视频' };
+    }
+    if (host === 'youtu.be') {
+      const id = url.pathname.slice(1).split('/')[0];
+      if (id && /^[\w-]{6,}$/.test(id)) return { src: `https://www.youtube-nocookie.com/embed/${id}`, title: 'YouTube 视频' };
+    }
+    if (host === 'bilibili.com' || host === 'm.bilibili.com' || host === 'b23.tv') {
+      const id = url.pathname.match(/\/(BV[\w]+|av\d+)/i)?.[1];
+      if (id) {
+        const key = id.toLowerCase().startsWith('av') ? `aid=${id.slice(2)}` : `bvid=${id}`;
+        return { src: `https://player.bilibili.com/player.html?${key}&high_quality=1`, title: '哔哩哔哩视频' };
+      }
+    }
+    if (host === 'vimeo.com' || host === 'player.vimeo.com') {
+      const id = url.pathname.match(/(?:video\/)?(\d+)/)?.[1];
+      if (id) return { src: `https://player.vimeo.com/video/${id}`, title: 'Vimeo 视频' };
+    }
+  } catch { /* Invalid URLs remain regular text. */ }
+  return null;
+}
+
+function renderVideoExtensions(source: string) {
+  let fence = '';
+  return source.split('\n').map((line) => {
+    const fenceMatch = line.match(/^\s*(```+|~~~+)/);
+    if (fenceMatch) {
+      if (!fence) fence = fenceMatch[1][0];
+      else if (fence === fenceMatch[1][0]) fence = '';
+      return line;
+    }
+    if (fence) return line;
+    const match = line.trim().match(/^@\[video\]\((https?:\/\/[^\s)]+)\)$/i);
+    if (!match) return line;
+    const embed = videoEmbedUrl(match[1]);
+    if (!embed) return line;
+    return `<figure class="video-embed"><iframe src="${md.utils.escapeHtml(embed.src)}" title="${embed.title}" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe><figcaption><a href="${md.utils.escapeHtml(match[1])}" target="_blank" rel="noreferrer">${embed.title}</a></figcaption></figure>`;
+  }).join('\n');
+}
 
 const renderFormula = (tex: string, displayMode: boolean) => {
   try {
@@ -52,7 +108,7 @@ const renderMath = (source: string) => source
     }).join('');
   }).join('');
 
-export function Preview({ className, style, onScrollContainerReady }: PreviewProps) {
+export function Preview({ className, style, onScrollContainerReady, onContentRendered }: PreviewProps) {
   const containerRef = useRef<HTMLElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
   // CSS variables handle normal Markdown theme changes without touching the
@@ -63,10 +119,6 @@ export function Preview({ className, style, onScrollContainerReady }: PreviewPro
   const mermaidSequenceRef = useRef(0);
   const [mermaidThemeVersion, setMermaidThemeVersion] = useState(0);
   const { content, settings } = useAppStore();
-  // Markdown parsing, syntax highlighting and diagrams can be expensive for a
-  // long document. Keep the editor on the urgent update path and let preview
-  // work yield to typing.
-  const deferredContent = useDeferredValue(content);
   const isEmpty = content.trim().length === 0;
 
   useEffect(() => {
@@ -98,8 +150,9 @@ export function Preview({ className, style, onScrollContainerReady }: PreviewPro
     if (!containerRef.current) return;
     let disposed = false;
 
-    const rendered = md.render(renderMath(deferredContent));
+    const rendered = md.render(renderMath(renderVideoExtensions(content)));
     containerRef.current.innerHTML = rendered;
+    onContentRendered?.();
 
     // Mermaid is imported and rendered only when a diagram is close to the
     // visible preview. A long document can therefore contain many diagrams
@@ -116,14 +169,21 @@ export function Preview({ className, style, onScrollContainerReady }: PreviewPro
         });
         const { svg } = await mermaid.render(`mermaid-${Date.now()}-${mermaidSequenceRef.current++}`, code);
         const pre = block.parentElement;
-        if (!disposed && pre && pre.parentElement) {
-          pre.parentElement.innerHTML = `<figure class="mermaid-container"><figcaption>Mermaid 图表</figcaption>${svg}</figure>`;
+        if (!disposed && pre) {
+          const wrapper = document.createElement('div');
+          wrapper.innerHTML = `<figure class="mermaid-container"><figcaption>Mermaid 图表</figcaption>${svg}</figure>`;
+          if (wrapper.firstElementChild) pre.replaceWith(wrapper.firstElementChild);
+          onContentRendered?.();
         }
       } catch (e) {
         console.error('Mermaid render error:', e);
         const pre = block.parentElement;
-        if (!disposed && pre?.parentElement) {
-          pre.parentElement.innerHTML = `<div class="mermaid-error"><strong>图表语法错误</strong><pre>${md.utils.escapeHtml(code)}</pre></div>`;
+        if (!disposed && pre) {
+          const errorBlock = document.createElement('div');
+          errorBlock.className = 'mermaid-error';
+          errorBlock.innerHTML = `<strong>图表语法错误</strong><pre>${md.utils.escapeHtml(code)}</pre>`;
+          pre.replaceWith(errorBlock);
+          onContentRendered?.();
         }
       }
     };
@@ -144,6 +204,7 @@ export function Preview({ className, style, onScrollContainerReady }: PreviewPro
     // Handle image clicks for upload
     const images = containerRef.current.querySelectorAll('img');
     images.forEach((img) => {
+      if (onContentRendered) img.addEventListener('load', onContentRendered);
       img.addEventListener('click', () => {
         img.setAttribute('data-src', img.src);
       });
@@ -152,8 +213,11 @@ export function Preview({ className, style, onScrollContainerReady }: PreviewPro
     return () => {
       disposed = true;
       observer?.disconnect();
+      images.forEach((img) => {
+        if (onContentRendered) img.removeEventListener('load', onContentRendered);
+      });
     };
-  }, [deferredContent, mermaidThemeVersion]);
+  }, [content, mermaidThemeVersion, onContentRendered]);
 
   const containerStyle: React.CSSProperties = {
     fontFamily: settings.appearance.font_family,
@@ -167,7 +231,7 @@ export function Preview({ className, style, onScrollContainerReady }: PreviewPro
       style={{ ...containerStyle, ...style }}
     >
       <div ref={cardRef} className={`preview-card ${isEmpty ? 'is-empty' : ''}`}>
-        <article ref={containerRef} className="preview-document" />
+        <article ref={containerRef} className="preview-document markdown-body" />
         {isEmpty && (
           <div className="preview-empty-state">
             <span className="preview-empty-mark" aria-hidden="true">↗</span>

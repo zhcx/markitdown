@@ -117,19 +117,27 @@ body {
   opacity: .72;
 }
 
-.app :is(input:not([type="checkbox"]):not([type="radio"]), select, textarea) {
+.app :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), select, textarea) {
   border-color: var(--ui-border-default);
   background: var(--ui-bg-input);
   color: var(--ui-text-primary);
 }
 
-.app :is(input:not([type="checkbox"]):not([type="radio"]), select, textarea):hover:not(:disabled) {
+.app :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), select, textarea):hover:not(:disabled) {
   border-color: var(--ui-border-strong);
 }
 
-.app :is(input:not([type="checkbox"]):not([type="radio"]), select, textarea):focus {
+.app :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), select, textarea):focus {
   border-color: var(--ui-border-focus);
   box-shadow: 0 0 0 1px var(--ui-border-focus);
+}
+
+/* Monaco owns its internal text input. Keep global form-control styling from
+   painting a second surface behind the editor's hidden IME textarea. */
+.app .monaco-editor :is(input, textarea) {
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
 }
 
 .app ::placeholder { color: var(--ui-text-muted); opacity: 1; }
@@ -437,6 +445,7 @@ body {
 }
 
 .editor-pane-toolbar .toolbar-btn svg,
+.immersive-writing-toolbar .toolbar-btn svg,
 .image-option-btn .option-icon svg {
   width: 15px;
   height: 15px;
@@ -861,6 +870,278 @@ body {
   font-size: var(--ui-font-size-sm);
 }
 
+/* Unified popup surfaces ---------------------------------------------------
+   Keep every floating surface readable across themes and override legacy
+   compact rules that forced all controls to nearly square 3px corners. */
+.app :is(
+  .modal-content,
+  .menu-dropdown,
+  .submenu-dropdown,
+  .more-dropdown,
+  .context-menu,
+  .reasoning-menu,
+  .status-style-menu,
+  .immersive-mode-menu,
+  .font-picker-dropdown,
+  .table-picker,
+  .timeline-operation-popover,
+  .ai-companion-popup,
+  .ai-translation-popup
+) {
+  overflow: hidden;
+  border: 1px solid var(--ui-border-strong);
+  border-radius: 12px !important;
+  background: var(--ui-bg-overlay);
+  color: var(--ui-text-primary);
+  box-shadow: var(--ui-shadow-dialog);
+}
+
+/* A submenu is positioned outside its top-level menu. Keep the rounded
+   submenu surface clipped, but let the parent menu expose that child. */
+.app .menu-dropdown {
+  overflow: visible;
+}
+
+.app .modal-header {
+  background: color-mix(in srgb, var(--ui-bg-overlay) 92%, var(--ui-text-primary) 8%);
+}
+
+.app .modal-header h2 {
+  color: var(--ui-text-primary);
+}
+
+.app .modal-body :is(label, strong) {
+  color: var(--ui-text-primary);
+}
+
+.app .modal-body :is(small, p) {
+  color: var(--ui-text-secondary);
+}
+
+.app .modal-content :is(input, textarea, select) {
+  border: 1px solid var(--ui-border-strong);
+  border-radius: 8px !important;
+  background: var(--ui-bg-input);
+  color: var(--ui-text-primary);
+}
+
+.app .modal-content :is(input, textarea, select):focus {
+  border-color: var(--ui-border-focus);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ui-border-focus) 22%, transparent);
+}
+
+/* Compound inputs draw their border and background on the outer shell. The
+   actual input must remain transparent or the control appears double-layered. */
+.app .modal-content .syntax-guide-search input,
+.app .modal-content .syntax-guide-search input:is(:hover, :focus, :focus-visible) {
+  border: 0 !important;
+  outline: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.app .modal-close {
+  border: 1px solid transparent;
+  border-radius: 8px !important;
+  background: transparent;
+  color: var(--ui-text-secondary);
+  opacity: 1;
+}
+
+.app .modal-close:hover:not(:disabled) {
+  border-color: var(--ui-border-default);
+  background: var(--ui-bg-hover);
+  color: var(--ui-text-primary);
+}
+
+.app .modal-content :is(.cancel-btn, .secondary-btn, .update-cancel-btn) {
+  min-height: 38px;
+  border: 1px solid var(--ui-border-strong);
+  border-radius: 8px !important;
+  background: var(--ui-bg-input);
+  color: var(--ui-text-primary);
+  opacity: 1;
+}
+
+.app .modal-content :is(.cancel-btn, .secondary-btn, .update-cancel-btn):hover:not(:disabled) {
+  border-color: var(--ui-border-focus);
+  background: var(--ui-bg-hover);
+  color: var(--ui-text-primary);
+}
+
+.app .modal-content .save-btn {
+  min-height: 38px;
+  border: 1px solid color-mix(in srgb, var(--ui-accent) 76%, #000);
+  border-radius: 8px !important;
+  background: var(--ui-accent);
+  color: var(--ui-text-inverse);
+  font-weight: 650;
+  opacity: 1;
+  box-shadow: 0 3px 10px color-mix(in srgb, var(--ui-accent) 24%, transparent);
+}
+
+.app .modal-content .save-btn:hover:not(:disabled) {
+  background: var(--ui-accent-hover);
+  color: var(--ui-text-inverse);
+  transform: translateY(-1px);
+}
+
+.app .modal-content .save-btn:disabled {
+  border-color: var(--ui-border-default);
+  background: color-mix(in srgb, var(--ui-bg-input) 78%, var(--ui-text-primary) 22%);
+  color: color-mix(in srgb, var(--ui-text-primary) 68%, transparent);
+  opacity: 1;
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
+.app :is(
+  .menu-dropdown,
+  .submenu-dropdown,
+  .more-dropdown,
+  .context-menu,
+  .reasoning-menu,
+  .status-style-menu,
+  .immersive-mode-menu,
+  .font-picker-dropdown,
+  .table-picker
+) {
+  padding: 6px;
+  box-shadow: var(--ui-shadow-menu);
+}
+
+.app :is(
+  .menu-option,
+  .context-menu-item,
+  .reasoning-menu-item,
+  .status-style-option,
+  .immersive-mode-option,
+  .font-picker-item
+) {
+  border-radius: 7px !important;
+  color: var(--ui-text-primary);
+}
+
+.app :is(
+  .menu-option,
+  .context-menu-item,
+  .reasoning-menu-item,
+  .status-style-option,
+  .immersive-mode-option,
+  .font-picker-item
+):hover,
+.app :is(.reasoning-menu-item, .status-style-option, .immersive-mode-option, .font-picker-item):is(.active, .selected) {
+  background: var(--ui-bg-selected);
+  color: var(--ui-text-primary);
+}
+
+.app .table-picker-grid button {
+  border-radius: 5px !important;
+}
+
+/* Font menus are portalled to document.body, outside .app. */
+.font-picker-dropdown {
+  border: 1px solid var(--ui-border-strong);
+  border-radius: 12px !important;
+  background: var(--ui-bg-overlay);
+  color: var(--ui-text-primary);
+  box-shadow: var(--ui-shadow-menu);
+}
+
+.font-picker-dropdown .font-picker-item {
+  border-radius: 7px !important;
+  color: var(--ui-text-primary);
+}
+
+.activity-immersive-picker {
+  position: relative;
+  width: 100%;
+}
+
+.immersive-mode-menu {
+  position: absolute;
+  z-index: var(--ui-z-dropdown);
+  top: 0;
+  left: calc(100% + 8px);
+  width: 286px;
+}
+
+.immersive-mode-menu-title {
+  padding: 5px 8px 8px;
+  color: var(--ui-text-muted);
+  font-size: var(--ui-font-size-xs);
+  font-weight: 600;
+}
+
+.app .immersive-mode-option {
+  width: 100%;
+  min-height: 58px;
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) 18px;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 10px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.immersive-mode-option-icon,
+.immersive-mode-option-icon svg {
+  width: 22px;
+  height: 22px;
+}
+
+.immersive-mode-option-icon svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.65;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.immersive-mode-option strong,
+.immersive-mode-option small {
+  display: block;
+}
+
+.immersive-mode-option strong {
+  color: var(--ui-text-primary);
+  font-size: 13px;
+}
+
+.immersive-mode-option small {
+  margin-top: 3px;
+  color: var(--ui-text-muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.immersive-mode-check {
+  color: var(--ui-accent);
+  font-weight: 700;
+  text-align: center;
+}
+
+.app .immersive-mode-exit {
+  width: 100%;
+  margin-top: 5px;
+  padding: 8px 10px;
+  border: 0;
+  border-top: 1px solid var(--ui-border-default);
+  border-radius: 0 0 7px 7px !important;
+  background: transparent;
+  color: var(--ui-text-secondary);
+  text-align: center;
+  cursor: pointer;
+}
+
+.app .immersive-mode-exit:hover {
+  background: var(--ui-bg-hover);
+  color: var(--ui-text-primary);
+}
+
 /* Quiet, VS Code-like scrollbars ------------------------------------- */
 
 * {
@@ -915,6 +1196,426 @@ body {
     animation-duration: .01ms !important;
     animation-iteration-count: 1 !important;
   }
+}
+
+/* Immersive reading and writing share a compact document-first workspace.
+   The native title bar remains available for window controls; navigation and
+   status chrome yield their space to the document. */
+.immersive-mode-active .activity-bar,
+.immersive-mode-active .statusbar {
+  display: none;
+}
+
+.immersive-mode-active .app-workbench,
+.immersive-mode-active .app-workbench-content,
+.immersive-mode-active .app-body,
+.immersive-mode-active .workspace-shell,
+.immersive-mode-active .main-content {
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+}
+
+.main-content.zen,
+.main-content.immersive {
+  flex-direction: row;
+  padding: 0;
+}
+
+.immersive-workspace {
+  display: flex;
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--ui-bg-app);
+}
+
+.immersive-outline {
+  display: flex;
+  flex: 0 0 224px;
+  flex-direction: column;
+  width: 224px;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border-right: 1px solid var(--ui-border-default);
+  background: var(--ui-bg-sidebar);
+  transition: flex-basis 160ms ease, width 160ms ease;
+}
+
+.immersive-outline.is-collapsed {
+  flex-basis: 40px;
+  width: 40px;
+}
+
+.immersive-outline-header {
+  display: flex;
+  flex: 0 0 46px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 5px 6px 5px 12px;
+  border-bottom: 1px solid var(--ui-border-subtle);
+}
+
+.immersive-outline-header > div {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+}
+
+.immersive-outline-header strong {
+  overflow: hidden;
+  color: var(--ui-text-primary);
+  font-size: 12px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.immersive-outline-header span {
+  color: var(--ui-text-muted);
+  font-size: 10px;
+}
+
+.immersive-outline-content {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 6px;
+  overflow: auto;
+  scrollbar-width: thin;
+}
+
+.immersive-outline-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.immersive-outline-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 29px;
+  gap: 7px;
+  padding-block: 4px;
+  padding-right: 8px;
+  border: 0;
+  background: transparent;
+  color: var(--ui-text-secondary);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.immersive-outline-item > span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.immersive-outline-item[data-level="1"] {
+  color: var(--ui-text-primary);
+  font-weight: 600;
+}
+
+.immersive-outline-item:is(:hover, :focus-visible) {
+  outline: 0;
+  background: var(--ui-bg-hover);
+  color: var(--ui-text-primary);
+}
+
+.immersive-outline-item.is-active {
+  background: var(--ui-bg-active);
+  color: var(--ui-text-primary);
+}
+
+.immersive-outline-marker {
+  flex: 0 0 4px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: .42;
+}
+
+.immersive-outline-item.is-active .immersive-outline-marker {
+  background: var(--ui-accent);
+  opacity: 1;
+}
+
+.immersive-outline-empty {
+  display: grid;
+  place-items: center;
+  min-height: 150px;
+  padding: 18px;
+  color: var(--ui-text-muted);
+  text-align: center;
+}
+
+.immersive-outline-empty > span {
+  color: var(--ui-text-subtle);
+  font-size: 28px;
+  font-weight: 300;
+}
+
+.immersive-outline-empty p {
+  margin: 6px 0 0;
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.immersive-outline-rail-button {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 13px;
+  border: 0;
+  background: transparent;
+  color: var(--ui-text-muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.immersive-outline-rail-button:is(:hover, :focus-visible) {
+  outline: 0;
+  background: var(--ui-bg-hover);
+  color: var(--ui-text-primary);
+}
+
+.immersive-document-area {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.immersive-command-strip {
+  position: relative;
+  z-index: 30;
+  display: flex;
+  flex: 0 0 42px;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px;
+  border-bottom: 1px solid var(--ui-border-default);
+  background: var(--ui-bg-panel);
+}
+
+.immersive-writing-toolbar {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: visible;
+}
+
+.immersive-writing-toolbar .toolbar {
+  min-height: 40px;
+  padding: 4px 0;
+  border: 0;
+  background: transparent;
+}
+
+.immersive-writing-toolbar .toolbar-scroll-area {
+  overflow-x: auto;
+  overflow-y: visible;
+}
+
+.immersive-writing-toolbar .toolbar-left {
+  display: inline-flex;
+  width: max-content;
+  min-width: max-content;
+  flex-wrap: nowrap;
+  gap: 5px;
+}
+
+.immersive-writing-toolbar .toolbar-group {
+  min-height: 30px;
+  gap: 3px;
+  padding: 1px 4px;
+  border: 1px solid var(--ui-border-subtle);
+  background: transparent;
+}
+
+.immersive-writing-toolbar .toolbar-group-title {
+  margin-right: 1px;
+  color: var(--ui-text-muted);
+  font-size: 9px;
+}
+
+.immersive-writing-toolbar .toolbar-buttons { gap: 1px; }
+
+.immersive-writing-toolbar .toolbar-btn {
+  min-width: 25px;
+  min-height: 25px;
+  height: 25px;
+  padding: 0 5px;
+  color: var(--ui-text-secondary);
+}
+
+.immersive-writing-toolbar .toolbar-btn:is(:hover, .active) {
+  background: var(--ui-bg-hover);
+  color: var(--ui-text-primary);
+}
+
+.immersive-reading-label {
+  display: inline-flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
+  color: var(--ui-text-secondary);
+  font-size: 12px;
+}
+
+.immersive-reading-label > span { color: var(--ui-accent); }
+
+.immersive-command-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+  padding-left: 7px;
+  border-left: 1px solid var(--ui-border-subtle);
+}
+
+.immersive-control-button {
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--ui-text-secondary);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.immersive-control-button.icon-only {
+  width: 28px;
+  padding: 0;
+  font-size: 18px;
+}
+
+.immersive-control-button:is(:hover, :focus-visible) {
+  outline: 0;
+  border-color: var(--ui-border-default);
+  background: var(--ui-bg-hover);
+  color: var(--ui-text-primary);
+}
+
+.immersive-control-button.is-active {
+  border-color: color-mix(in srgb, var(--ui-accent) 42%, var(--ui-border-default));
+  background: color-mix(in srgb, var(--ui-accent) 12%, transparent);
+  color: var(--ui-accent);
+}
+
+.immersive-ai-button-mark {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: -.02em;
+}
+
+.immersive-document-surface {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--ui-bg-editor);
+}
+
+.immersive-document-surface > .editor-container,
+.immersive-document-surface > .preview-container {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+}
+
+.immersive-writing .zen-editor-pane {
+  padding: 0;
+  background: var(--ui-bg-editor);
+}
+
+.immersive-writing .zen-editor-pane .editor-document-card {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.immersive-reading .immersive-preview {
+  padding: 0;
+  background: var(--ui-bg-editor);
+}
+
+.immersive-reading .immersive-preview .preview-card {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.immersive-reading .immersive-preview .preview-document {
+  width: min(100%, 920px);
+  max-width: 920px;
+  padding: clamp(30px, 4vw, 62px) clamp(28px, 5vw, 72px) 80px;
+}
+
+.immersive-mode-active .chatbot-side-panel.immersive-chatbot-panel {
+  min-width: 280px;
+  padding: 0;
+  border-left: 1px solid var(--ui-border-default);
+  background: var(--ui-bg-sidebar);
+}
+
+.immersive-mode-active .immersive-chatbot-panel .chatbot-panel {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.immersive-mode-active .immersive-chatbot-divider {
+  flex-basis: 5px;
+  width: 5px;
+}
+
+@media (max-width: 980px) {
+  .immersive-outline:not(.is-collapsed) {
+    flex-basis: 188px;
+    width: 188px;
+  }
+
+  .immersive-writing-toolbar .toolbar-group-title { display: none; }
+}
+
+@media (max-width: 720px) {
+  .immersive-outline:not(.is-collapsed) {
+    flex-basis: 164px;
+    width: 164px;
+  }
+
+  .immersive-command-strip { padding-inline: 5px; }
+  .immersive-command-actions { gap: 1px; padding-left: 4px; }
+  .immersive-control-button > span:last-child { display: none; }
+  .immersive-control-button { width: 28px; padding: 0; }
 }
 /* AI edits are intentionally reviewed before they reach the document. */
 .ai-diff-overlay {

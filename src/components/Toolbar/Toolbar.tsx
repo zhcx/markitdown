@@ -1,13 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { useAppStore } from '../../stores/appStore';
 import { useAIStore } from '../../stores/aiStore';
-import { EditorSelection } from '@codemirror/state';
-import { undo, redo } from '@codemirror/commands';
 import { open } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
 import { TablePicker } from '../Editor/TablePicker';
+import { formatMarkdown, type MarkdownFormatResult } from '../../utils/markdownFormatter';
 
-type ToolbarIconName = 'link' | 'image' | 'table' | 'folder' | 'chat' | 'proofread' | 'sparkle' | 'palette' | 'rewrite' | 'translate' | 'summary' | 'outline';
+type ToolbarIconName = 'link' | 'image' | 'video' | 'table' | 'folder' | 'chat' | 'proofread' | 'sparkle' | 'palette' | 'rewrite' | 'translate' | 'summary' | 'outline';
 
 interface ToolbarButton {
   label?: string;
@@ -24,6 +23,7 @@ interface ToolbarGroup {
 function ToolbarGlyph({ name }: { name: ToolbarIconName }) {
   if (name === 'link') return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6.2 9.8 3.6-3.6M5.1 11.9l-1 .9a2.7 2.7 0 0 1-3.8-3.8l2.3-2.3a2.7 2.7 0 0 1 3.8 0M10.9 4.1l1-.9A2.7 2.7 0 0 1 15.7 7l-2.3 2.3a2.7 2.7 0 0 1-3.8 0" /></svg>;
   if (name === 'image') return <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="1" /><circle cx="5" cy="6" r="1.2" /><path d="m2.5 12 3.6-3.4 2.2 2 2.2-2.4 3 3" /></svg>;
+  if (name === 'video') return <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="3" width="13" height="10" rx="1.5" /><path d="m6.5 6 4 2-4 2z" /></svg>;
   if (name === 'table') return <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2" width="13" height="12" rx=".5" /><path d="M1.5 6h13M1.5 10h13M6 2v12m4-12v12" /></svg>;
   if (name === 'folder') return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 4h5l1.2 1.5h6.8v7.8h-13z" /></svg>;
   if (name === 'chat') return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 2.5h12v8H7l-3.5 3v-3H2z" /><path d="M5 6.5h6" /></svg>;
@@ -40,10 +40,18 @@ function ImageOptionsModal({ onClose, onInsert }: { onClose: () => void; onInser
   const [mode, setMode] = useState<'link' | 'upload' | null>(null);
   const [imageUrl, setImageUrl] = useState('');
   const [altText, setAltText] = useState('');
-  const { setUploadStatus } = useAppStore();
+  const { setUploadStatus, settings, setSettingsOpen, setSettingsTab } = useAppStore();
 
   const handleUpload = async () => {
     try {
+      const service = settings.image_hosting.active_service;
+      if (!service) {
+        setUploadStatus('error', 0, '请先启用并配置图床服务');
+        setSettingsTab('image');
+        setSettingsOpen(true);
+        onClose();
+        return;
+      }
       const selected = await open({
         multiple: false,
         filters: [{ name: '图片', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'] }],
@@ -54,7 +62,8 @@ function ImageOptionsModal({ onClose, onInsert }: { onClose: () => void; onInser
 
         const result = await invoke<string>('upload_image', {
           filePath: selected,
-          service: 'local'
+          service,
+          settings,
         });
 
         setUploadStatus('success', 100, '上传成功');
@@ -126,9 +135,84 @@ function ImageOptionsModal({ onClose, onInsert }: { onClose: () => void; onInser
   );
 }
 
+function VideoInsertModal({ onClose, onInsert }: { onClose: () => void; onInsert: (url: string) => void }) {
+  const [url, setUrl] = useState('');
+  const supported = /^(https?:\/\/)?(?:www\.|m\.)?(?:youtube\.com|youtu\.be|bilibili\.com|b23\.tv|vimeo\.com)\//i.test(url.trim());
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content video-insert-modal" onClick={(event) => event.stopPropagation()}>
+        <div className="modal-header">
+          <h2>插入视频</h2>
+          <button className="modal-close" onClick={onClose} aria-label="关闭">×</button>
+        </div>
+        <div className="modal-body link-form">
+          <div className="form-field">
+            <label>视频链接</label>
+            <input autoFocus type="url" value={url} onChange={(event) => setUrl(event.target.value)} placeholder="粘贴 B站、YouTube 或 Vimeo 视频链接" />
+            <small>支持 B站、YouTube、YouTube Shorts 与 Vimeo，预览中将显示响应式播放器。</small>
+          </div>
+          <div className="form-actions">
+            <button className="cancel-btn" onClick={onClose}>取消</button>
+            <button className="save-btn" disabled={!supported} onClick={() => { onInsert(url.trim()); onClose(); }}>插入视频</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const EMOJI_GROUPS = [
+  { label: '表情', values: ['😀', '😃', '😄', '😁', '😂', '🥹', '😊', '😍', '🥰', '😘', '😎', '🤔', '😴', '😭', '😤', '😱'] },
+  { label: '手势', values: ['👍', '👎', '👏', '🙌', '🙏', '🤝', '👌', '✌️', '🤞', '💪', '👋', '👉', '👀'] },
+  { label: '符号', values: ['❤️', '🧡', '💛', '💚', '💙', '💜', '✅', '❌', '⚠️', '❗', '❓', '💯', '✨', '🔥'] },
+  { label: '写作', values: ['💡', '📝', '📌', '📎', '📚', '🔍', '📊', '🎯', '🚀', '🎉', '🏆', '⏳', '🔔', '🧭'] },
+];
+
+function EmojiPicker({ favorites, onClose, onInsert }: { favorites: string[]; onClose: () => void; onInsert: (emoji: string) => void }) {
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content emoji-picker-modal" onClick={(event) => event.stopPropagation()}>
+        <div className="modal-header">
+          <h2>插入 Emoji</h2>
+          <button className="modal-close" onClick={onClose} aria-label="关闭">×</button>
+        </div>
+        <div className="modal-body emoji-picker-body">
+          {favorites.length > 0 && (
+            <section><div className="emoji-section-title">常用表情 <small>可在“设置 → 编辑器”中修改</small></div><div className="emoji-grid">{favorites.map((emoji) => <button key={emoji} onClick={() => { onInsert(emoji); onClose(); }}>{emoji}</button>)}</div></section>
+          )}
+          {EMOJI_GROUPS.map((group) => (
+            <section key={group.label}><div className="emoji-section-title">{group.label}</div><div className="emoji-grid">{group.values.map((emoji) => <button key={emoji} onClick={() => { onInsert(emoji); onClose(); }}>{emoji}</button>)}</div></section>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MarkdownFormatModal({ result, onClose, onApply }: { result: MarkdownFormatResult; onClose: () => void; onApply: () => void }) {
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content markdown-format-modal" onClick={(event) => event.stopPropagation()}>
+        <div className="modal-header"><h2>Markdown 语法检查</h2><button className="modal-close" onClick={onClose} aria-label="关闭">×</button></div>
+        <div className="modal-body">
+          <div className={`markdown-format-summary ${result.issues.length ? 'has-issues' : 'is-clean'}`}>
+            <strong>{result.issues.length ? `发现 ${result.issues.length} 类可规范项` : 'Markdown 格式已经很规范'}</strong>
+            <span>格式化只调整标记、空格与空行，不改写正文内容。</span>
+          </div>
+          {result.issues.length > 0 && <ul className="markdown-format-issues">{result.issues.map((issue) => <li key={issue}>{issue}</li>)}</ul>}
+          <div className="form-actions"><button className="cancel-btn" onClick={onClose}>取消</button><button className="save-btn" disabled={!result.changed} onClick={onApply}>应用专业格式</button></div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function Toolbar() {
   const { editorView, setContent, content, settings } = useAppStore();
   const [showImageModal, setShowImageModal] = useState(false);
+  const [showVideoModal, setShowVideoModal] = useState(false);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [showFormatModal, setShowFormatModal] = useState(false);
   const [showTablePicker, setShowTablePicker] = useState(false);
   const tablePickerButtonRef = useRef<HTMLButtonElement>(null);
   const toolbarWheelDeltaRef = useRef(0);
@@ -268,7 +352,7 @@ export function Toolbar() {
           to: selection.to,
           insert: before + selectedText + after,
         },
-        selection: EditorSelection.range(selection.from + before.length, selection.from + before.length + selectedText.length),
+        selection: { anchor: selection.from + before.length, head: selection.from + before.length + selectedText.length },
       });
       editorView.dispatch(transaction);
     } else {
@@ -278,7 +362,7 @@ export function Toolbar() {
           to: selection.from,
           insert: before + after,
         },
-        selection: EditorSelection.cursor(selection.from + before.length),
+        selection: { anchor: selection.from + before.length },
       });
       editorView.dispatch(transaction);
     }
@@ -298,7 +382,7 @@ export function Toolbar() {
         to: selection.to,
         insert: text,
       },
-      selection: EditorSelection.cursor(selection.from + (cursorOffset ?? text.length)),
+      selection: { anchor: selection.from + (cursorOffset ?? text.length) },
     });
     editorView.dispatch(transaction);
     editorView.focus();
@@ -323,7 +407,7 @@ export function Toolbar() {
         to: insertPos,
         insert: insertText,
       },
-      selection: EditorSelection.cursor(insertPos + cursorOffset),
+      selection: { anchor: insertPos + cursorOffset },
     });
     editorView.dispatch(transaction);
     editorView.focus();
@@ -342,9 +426,11 @@ export function Toolbar() {
     setShowTablePicker(false);
   };
 
-  const runEditorCommand = (command: typeof undo) => {
+  const insertVideo = (url: string) => insertAtCursor(`\n@[video](${url})\n`);
+
+  const runEditorCommand = (command: 'undo' | 'redo') => {
     if (!editorView) return;
-    command(editorView);
+    editorView[command]();
     editorView.focus();
   };
 
@@ -363,7 +449,7 @@ export function Toolbar() {
     if (plainText === selected) return;
     editorView.dispatch({
       changes: { from: selection.from, to: selection.to, insert: plainText },
-      selection: EditorSelection.range(selection.from, selection.from + plainText.length),
+      selection: { anchor: selection.from, head: selection.from + plainText.length },
     });
     editorView.focus();
   };
@@ -417,10 +503,11 @@ export function Toolbar() {
     {
       title: '编辑',
       buttons: [
-        { label: '↶', title: '撤销 (Ctrl+Z)', action: () => runEditorCommand(undo) },
-        { label: '↷', title: '重做 (Ctrl+Y)', action: () => runEditorCommand(redo) },
+        { label: '↶', title: '撤销 (Ctrl+Z)', action: () => runEditorCommand('undo') },
+        { label: '↷', title: '重做 (Ctrl+Y)', action: () => runEditorCommand('redo') },
         { label: '↤', title: '减少缩进', action: outdentSelection },
         { label: '清', title: '清除选中文本的行内格式', action: clearInlineFormatting },
+        { label: 'MD', title: '检查并格式化 Markdown', action: () => setShowFormatModal(true) },
       ],
     },
     {
@@ -428,6 +515,8 @@ export function Toolbar() {
       buttons: [
         { icon: 'link', title: '链接', action: () => wrapSelection('[', '](url)') },
         { icon: 'image', title: '图片', action: () => setShowImageModal(true) },
+        { icon: 'video', title: '插入视频（B站 / YouTube / Vimeo）', action: () => setShowVideoModal(true) },
+        { label: '😊', title: '插入原生 Emoji', action: () => setShowEmojiPicker(true) },
         { icon: 'table', title: '表格', action: () => insertAtCursor('\n| 列1 | 列2 | 列3 |\n|---|---|---|\n| 内容 | 内容 | 内容 |\n') },
         { label: '</>', title: '代码块', action: () => insertAtCursor('\n```\ncode\n```\n', 5) },
         { label: 'Q', title: '引用', action: () => insertBlock('> ') },
@@ -577,7 +666,27 @@ export function Toolbar() {
           onInsert={insertImage}
         />
       )}
-      {showTablePicker && <TablePicker anchorRef={tablePickerButtonRef} onInsert={insertTable} />}
+      {showVideoModal && <VideoInsertModal onClose={() => setShowVideoModal(false)} onInsert={insertVideo} />}
+      {showEmojiPicker && <EmojiPicker favorites={settings.editor.favorite_emojis} onClose={() => setShowEmojiPicker(false)} onInsert={insertAtCursor} />}
+      {showFormatModal && (
+        <MarkdownFormatModal
+          result={formatMarkdown(content)}
+          onClose={() => setShowFormatModal(false)}
+          onApply={() => {
+            const result = formatMarkdown(content);
+            setContent(result.content);
+            setShowFormatModal(false);
+            useAIStore.getState().setStatus('success', `Markdown 格式化完成：处理 ${result.issues.length} 类问题`);
+          }}
+        />
+      )}
+      {showTablePicker && (
+        <TablePicker
+          anchorRef={tablePickerButtonRef}
+          onInsert={insertTable}
+          onClose={() => setShowTablePicker(false)}
+        />
+      )}
     </div>
   );
 }

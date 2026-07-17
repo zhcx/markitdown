@@ -1,9 +1,22 @@
-import { useState } from 'react';
+import { useState, type CSSProperties } from 'react';
 import { AI_PROVIDER_DEFINITIONS, useAppStore, type AIProviderId, type AIProviderProfile, type SettingsTab } from '../../stores/appStore';
 import { invoke } from '@tauri-apps/api/core';
 import { FontFamilyPicker } from './FontFamilyPicker';
+import {
+  DEFAULT_FONT_SIZE,
+  FONT_SIZE_MAX,
+  FONT_SIZE_MIN,
+  FONT_SIZE_RANGE_THUMB,
+  getRangeMarkerGeometry,
+} from '../../utils/appearanceSettings';
 
 const isTauriRuntime = () => '__TAURI_INTERNALS__' in window;
+
+const parseEmojiList = (value: string) => {
+  const segmenter = typeof Intl.Segmenter === 'function' ? new Intl.Segmenter(undefined, { granularity: 'grapheme' }) : null;
+  const values = segmenter ? [...segmenter.segment(value)].map((item) => item.segment) : Array.from(value);
+  return [...new Set(values.filter((item) => item.trim() && /\p{Extended_Pictographic}|\p{Regional_Indicator}/u.test(item)))].slice(0, 24);
+};
 
 const DEFAULT_FONT_FAMILIES = [
   'Microsoft YaHei', 'Microsoft YaHei UI', 'SimSun', 'SimHei', 'KaiTi', 'FangSong',
@@ -14,6 +27,34 @@ const DEFAULT_FONT_FAMILIES = [
 type LocalFontAccessWindow = Window & {
   queryLocalFonts?: () => Promise<Array<{ family: string }>>;
 };
+
+type SettingToggleProps = {
+  label: string;
+  description: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+};
+
+function SettingToggle({ label, description, checked, onChange }: SettingToggleProps) {
+  return (
+    <div className="setting-item setting-toggle-item">
+      <div className="setting-copy">
+        <span>{label}</span>
+        <small>{description}</small>
+      </div>
+      <button
+        type="button"
+        className={`settings-switch ${checked ? 'is-on' : ''}`}
+        role="switch"
+        aria-checked={checked}
+        aria-label={label}
+        onClick={() => onChange(!checked)}
+      >
+        <span className="settings-switch-thumb" />
+      </button>
+    </div>
+  );
+}
 
 const fetchModelsFromApi = async (apiKey: string, apiEndpoint: string): Promise<string[]> => {
   if (isTauriRuntime()) {
@@ -72,6 +113,18 @@ export function SettingsPanel() {
   const [fontFamilies, setFontFamilies] = useState(DEFAULT_FONT_FAMILIES);
   const [loadingFonts, setLoadingFonts] = useState(false);
   const [fontNotice, setFontNotice] = useState('可直接输入任意已安装字体名称。');
+  const fontSizeGeometry = getRangeMarkerGeometry(
+    localSettings.appearance.font_size,
+    FONT_SIZE_MIN,
+    FONT_SIZE_MAX,
+    FONT_SIZE_RANGE_THUMB,
+  );
+  const defaultFontSizeGeometry = getRangeMarkerGeometry(
+    DEFAULT_FONT_SIZE,
+    FONT_SIZE_MIN,
+    FONT_SIZE_MAX,
+    FONT_SIZE_RANGE_THUMB,
+  );
 
   const loadLocalFonts = async () => {
     const queryLocalFonts = (window as LocalFontAccessWindow).queryLocalFonts;
@@ -269,20 +322,46 @@ export function SettingsPanel() {
                   />
                 </div>
               </div>
-              <div className="setting-item">
-                <label>字号</label>
+              <div className="setting-item setting-range-item">
+                <div className="setting-range-header">
+                  <div className="setting-copy">
+                    <span>字号</span>
+                    <small>调整编辑器、预览与 AI 对话的文字大小</small>
+                  </div>
+                  <output>{localSettings.appearance.font_size}px</output>
+                </div>
                 <input
-                  type="number"
-                  min="12"
-                  max="32"
+                  className="settings-range"
+                  type="range"
+                  min={FONT_SIZE_MIN}
+                  max={FONT_SIZE_MAX}
+                  step="1"
                   value={localSettings.appearance.font_size}
+                  aria-label="字号"
+                  aria-valuetext={`${localSettings.appearance.font_size} 像素`}
+                  style={{
+                    '--range-progress': `${fontSizeGeometry.progressPercent}%`,
+                    '--range-thumb-size': `${FONT_SIZE_RANGE_THUMB}px`,
+                  } as CSSProperties}
                   onChange={(e) =>
                     setLocalSettings({
                       ...localSettings,
-                      appearance: { ...localSettings.appearance, font_size: parseInt(e.target.value) },
+                      appearance: { ...localSettings.appearance, font_size: Number(e.target.value) },
                     })
                   }
                 />
+                <div
+                  className="settings-range-scale"
+                  aria-hidden="true"
+                  style={{
+                    '--range-default-position': `${defaultFontSizeGeometry.progressPercent}%`,
+                    '--range-default-offset': `${defaultFontSizeGeometry.thumbOffsetPx}px`,
+                  } as CSSProperties}
+                >
+                  <span>小</span>
+                  <span>默认</span>
+                  <span>大</span>
+                </div>
               </div>
               <div className="setting-item">
                 <label>行高</label>
@@ -320,35 +399,44 @@ export function SettingsPanel() {
                   }
                 />
               </div>
-              <div className="setting-item">
+              <SettingToggle
+                label="启用拼写检查"
+                description="在编辑时标记可能存在的拼写问题"
+                checked={localSettings.editor.spell_check}
+                onChange={(checked) => setLocalSettings({
+                  ...localSettings,
+                  editor: { ...localSettings.editor, spell_check: checked },
+                })}
+              />
+              <SettingToggle
+                label="启用自动补全"
+                description="根据当前内容提供编辑补全建议"
+                checked={localSettings.editor.auto_complete}
+                onChange={(checked) => setLocalSettings({
+                  ...localSettings,
+                  editor: { ...localSettings.editor, auto_complete: checked },
+                })}
+              />
+              <div className="setting-item emoji-favorites-setting">
                 <label>
-                  <input
-                    type="checkbox"
-                    checked={localSettings.editor.spell_check}
-                    onChange={(e) =>
-                      setLocalSettings({
-                        ...localSettings,
-                        editor: { ...localSettings.editor, spell_check: e.target.checked },
-                      })
-                    }
-                  />
-                  启用拼写检查
+                  常用表情
+                  <small>设置 Emoji 选择器顶部显示的常用表情，最多 24 个</small>
                 </label>
-              </div>
-              <div className="setting-item">
-                <label>
+                <div className="emoji-favorites-control">
                   <input
-                    type="checkbox"
-                    checked={localSettings.editor.auto_complete}
-                    onChange={(e) =>
-                      setLocalSettings({
-                        ...localSettings,
-                        editor: { ...localSettings.editor, auto_complete: e.target.checked },
-                      })
-                    }
+                    type="text"
+                    value={localSettings.editor.favorite_emojis.join(' ')}
+                    onChange={(event) => setLocalSettings({
+                      ...localSettings,
+                      editor: { ...localSettings.editor, favorite_emojis: parseEmojiList(event.target.value) },
+                    })}
+                    placeholder="😀 👍 ❤️ 🎉 ✅"
+                    aria-label="常用表情列表"
                   />
-                  启用自动补全
-                </label>
+                  <div className="emoji-favorites-preview" aria-label="常用表情预览">
+                    {localSettings.editor.favorite_emojis.map((emoji) => <span key={emoji}>{emoji}</span>)}
+                  </div>
+                </div>
               </div>
             </div>
           )}
@@ -582,24 +670,18 @@ export function SettingsPanel() {
                       }
                     />
                   </div>
-                  <div className="setting-item">
-                    <label>
-                      <input
-                        type="checkbox"
-                        checked={localSettings.image_hosting.s3.use_ssl}
-                        onChange={(e) =>
-                          setLocalSettings({
-                            ...localSettings,
-                            image_hosting: {
-                              ...localSettings.image_hosting,
-                              s3: { ...localSettings.image_hosting.s3, use_ssl: e.target.checked },
-                            },
-                          })
-                        }
-                      />
-                      使用HTTPS
-                    </label>
-                  </div>
+                  <SettingToggle
+                    label="使用 HTTPS"
+                    description="通过加密连接访问 S3 图床服务"
+                    checked={localSettings.image_hosting.s3.use_ssl}
+                    onChange={(checked) => setLocalSettings({
+                      ...localSettings,
+                      image_hosting: {
+                        ...localSettings.image_hosting,
+                        s3: { ...localSettings.image_hosting.s3, use_ssl: checked },
+                      },
+                    })}
+                  />
                 </>
               )}
 
@@ -683,21 +765,15 @@ export function SettingsPanel() {
 
           {activeTab === 'ai' && (
             <div className="settings-section">
-              <div className="setting-item">
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={localSettings.ai.enabled}
-                    onChange={(e) =>
-                      setLocalSettings({
-                        ...localSettings,
-                        ai: { ...localSettings.ai, enabled: e.target.checked },
-                      })
-                    }
-                  />
-                  启用AI助手
-                </label>
-              </div>
+              <SettingToggle
+                label="启用 AI 助手"
+                description="开启对话、改写、校对与智能伴写能力"
+                checked={localSettings.ai.enabled}
+                onChange={(checked) => setLocalSettings({
+                  ...localSettings,
+                  ai: { ...localSettings.ai, enabled: checked },
+                })}
+              />
               {localSettings.ai.enabled && (
                 <>
                   <div className="setting-item">
@@ -867,21 +943,15 @@ export function SettingsPanel() {
                       }
                     />
                   </div>
-                  <div className="setting-item">
-                    <label>
-                      <input
-                        type="checkbox"
-                        checked={localSettings.ai.auto_suggest}
-                        onChange={(e) =>
-                          setLocalSettings({
-                            ...localSettings,
-                            ai: { ...localSettings.ai, auto_suggest: e.target.checked },
-                          })
-                        }
-                      />
-                      自动伴写建议
-                    </label>
-                  </div>
+                  <SettingToggle
+                    label="自动伴写建议"
+                    description="输入停顿后自动生成可选择的续写建议"
+                    checked={localSettings.ai.auto_suggest}
+                    onChange={(checked) => setLocalSettings({
+                      ...localSettings,
+                      ai: { ...localSettings.ai, auto_suggest: checked },
+                    })}
+                  />
                   {localSettings.ai.auto_suggest && (
                     <div className="setting-item">
                       <label>建议延迟 (ms)</label>
@@ -941,19 +1011,15 @@ export function SettingsPanel() {
 
           {activeTab === 'web_search' && (
             <div className="settings-section">
-              <div className="setting-item">
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={localSettings.web_search.enabled}
-                    onChange={(e) => setLocalSettings({
-                      ...localSettings,
-                      web_search: { ...localSettings.web_search, enabled: e.target.checked },
-                    })}
-                  />
-                  启用网络搜索
-                </label>
-              </div>
+              <SettingToggle
+                label="启用网络搜索"
+                description="允许 AI 对话在发送前检索并引用网络资料"
+                checked={localSettings.web_search.enabled}
+                onChange={(checked) => setLocalSettings({
+                  ...localSettings,
+                  web_search: { ...localSettings.web_search, enabled: checked },
+                })}
+              />
 
               {localSettings.web_search.enabled && (
                 <>
@@ -991,9 +1057,15 @@ export function SettingsPanel() {
                         <label>最大结果数</label>
                         <input type="number" min="1" max="20" value={localSettings.web_search.tavily_max_results} onChange={(e) => setLocalSettings({ ...localSettings, web_search: { ...localSettings.web_search, tavily_max_results: Number(e.target.value) } })} />
                       </div>
-                      <div className="setting-item">
-                        <label><input type="checkbox" checked={localSettings.web_search.tavily_include_answer} onChange={(e) => setLocalSettings({ ...localSettings, web_search: { ...localSettings.web_search, tavily_include_answer: e.target.checked } })} /> 请求摘要答案</label>
-                      </div>
+                      <SettingToggle
+                        label="请求摘要答案"
+                        description="让 Tavily 同时返回基于搜索结果生成的摘要"
+                        checked={localSettings.web_search.tavily_include_answer}
+                        onChange={(checked) => setLocalSettings({
+                          ...localSettings,
+                          web_search: { ...localSettings.web_search, tavily_include_answer: checked },
+                        })}
+                      />
                     </>
                   ) : (
                     <>

@@ -42,6 +42,7 @@ fn main() {
             commands::save_settings,
             commands::get_local_font_families,
             commands::upload_image,
+            commands::upload_image_bytes,
             commands::export_pdf,
             commands::export_html,
             commands::export_word,

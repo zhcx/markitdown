@@ -62,7 +62,7 @@ export function StatusBar() {
   return (
     <div className="statusbar">
       <div className="statusbar-left">
-        <span className="status-item">{mode === 'split' ? '分屏模式' : '沉浸模式'}</span>
+        <span className="status-item">{mode === 'split' ? '分屏模式' : mode === 'zen' ? '沉浸写作' : '沉浸阅读'}</span>
         <span className="status-divider" aria-hidden="true" />
         <span className="status-item">{isSaving ? '保存中...' : '已就绪'}</span>
         {settings.ai.enabled && (

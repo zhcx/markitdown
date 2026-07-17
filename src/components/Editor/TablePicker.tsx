@@ -1,10 +1,15 @@
-import { useEffect, useState, type RefObject } from 'react';
+import { useEffect, useRef, useState, type RefObject } from 'react';
 
-interface TablePickerProps { onInsert: (rows: number, columns: number) => void; anchorRef: RefObject<HTMLButtonElement>; }
+interface TablePickerProps {
+  onInsert: (rows: number, columns: number) => void;
+  onClose: () => void;
+  anchorRef: RefObject<HTMLButtonElement>;
+}
 
-export function TablePicker({ onInsert, anchorRef }: TablePickerProps) {
+export function TablePicker({ onInsert, onClose, anchorRef }: TablePickerProps) {
   const [size, setSize] = useState({ rows: 0, columns: 0 });
   const [dragging, setDragging] = useState(false);
+  const pickerRef = useRef<HTMLDivElement>(null);
   const maxRows = 8;
   const maxColumns = 10;
   const [position, setPosition] = useState({ top: 0, left: 0 });
@@ -30,11 +35,22 @@ export function TablePicker({ onInsert, anchorRef }: TablePickerProps) {
     return () => document.removeEventListener('mouseup', stop);
   }, []);
 
+  useEffect(() => {
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (pickerRef.current?.contains(target) || anchorRef.current?.contains(target)) return;
+      onClose();
+    };
+
+    document.addEventListener('pointerdown', closeOnOutsidePointer);
+    return () => document.removeEventListener('pointerdown', closeOnOutsidePointer);
+  }, [anchorRef, onClose]);
+
   const handleCellClick = () => {
     if (size.rows > 0 && size.columns > 0) onInsert(size.rows, size.columns);
   };
 
-  return <div className="table-picker-popover" style={{ top: position.top, left: position.left }} onClick={(event) => event.stopPropagation()}>
+  return <div ref={pickerRef} className="table-picker-popover" style={{ top: position.top, left: position.left }} onClick={(event) => event.stopPropagation()}>
     <div className="table-picker">
       <div className="table-picker-header"><strong>插入表格</strong><span>{size.rows} × {size.columns}</span></div>
       <div className="table-picker-grid" onMouseLeave={() => !dragging && setSize({ rows: 0, columns: 0 })}>

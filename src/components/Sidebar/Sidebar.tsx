@@ -2,6 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import { useAppStore, type TimelineEntry } from '../../stores/appStore';
+import {
+  createOutlineDetectionKey,
+  parseMarkdownHeadings,
+  selectActiveDocumentContent,
+  shouldAutoRevealOutline,
+} from '../../utils/markdownOutline';
 
 interface FileNode {
   name: string;
@@ -24,12 +30,6 @@ interface RawFileNode {
   is_directory?: boolean;
   isDirectory?: boolean;
   children?: RawFileNode[];
-}
-
-interface HeadingItem {
-  level: number;
-  text: string;
-  line: number;
 }
 
 interface SidebarProps {
@@ -120,11 +120,6 @@ const normalizeNode = (node: RawFileNode): FileNode => ({
   path: node.path,
   isDirectory: Boolean(node.isDirectory ?? node.is_directory),
   children: node.children?.map(normalizeNode),
-});
-
-const parseHeadings = (content: string): HeadingItem[] => content.split('\n').flatMap((line, index) => {
-  const match = line.match(/^(#{1,6})\s+(.+)$/);
-  return match ? [{ level: match[1].length, text: match[2].trim(), line: index + 1 }] : [];
 });
 
 function Chevron({ expanded }: { expanded: boolean }) {
@@ -304,9 +299,24 @@ function ExplorerSidebar({ style }: SidebarProps) {
   const [timelineExpanded, setTimelineExpanded] = useState(false);
   const [timelineHover, setTimelineHover] = useState<TimelineHoverState>(null);
   const [timelineDialog, setTimelineDialog] = useState<TimelineDialogState>(null);
-  const headings = useMemo(() => parseHeadings(content), [content]);
   const activeTimeline = activeTabId ? timeline[activeTabId] || [] : [];
   const activeTab = tabs.find((tab) => tab.id === activeTabId);
+  const outlineContent = selectActiveDocumentContent(tabs, activeTabId, content);
+  const headings = useMemo(() => parseMarkdownHeadings(outlineContent), [outlineContent]);
+  const hasOutlineHeadings = headings.length > 0;
+  const outlineDetectionKey = createOutlineDetectionKey(activeTabId, hasOutlineHeadings);
+  const previousOutlineDetectionKey = useRef<string | null>(null);
+
+  useEffect(() => {
+    const shouldReveal = shouldAutoRevealOutline(
+      previousOutlineDetectionKey.current,
+      outlineDetectionKey,
+      hasOutlineHeadings,
+      outlineVisible,
+    );
+    previousOutlineDetectionKey.current = outlineDetectionKey;
+    if (shouldReveal) setOutlineVisible(true);
+  }, [hasOutlineHeadings, outlineDetectionKey, outlineVisible, setOutlineVisible]);
 
   useEffect(() => {
     cleanupTimeline();

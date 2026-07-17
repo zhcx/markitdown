@@ -74,8 +74,18 @@ pub struct AppearanceSettings {
     pub line_height: f32,
 }
 
+fn default_favorite_emojis() -> Vec<String> {
+    ["😀", "👍", "❤️", "🎉", "✅", "⚠️", "💡", "🚀"].iter().map(|value| (*value).into()).collect()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EditorSettings { pub auto_save_interval: u32, pub spell_check: bool, pub auto_complete: bool }
+pub struct EditorSettings {
+    pub auto_save_interval: u32,
+    pub spell_check: bool,
+    pub auto_complete: bool,
+    #[serde(default = "default_favorite_emojis")]
+    pub favorite_emojis: Vec<String>,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImageHostingSettings {
@@ -139,8 +149,8 @@ impl Default for WebSearchSettings {
 impl Default for Settings {
     fn default() -> Self {
         Settings {
-            appearance: AppearanceSettings { theme: "vscode-dark".into(), ui_font_family: default_ui_font_family(), font_family: "Microsoft YaHei".into(), font_size: 16, line_height: 1.6 },
-            editor: EditorSettings { auto_save_interval: 30000, spell_check: false, auto_complete: true },
+            appearance: AppearanceSettings { theme: "vscode-dark".into(), ui_font_family: default_ui_font_family(), font_family: "Microsoft YaHei".into(), font_size: 14, line_height: 1.6 },
+            editor: EditorSettings { auto_save_interval: 30000, spell_check: false, auto_complete: true, favorite_emojis: default_favorite_emojis() },
             image_hosting: ImageHostingSettings {
                 active_service: "local".into(),
                 cloudinary: CloudinaryConfig { cloud_name: String::new(), api_key: String::new(), api_secret: String::new(), upload_folder: Some(String::new()) },
@@ -196,6 +206,42 @@ fn save_settings_inner(app: &AppHandle, settings: &Settings) -> Result<(), Strin
         _ => return Err(format!("Unknown image service: {}", service)),
     };
     image::upload(&file_path, image_service).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn upload_image_bytes(
+    data_base64: String,
+    extension: String,
+    service: String,
+    settings: Settings,
+) -> Result<String, String> {
+    let safe_extension = match extension.to_ascii_lowercase().as_str() {
+        "png" => "png",
+        "jpg" | "jpeg" => "jpg",
+        "gif" => "gif",
+        "webp" => "webp",
+        "bmp" => "bmp",
+        _ => return Err("Unsupported clipboard image format".into()),
+    };
+    let bytes = general_purpose::STANDARD
+        .decode(data_base64)
+        .map_err(|error| format!("Invalid clipboard image data: {error}"))?;
+    let temp_path = std::env::temp_dir().join(format!(
+        "markitdown-paste-{}.{}",
+        uuid::Uuid::new_v4(),
+        safe_extension
+    ));
+    tokio::fs::write(&temp_path, bytes)
+        .await
+        .map_err(|error| format!("Failed to prepare clipboard image: {error}"))?;
+
+    let result = upload_image(
+        temp_path.to_string_lossy().into_owned(),
+        service,
+        settings,
+    ).await;
+    let _ = tokio::fs::remove_file(&temp_path).await;
+    result
 }
 
 // ── Image embedding ────────────────────────────────────
