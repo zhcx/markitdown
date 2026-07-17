@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import type { EditorController } from '../types/editor';
 import { formatTextStatistics } from '../utils/textStatistics';
 import { DEFAULT_FONT_SIZE, DEFAULT_LINE_HEIGHT } from '../utils/appearanceSettings';
+import { applySavedTab } from '../utils/tabPersistence';
 
 const isTauriRuntime = () => typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 const browserSettingsKey = 'markitdown.browser.settings';
@@ -197,6 +198,7 @@ interface AppState {
   openFile: (path: string) => Promise<void>;
   convertDocument: (path: string) => Promise<void>;
   saveFile: (path: string) => Promise<void>;
+  saveTab: (tabId: string, path: string) => Promise<void>;
   updateWordCount: () => void;
 
   addTab: (tab?: Partial<Tab>) => string;
@@ -580,20 +582,29 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
-  saveFile: async (path) => {
-    const { content, activeTabId, tabs } = get();
+  saveTab: async (tabId, path) => {
+    const tab = get().tabs.find(item => item.id === tabId);
+    if (!tab) throw new Error('找不到要保存的标签页');
+
     set({ isSaving: true });
     try {
-      await invoke('save_file_content', { path, content });
-      const newTabs = tabs.map(t =>
-        t.id === activeTabId
-          ? { ...t, path, title: path.split(/[\\/]/).pop() || path, modified: false }
-          : t
-      );
-      set({ currentFile: path, isSaving: false, tabs: newTabs });
+      await invoke('save_file_content', { path, content: tab.content });
+      set(state => ({
+        tabs: applySavedTab(state.tabs, tabId, path, tab.content),
+        currentFile: state.activeTabId === tabId ? path : state.currentFile,
+      }));
+    } finally {
+      set({ isSaving: false });
+    }
+  },
+
+  saveFile: async (path) => {
+    const { activeTabId } = get();
+    if (!activeTabId) return;
+    try {
+      await get().saveTab(activeTabId, path);
     } catch (error) {
       console.error('Failed to save file:', error);
-      set({ isSaving: false });
     }
   },
 

@@ -16,8 +16,11 @@ import { ImmersiveOutline } from './components/Immersive/ImmersiveOutline';
 import { TitleBar } from './components/TitleBar/TitleBar';
 import { ActivityBar } from './components/ActivityBar/ActivityBar';
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
+import { getCurrentWindow } from '@tauri-apps/api/window';
+import { ask, message, save as chooseSaveFile } from '@tauri-apps/plugin-dialog';
 import { createElementScrollViewport, getSyncedScrollTop, type ObservableScrollViewport, type ScrollAnchor } from './utils/scrollSync';
 import { getImmersiveWorkspacePolicy } from './utils/immersiveWorkspace';
+import { guardWindowClose } from './utils/windowCloseGuard';
 import './styles/main.css';
 import './styles/workbench.css';
 
@@ -107,6 +110,7 @@ function App() {
     anchors: ScrollAnchor[];
   } | null>(null);
   const programmaticScrollRef = useRef<{ viewport: ObservableScrollViewport; top: number } | null>(null);
+  const closeGuardInProgress = useRef(false);
   const dragValues = useRef({ splitRatio, sidebarWidth, proofreadPanelWidth, chatbotPanelWidth });
   const immersivePolicy = getImmersiveWorkspacePolicy(mode, chatbotVisible);
 
@@ -179,6 +183,68 @@ function App() {
   useEffect(() => {
     loadSettings();
   }, [loadSettings]);
+
+  useEffect(() => {
+    if (!('__TAURI_INTERNALS__' in window)) return undefined;
+
+    const appWindow = getCurrentWindow();
+    const unlisten = appWindow.onCloseRequested(async event => {
+      event.preventDefault();
+      if (closeGuardInProgress.current) return;
+      closeGuardInProgress.current = true;
+
+      try {
+        const result = await guardWindowClose(useAppStore.getState().tabs, {
+          askToSave: async modifiedTabs => {
+            const names = modifiedTabs.map(tab => `• ${tab.title}`).join('\n');
+            return ask(
+              `检测到 ${modifiedTabs.length} 个标签页有未保存的修改：\n\n${names}\n\n退出前是否保存全部修改？`,
+              {
+                title: '未保存的修改',
+                kind: 'warning',
+                okLabel: '全部保存',
+                cancelLabel: '暂不保存',
+              },
+            );
+          },
+          confirmDiscard: async modifiedTabs => ask(
+            `仍有 ${modifiedTabs.length} 个标签页未保存。确定放弃这些修改并退出吗？`,
+            {
+              title: '确认退出',
+              kind: 'warning',
+              okLabel: '放弃修改并退出',
+              cancelLabel: '返回编辑',
+            },
+          ),
+          chooseSavePath: async tab => {
+            const selected = await chooseSaveFile({
+              title: `保存“${tab.title}”`,
+              defaultPath: tab.title === '未命名' ? '未命名.md' : tab.title,
+              filters: [{ name: 'Markdown', extensions: ['md', 'markdown', 'txt'] }],
+            });
+            return typeof selected === 'string' ? selected : null;
+          },
+          saveTab: async (tabId, path) => {
+            try {
+              await useAppStore.getState().saveTab(tabId, path);
+            } catch (error) {
+              await message(`保存失败：${String(error)}`, {
+                title: '无法保存文件',
+                kind: 'error',
+              });
+              throw error;
+            }
+          },
+        });
+
+        if (result === 'close') await appWindow.destroy();
+      } finally {
+        closeGuardInProgress.current = false;
+      }
+    });
+
+    return () => { unlisten.then(fn => fn()); };
+  }, []);
 
   useEffect(() => {
     if (mode === 'split') return;
