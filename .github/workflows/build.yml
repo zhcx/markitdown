@@ -41,19 +41,15 @@ jobs:
           - name: macOS Apple Silicon
             platform: macos-latest
             target: aarch64-apple-darwin
-            signing_config: ''
           - name: macOS Intel
             platform: macos-latest
             target: x86_64-apple-darwin
-            signing_config: ''
           - name: Windows x64
             platform: windows-latest
             target: x86_64-pc-windows-msvc
-            signing_config: --config src-tauri/tauri.windows-signing.conf.json
           - name: Linux x64
             platform: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
-            signing_config: ''
 
     runs-on: ${{ matrix.platform }}
 
@@ -89,6 +85,7 @@ jobs:
         run: npm ci
 
       - name: Prepare Windows code signing
+        id: windows_signing
         if: matrix.platform == 'windows-latest'
         shell: pwsh
         env:
@@ -134,9 +131,9 @@ jobs:
             | Linux | x64 | `.deb`、`.rpm`、`.AppImage` |
           releaseDraft: false
           prerelease: false
-          args: --target ${{ matrix.target }} ${{ matrix.signing_config }}
+          args: --target ${{ matrix.target }} ${{ steps.windows_signing.outputs.config_args }}
 
       - name: Verify Windows installer signatures
-        if: matrix.platform == 'windows-latest'
+        if: matrix.platform == 'windows-latest' && steps.windows_signing.outputs.signed == 'true'
         shell: pwsh
         run: ./scripts/verify-windows-signatures.ps1

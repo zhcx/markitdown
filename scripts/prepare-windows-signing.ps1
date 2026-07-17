@@ -1,18 +1,24 @@
 param(
     [string]$CertificateBase64 = $env:WINDOWS_CERTIFICATE_BASE64,
     [string]$CertificatePassword = $env:WINDOWS_CERTIFICATE_PASSWORD,
-    [string]$TimestampUrl = "http://timestamp.digicert.com"
+    [string]$TimestampUrl = "http://timestamp.digicert.com",
+    [string]$GitHubOutput = $env:GITHUB_OUTPUT
 )
 
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
-if ([string]::IsNullOrWhiteSpace($CertificateBase64)) {
-    throw "WINDOWS_CERTIFICATE_BASE64 is required. Refusing to publish an unsigned Windows release."
+if ([string]::IsNullOrWhiteSpace($CertificateBase64) -and [string]::IsNullOrWhiteSpace($CertificatePassword)) {
+    Write-Warning "Windows signing credentials are not configured; building an unsigned installer."
+    if (-not [string]::IsNullOrWhiteSpace($GitHubOutput)) {
+        Add-Content -LiteralPath $GitHubOutput -Value "config_args="
+        Add-Content -LiteralPath $GitHubOutput -Value "signed=false"
+    }
+    return
 }
 
-if ([string]::IsNullOrWhiteSpace($CertificatePassword)) {
-    throw "WINDOWS_CERTIFICATE_PASSWORD is required. Refusing to publish an unsigned Windows release."
+if ([string]::IsNullOrWhiteSpace($CertificateBase64) -or [string]::IsNullOrWhiteSpace($CertificatePassword)) {
+    throw "WINDOWS_CERTIFICATE_BASE64 and WINDOWS_CERTIFICATE_PASSWORD must either both be configured or both be empty."
 }
 
 $pfxPath = Join-Path $env:RUNNER_TEMP "markitdown-code-signing.pfx"
@@ -62,5 +68,9 @@ $overridePath = Join-Path $PSScriptRoot "..\src-tauri\tauri.windows-signing.conf
     }
 } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $overridePath -Encoding utf8
 
-Write-Host "Prepared Windows signing with certificate $($certificate.Thumbprint)."
+if (-not [string]::IsNullOrWhiteSpace($GitHubOutput)) {
+    Add-Content -LiteralPath $GitHubOutput -Value "config_args=--config src-tauri/tauri.windows-signing.conf.json"
+    Add-Content -LiteralPath $GitHubOutput -Value "signed=true"
+}
 
+Write-Host "Prepared Windows signing with certificate $($certificate.Thumbprint)."
