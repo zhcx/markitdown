@@ -5,7 +5,11 @@ import { useAppStore } from '../../stores/appStore';
 
 const APP_NAME = 'MarkitDown';
 
-export function TitleBar() {
+interface TitleBarProps {
+  onRequestClose: () => void | Promise<void>;
+}
+
+export function TitleBar({ onRequestClose }: TitleBarProps) {
   const [isMaximized, setIsMaximized] = useState(false);
   const mountedRef = useRef(true);
   const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
@@ -67,8 +71,8 @@ export function TitleBar() {
 
   const handleClose = useCallback(async () => {
     if (!isTauri) return;
-    await getCurrentWindow().close();
-  }, [isTauri]);
+    await onRequestClose();
+  }, [isTauri, onRequestClose]);
 
   const handleStartDragging = useCallback((event: MouseEvent<HTMLElement>) => {
     if (!isTauri) return;

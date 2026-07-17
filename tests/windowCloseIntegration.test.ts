@@ -4,13 +4,26 @@ import { readFile } from 'node:fs/promises';
 
 test('desktop close requests inspect all tabs and only destroy after the close guard allows it', async () => {
   const source = await readFile(new URL('../src/App.tsx', import.meta.url), 'utf8');
+  const titleBarSource = await readFile(new URL('../src/components/TitleBar/TitleBar.tsx', import.meta.url), 'utf8');
 
   assert.match(source, /onCloseRequested/);
   assert.match(source, /event\.preventDefault\(\)/);
   assert.match(source, /guardWindowClose\(useAppStore\.getState\(\)\.tabs/);
   assert.match(source, /<UnsavedChangesDialog/);
+  assert.match(source, /<TitleBar\s+onRequestClose=\{requestAppClose\}/);
   assert.doesNotMatch(source, /askToSave:[\s\S]*?return ask\(/);
+  assert.match(titleBarSource, /onRequestClose/);
+  assert.doesNotMatch(titleBarSource, /getCurrentWindow\(\)\.close\(\)/);
   assert.match(source, /result === 'close'[\s\S]*?\.destroy\(\)/);
+});
+
+test('closing a dirty tab uses the themed dialog instead of a native ask dialog', async () => {
+  const source = await readFile(new URL('../src/components/TabsBar/TabsBar.tsx', import.meta.url), 'utf8');
+
+  assert.doesNotMatch(source, /import \{ ask,/);
+  assert.doesNotMatch(source, /await ask\(/);
+  assert.match(source, /<UnsavedChangesDialog/);
+  assert.match(source, /saveTab\(tab\.id,/);
 });
 
 test('tab-specific save persists the selected tab content', async () => {

@@ -129,6 +129,40 @@ function App() {
     resolve?.(action);
   }, []);
 
+  const requestAppClose = useCallback(async () => {
+    if (!('__TAURI_INTERNALS__' in window) || closeGuardInProgress.current) return;
+    closeGuardInProgress.current = true;
+
+    try {
+      const result = await guardWindowClose(useAppStore.getState().tabs, {
+        promptAction: promptUnsavedChanges,
+        chooseSavePath: async tab => {
+          const selected = await chooseSaveFile({
+            title: `保存“${tab.title}”`,
+            defaultPath: tab.title === '未命名' ? '未命名.md' : tab.title,
+            filters: [{ name: 'Markdown', extensions: ['md', 'markdown', 'txt'] }],
+          });
+          return typeof selected === 'string' ? selected : null;
+        },
+        saveTab: async (tabId, path) => {
+          try {
+            await useAppStore.getState().saveTab(tabId, path);
+          } catch (error) {
+            await message(`保存失败：${String(error)}`, {
+              title: '无法保存文件',
+              kind: 'error',
+            });
+            throw error;
+          }
+        },
+      });
+
+      if (result === 'close') await getCurrentWindow().destroy();
+    } finally {
+      closeGuardInProgress.current = false;
+    }
+  }, [promptUnsavedChanges]);
+
   const balanceDocumentPanes = useCallback((proofreadWidth = proofreadPanelWidth, chatWidth = chatbotPanelWidth) => {
     const appBody = dividerRef.current?.closest('.app-body') as HTMLElement | null;
     const divider = dividerRef.current;
@@ -202,44 +236,13 @@ function App() {
   useEffect(() => {
     if (!('__TAURI_INTERNALS__' in window)) return undefined;
 
-    const appWindow = getCurrentWindow();
-    const unlisten = appWindow.onCloseRequested(async event => {
+    const unlisten = getCurrentWindow().onCloseRequested(event => {
       event.preventDefault();
-      if (closeGuardInProgress.current) return;
-      closeGuardInProgress.current = true;
-
-      try {
-        const result = await guardWindowClose(useAppStore.getState().tabs, {
-          promptAction: promptUnsavedChanges,
-          chooseSavePath: async tab => {
-            const selected = await chooseSaveFile({
-              title: `保存“${tab.title}”`,
-              defaultPath: tab.title === '未命名' ? '未命名.md' : tab.title,
-              filters: [{ name: 'Markdown', extensions: ['md', 'markdown', 'txt'] }],
-            });
-            return typeof selected === 'string' ? selected : null;
-          },
-          saveTab: async (tabId, path) => {
-            try {
-              await useAppStore.getState().saveTab(tabId, path);
-            } catch (error) {
-              await message(`保存失败：${String(error)}`, {
-                title: '无法保存文件',
-                kind: 'error',
-              });
-              throw error;
-            }
-          },
-        });
-
-        if (result === 'close') await appWindow.destroy();
-      } finally {
-        closeGuardInProgress.current = false;
-      }
+      void requestAppClose();
     });
 
     return () => { unlisten.then(fn => fn()); };
-  }, [promptUnsavedChanges]);
+  }, [requestAppClose]);
 
   useEffect(() => {
     if (mode === 'split') return;
@@ -591,7 +594,7 @@ function App() {
 
   return (
     <div className={`app ${immersivePolicy.active ? 'immersive-mode-active' : ''} ${mode === 'zen' ? 'zen-mode' : ''}`}>
-      <TitleBar />
+      <TitleBar onRequestClose={requestAppClose} />
       <div className="app-workbench">
         <ActivityBar
           activeView={activityView}
