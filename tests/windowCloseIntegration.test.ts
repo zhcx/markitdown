@@ -5,6 +5,7 @@ import { readFile } from 'node:fs/promises';
 test('desktop close requests inspect all tabs and only destroy after the close guard allows it', async () => {
   const source = await readFile(new URL('../src/App.tsx', import.meta.url), 'utf8');
   const titleBarSource = await readFile(new URL('../src/components/TitleBar/TitleBar.tsx', import.meta.url), 'utf8');
+  const capabilities = JSON.parse(await readFile(new URL('../src-tauri/capabilities/default.json', import.meta.url), 'utf8'));
 
   assert.match(source, /onCloseRequested/);
   assert.match(source, /event\.preventDefault\(\)/);
@@ -15,6 +16,8 @@ test('desktop close requests inspect all tabs and only destroy after the close g
   assert.match(titleBarSource, /onRequestClose/);
   assert.doesNotMatch(titleBarSource, /getCurrentWindow\(\)\.close\(\)/);
   assert.match(source, /result === 'close'[\s\S]*?\.destroy\(\)/);
+  assert.match(source, /catch \(error\)[\s\S]*?invoke\('exit_application'\)/);
+  assert.ok(capabilities.permissions.includes('core:window:allow-destroy'));
 });
 
 test('closing a dirty tab uses the themed dialog instead of a native ask dialog', async () => {

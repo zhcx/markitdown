@@ -18,6 +18,7 @@ import { ActivityBar } from './components/ActivityBar/ActivityBar';
 import { UnsavedChangesDialog } from './components/UnsavedChangesDialog/UnsavedChangesDialog';
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import { invoke } from '@tauri-apps/api/core';
 import { message, save as chooseSaveFile } from '@tauri-apps/plugin-dialog';
 import { createElementScrollViewport, getSyncedScrollTop, type ObservableScrollViewport, type ScrollAnchor } from './utils/scrollSync';
 import { getImmersiveWorkspacePolicy } from './utils/immersiveWorkspace';
@@ -157,7 +158,17 @@ function App() {
         },
       });
 
-      if (result === 'close') await getCurrentWindow().destroy();
+      if (result === 'close') {
+        try {
+          await getCurrentWindow().destroy();
+        } catch (error) {
+          // A capability/configuration regression must never trap the user in
+          // the close prompt. Ask the native application event loop to exit as
+          // a final fallback and log the rejected window command for diagnosis.
+          console.error('Destroying the application window failed; using native exit.', error);
+          await invoke('exit_application');
+        }
+      }
     } finally {
       closeGuardInProgress.current = false;
     }

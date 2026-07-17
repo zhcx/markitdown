@@ -9,6 +9,11 @@ mod commands;
 mod image;
 mod pdf;
 
+#[tauri::command]
+fn exit_application(app: tauri::AppHandle) {
+    app.exit(0);
+}
+
 // Prevent Tauri commands from panicking across the FFI boundary.
 // Replace any remaining unwrap/expect in hot paths with proper error propagation.
 // clippy::unwrap_used is not enabled globally; this is a targeted hardening.
@@ -38,6 +43,7 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .invoke_handler(tauri::generate_handler![
+            exit_application,
             commands::get_settings,
             commands::save_settings,
             commands::get_local_font_families,
