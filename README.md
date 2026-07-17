@@ -7,7 +7,7 @@
 *让写作回归纯粹，让创作充满灵感*
 
 [![Release](https://img.shields.io/github/v/release/zhcx/markitdown?style=flat-square)](https://github.com/zhcx/markitdown/releases)
-[![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
+[![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](https://github.com/zhcx/markitdown/blob/main/LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey?style=flat-square)](https://github.com/zhcx/markitdown/releases)
 
 <img src="src-tauri/icons/icon.png" alt="MarkitDown Logo" width="128" height="128">
@@ -246,7 +246,7 @@ SignPath Foundation 申请目前处于准备/审核阶段；在正式启用前�
 
 ## 📄 许可证
 
-[MIT License](LICENSE)
+[MIT License](https://github.com/zhcx/markitdown/blob/main/LICENSE)
 
 ---
 
