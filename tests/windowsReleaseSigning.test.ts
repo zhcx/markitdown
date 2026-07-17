@@ -5,13 +5,12 @@ import { test } from 'node:test'
 const workflow = readFileSync('.github/workflows/build.yml', 'utf8')
 const tauriConfig = readFileSync('src-tauri/tauri.conf.json', 'utf8')
 
-test('Windows releases use signing when credentials exist and allow an explicit unsigned fallback', () => {
-  assert.match(workflow, /WINDOWS_CERTIFICATE_BASE64/)
-  assert.match(workflow, /prepare-windows-signing\.ps1/)
+test('Windows releases use SignPath when configured and allow an explicit unsigned fallback', () => {
+  assert.match(workflow, /SIGNPATH_API_TOKEN/)
+  assert.match(workflow, /signpath\/github-action-submit-signing-request@v2/)
   assert.match(workflow, /verify-windows-signatures\.ps1/)
-  assert.match(workflow, /id: windows_signing/)
-  assert.match(workflow, /steps\.windows_signing\.outputs\.config_args/)
-  assert.match(workflow, /steps\.windows_signing\.outputs\.signed == 'true'/)
+  assert.match(workflow, /SIGNPATH_ENABLED/)
+  assert.match(workflow, /unsigned/i)
 })
 
 test('Windows signatures use SHA-256 and a trusted timestamp', () => {

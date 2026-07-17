@@ -236,6 +236,14 @@ markitdown/
 
 ---
 
+## 🔏 Code signing policy
+
+Windows 代码签名的构建来源、审批角色、验证方法与当前接入状态见 [Code Signing Policy](CODE_SIGNING_POLICY.md)。隐私与可选第三方数据传输说明见 [Privacy Policy](PRIVACY.md)。
+
+SignPath Foundation 申请目前处于准备/审核阶段；在正式启用前，发布页必须明确标识未签名的 Windows 安装包。启用后的署名为：**Free code signing provided by SignPath.io, certificate by SignPath Foundation**。
+
+---
+
 ## 📄 许可证
 
 [MIT License](LICENSE)

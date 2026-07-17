@@ -1,2 +1,3 @@
 # Runtime dependency for the source/dev document conversion fallback.
-markitdown[pdf,docx,pptx,xlsx]>=0.1.0
+# Release CI uses requirements-converter.lock with hashes instead.
+markitdown[pdf,docx,pptx,xlsx]==0.1.6

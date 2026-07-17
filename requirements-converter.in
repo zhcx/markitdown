@@ -1,0 +1,4 @@
+# Direct inputs for the Windows x64 / CPython 3.12 converter lock.
+# Resolve these into requirements-converter.lock and review every transitive update.
+markitdown[pdf,docx,pptx,xlsx]==0.1.6
+pyinstaller==6.16.0

@@ -1,0 +1,8 @@
+{
+  "bundle": {
+    "resources": [
+      "resources/document_converter.py",
+      "resources/document_converter.exe"
+    ]
+  }
+}

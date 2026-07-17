@@ -1,0 +1,76 @@
+import assert from 'node:assert/strict'
+import { existsSync, readFileSync } from 'node:fs'
+import { test } from 'node:test'
+
+const read = (path: string) => readFileSync(path, 'utf8')
+
+test('repository publishes an actual MIT license and privacy policy', () => {
+  const license = read('LICENSE')
+  const privacy = read('PRIVACY.md')
+
+  assert.match(license, /^MIT License/m)
+  assert.match(license, /Permission is hereby granted, free of charge/)
+  assert.match(license, /Copyright \(c\) 2026 zhcx/)
+  assert.match(privacy, /local-first/i)
+  assert.match(privacy, /AI provider/i)
+  assert.match(privacy, /image hosting/i)
+  assert.match(privacy, /update checks/i)
+})
+
+test('code signing policy contains SignPath attribution, roles, privacy, and build provenance', () => {
+  const policy = read('CODE_SIGNING_POLICY.md')
+  const readme = read('README.md')
+
+  assert.match(policy, /Free code signing provided by SignPath\.io, certificate by SignPath Foundation/)
+  assert.match(policy, /Committers and reviewers/i)
+  assert.match(policy, /Approvers/i)
+  assert.match(policy, /manual approval/i)
+  assert.match(policy, /PRIVACY\.md/)
+  assert.match(policy, /GitHub-hosted/i)
+  assert.match(readme, /Code signing policy/i)
+  assert.match(readme, /CODE_SIGNING_POLICY\.md/)
+  assert.match(readme, /PRIVACY\.md/)
+})
+
+test('Windows document converter is generated from a hash-locked dependency set', () => {
+  const lock = read('requirements-converter.lock')
+  const script = read('scripts/build-document-converter.ps1')
+  const ignore = read('.gitignore')
+  const baseConfig = JSON.parse(read('src-tauri/tauri.conf.json'))
+  const windowsConfig = JSON.parse(read('src-tauri/tauri.windows.conf.json'))
+
+  assert.doesNotMatch(lock, />=|~=|\*|^-e\s/m)
+  assert.match(lock, /markitdown\[pdf,docx,pptx,xlsx\]==[\d.]+/i)
+  assert.match(lock, /pyinstaller==[\d.]+/i)
+  assert.match(lock, /--hash=sha256:/)
+  assert.match(script, /--require-hashes/)
+  assert.match(script, /document_converter\.spec/)
+  assert.match(ignore, /src-tauri\/resources\/document_converter\.exe/)
+  assert.ok(!baseConfig.bundle.resources.includes('resources/document_converter.exe'))
+  assert.ok(windowsConfig.bundle.resources.includes('resources/document_converter.exe'))
+  assert.ok(existsSync('src-tauri/resources/document_converter.spec'))
+})
+
+test('Windows release workflow reserves both SignPath signing stages', () => {
+  const workflow = read('.github/workflows/build.yml')
+
+  assert.match(workflow, /build-document-converter\.ps1/)
+  assert.match(workflow, /tauri build.*--no-bundle/i)
+  assert.match(workflow, /tauri bundle/i)
+  assert.ok((workflow.match(/actions\/upload-artifact@v7/g) ?? []).length >= 2)
+  assert.ok((workflow.match(/signpath\/github-action-submit-signing-request@v2/g) ?? []).length >= 2)
+  assert.match(workflow, /SIGNPATH_EXECUTABLES_ARTIFACT_CONFIGURATION_SLUG/)
+  assert.match(workflow, /SIGNPATH_INSTALLERS_ARTIFACT_CONFIGURATION_SLUG/)
+  assert.match(workflow, /wait-for-completion: true/)
+  assert.match(workflow, /manual approval/i)
+})
+
+test('SignPath application copy is ready to submit without invented personal details', () => {
+  const application = read('docs/signpath-foundation-application.md')
+
+  assert.match(application, /https:\/\/github\.com\/zhcx\/markitdown/)
+  assert.match(application, /MIT License/)
+  assert.match(application, /GitHub Actions/)
+  assert.match(application, /SignPath Foundation/)
+  assert.match(application, /Applicant must fill/i)
+})

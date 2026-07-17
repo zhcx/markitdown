@@ -1,30 +1,57 @@
-# Windows 安装包签名配置
+# Windows code signing with SignPath
 
-MarkitDown 的 Windows 发布流程支持受 Windows 信任的 Authenticode 代码签名证书。配置证书后，CI 会同时签名内置的 `document_converter.exe`、主程序、NSIS 安装包和 MSI。
+The release workflow is ready for SignPath Foundation's GitHub integration. It remains in an explicit unsigned fallback mode until the application is approved and every required repository value is configured.
 
-未配置以下 Secrets 时，CI 会明确警告并继续生成未签名安装包。未签名包会显示“发布者未知”，仅应用于暂时没有证书的发布场景。
+## Architecture
 
-## GitHub Actions Secrets
+Windows signing is intentionally split into two requests:
 
-准备一个包含私钥的 PFX 代码签名证书，然后在仓库的 **Settings → Secrets and variables → Actions** 中添加：
+1. Build `markitdown.exe` and the hash-locked, CI-generated `document_converter.exe`; upload both as a GitHub Actions artifact; request manual SignPath approval and signing.
+2. Replace the local files with the signed copies, build MSI and NSIS installers, upload the installers as another GitHub Actions artifact, and request manual SignPath approval and signing.
+3. Verify Authenticode signatures and publish only the returned installer files. When SignPath settings are absent, the workflow publishes the generated installers without signatures and emits a prominent warning.
 
-- `WINDOWS_CERTIFICATE_BASE64`：PFX 文件的 Base64 内容；
-- `WINDOWS_CERTIFICATE_PASSWORD`：PFX 密码。
+This structure ensures that both the installed executables and their outer installers can be signed. The pre-sign artifacts exist on GitHub before each request, and every build job upstream of the requests uses a GitHub-hosted runner.
 
-在 Windows PowerShell 中生成 Base64 内容：
+## GitHub configuration after approval
+
+Create one Actions secret:
+
+- `SIGNPATH_API_TOKEN`
+
+Create these Actions variables:
+
+- `SIGNPATH_ORGANIZATION_ID`
+- `SIGNPATH_PROJECT_SLUG`
+- `SIGNPATH_SIGNING_POLICY_SLUG`
+- `SIGNPATH_EXECUTABLES_ARTIFACT_CONFIGURATION_SLUG`
+- `SIGNPATH_INSTALLERS_ARTIFACT_CONFIGURATION_SLUG`
+
+The two artifact configurations should accept the default ZIP artifact created by `actions/upload-artifact@v7`:
+
+- Executable configuration: `markitdown.exe` and `document_converter.exe`, both Authenticode-signed.
+- Installer configuration: one `.msi` and one NSIS `.exe`, both Authenticode-signed.
+
+Do not add placeholder or partial values. The workflow enables signing only when all six values are present; otherwise it takes the unsigned fallback path.
+
+Install the SignPath GitHub App as instructed by SignPath and link the repository to the SignPath project. Configure the signing policy for manual approval, restrict the project to GitHub's trusted build system, and require GitHub-hosted runners.
+
+## Locked converter build
+
+The converter executable is not tracked in Git. On Windows CI, Python 3.12 installs every package from `requirements-converter.lock` using `pip --require-hashes`, then PyInstaller executes `src-tauri/resources/document_converter.spec`. To reproduce the build environment on Windows:
 
 ```powershell
-[Convert]::ToBase64String([IO.File]::ReadAllBytes("C:\path\to\codesign.pfx")) | Set-Clipboard
+./scripts/build-document-converter.ps1
 ```
 
-不要把 PFX、密码或生成的 `src-tauri/tauri.windows-signing.conf.json` 提交到仓库。后者只由 CI 临时生成，并已被忽略。
+The lock is target-specific: CPython 3.12 on Windows x64. `requirements-converter.in` records the two direct build inputs. Dependency updates must be resolved for that target, reviewed, and committed with new hashes rather than editing only the top-level version.
 
-## 验证发布包
+## Verification
 
-发布完成后可在 Windows PowerShell 中检查下载文件：
+The workflow verifies returned files before upload. A release can also be checked manually:
 
 ```powershell
-Get-AuthenticodeSignature .\MarkitDown_0.3.0_x64-setup.exe | Format-List Status,SignerCertificate,TimeStamperCertificate
+Get-AuthenticodeSignature .\MarkitDown_0.3.0_x64-setup.exe |
+  Format-List Status,SignerCertificate,TimeStamperCertificate
 ```
 
-`Status` 必须为 `Valid`，签名者应是证书登记的个人或组织名称，并且应有时间戳证书。首次使用新证书发布时，SmartScreen 信誉仍可能需要一段时间积累；保持同一证书、产品名和官方 HTTPS 下载来源有助于建立稳定信誉。
+For a SignPath-signed build, the result must be `Valid`, the signer subject must contain `SignPath Foundation`, and a timestamp certificate must be present. See the repository's [Code Signing Policy](../CODE_SIGNING_POLICY.md) for governance and incident handling.

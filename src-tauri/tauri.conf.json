@@ -35,8 +35,7 @@
     "active": true,
     "targets": "all",
     "resources": [
-      "resources/document_converter.py",
-      "resources/document_converter.exe"
+      "resources/document_converter.py"
     ],
     "icon": [
       "icons/32x32.png",
