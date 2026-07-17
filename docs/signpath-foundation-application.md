@@ -1,11 +1,11 @@
 # SignPath Foundation Application — MarkitDown
 
-This document contains copy-ready English application material. Replace only the two explicitly marked applicant fields before submission at <https://signpath.org/apply>.
+This document contains copy-ready English application material for submission at <https://signpath.org/apply>.
 
 ## Applicant details
 
-- **Applicant full name:** `[APPLICANT MUST FILL: legal/full name]`
-- **Applicant email address:** `[APPLICANT MUST FILL: monitored email address]`
+- **Applicant full name:** Zhang Changxin
+- **Applicant email address:** zhcx@live.com
 - **GitHub account:** `zhcx`
 - **Project role:** Project owner, maintainer, committer, reviewer, and release approver
 
@@ -69,7 +69,6 @@ The public code signing policy contains the required attribution and clearly lab
 
 Before submitting:
 
-- Fill in the applicant full name and monitored email address above.
 - Enable multi-factor authentication on GitHub and the SignPath account.
 - Confirm that `LICENSE`, `PRIVACY.md`, `CODE_SIGNING_POLICY.md`, the locked converter build, and the two-stage workflow are visible on the default branch.
 - Confirm that at least one public release and its source tag remain available.

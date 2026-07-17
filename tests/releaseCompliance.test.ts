@@ -65,12 +65,14 @@ test('Windows release workflow reserves both SignPath signing stages', () => {
   assert.match(workflow, /manual approval/i)
 })
 
-test('SignPath application copy is ready to submit without invented personal details', () => {
+test('SignPath application copy contains the confirmed applicant details and no placeholders', () => {
   const application = read('docs/signpath-foundation-application.md')
 
   assert.match(application, /https:\/\/github\.com\/zhcx\/markitdown/)
   assert.match(application, /MIT License/)
   assert.match(application, /GitHub Actions/)
   assert.match(application, /SignPath Foundation/)
-  assert.match(application, /Applicant must fill/i)
+  assert.match(application, /Zhang Changxin/)
+  assert.match(application, /zhcx@live\.com/)
+  assert.doesNotMatch(application, /Applicant must fill|\[APPLICANT/i)
 })
