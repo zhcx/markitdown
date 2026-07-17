@@ -6779,6 +6779,7 @@ textarea:focus-visible {
 .wechat-theme-grid small { color: var(--text-secondary); font-size: 11px; line-height: 1.35; }
 .wechat-export-preview { max-height: 45vh; overflow: auto; padding: 18px; border: 1px solid var(--border-color); border-radius: 8px; background: #fff; }
 .wechat-export-preview * { box-sizing: border-box; }
+.app .wechat-export-preview :is(strong,em,del) { color: inherit !important; font-family: "Microsoft YaHei", "微软雅黑", sans-serif !important; }
 .secondary-btn { padding: 8px 13px; border: 1px solid var(--border-color); border-radius: 5px; color: var(--text-primary); background: var(--bg-elevated); cursor: pointer; }
 .update-toast-error { position: fixed; z-index: 1200; right: 20px; bottom: 20px; max-width: min(420px, calc(100vw - 40px)); padding: 10px 13px; border: 1px solid #d85b5b; border-radius: 7px; color: #7f1d1d; background: #fff1f1; box-shadow: 0 8px 25px rgba(0,0,0,.18); font-size: 12px; line-height: 1.45; }
 [data-theme$="dark"] .update-toast-error { color: #fecaca; background: #481f25; border-color: #b94a57; }
