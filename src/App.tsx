@@ -15,12 +15,13 @@ import { AIChatbotPanel } from './components/Chatbot/AIChatbotPanel';
 import { ImmersiveOutline } from './components/Immersive/ImmersiveOutline';
 import { TitleBar } from './components/TitleBar/TitleBar';
 import { ActivityBar } from './components/ActivityBar/ActivityBar';
+import { UnsavedChangesDialog } from './components/UnsavedChangesDialog/UnsavedChangesDialog';
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { ask, message, save as chooseSaveFile } from '@tauri-apps/plugin-dialog';
+import { message, save as chooseSaveFile } from '@tauri-apps/plugin-dialog';
 import { createElementScrollViewport, getSyncedScrollTop, type ObservableScrollViewport, type ScrollAnchor } from './utils/scrollSync';
 import { getImmersiveWorkspacePolicy } from './utils/immersiveWorkspace';
-import { guardWindowClose } from './utils/windowCloseGuard';
+import { guardWindowClose, type CloseGuardTab, type UnsavedChangesAction } from './utils/windowCloseGuard';
 import './styles/main.css';
 import './styles/workbench.css';
 
@@ -103,6 +104,7 @@ function App() {
   const [activityView, setActivityView] = useState<'explorer' | 'search'>('explorer');
   const [immersiveOutlineCollapsed, setImmersiveOutlineCollapsed] = useState(false);
   const [immersivePreviewScrollElement, setImmersivePreviewScrollElement] = useState<HTMLDivElement | null>(null);
+  const [closePromptTabs, setClosePromptTabs] = useState<CloseGuardTab[] | null>(null);
   const scrollSyncFrame = useRef<number | null>(null);
   const pendingScrollSync = useRef<{
     source: ObservableScrollViewport;
@@ -111,8 +113,21 @@ function App() {
   } | null>(null);
   const programmaticScrollRef = useRef<{ viewport: ObservableScrollViewport; top: number } | null>(null);
   const closeGuardInProgress = useRef(false);
+  const closePromptResolver = useRef<((action: UnsavedChangesAction) => void) | null>(null);
   const dragValues = useRef({ splitRatio, sidebarWidth, proofreadPanelWidth, chatbotPanelWidth });
   const immersivePolicy = getImmersiveWorkspacePolicy(mode, chatbotVisible);
+
+  const promptUnsavedChanges = useCallback((tabs: CloseGuardTab[]) => new Promise<UnsavedChangesAction>((resolve) => {
+    closePromptResolver.current = resolve;
+    setClosePromptTabs(tabs);
+  }), []);
+
+  const resolveClosePrompt = useCallback((action: UnsavedChangesAction) => {
+    const resolve = closePromptResolver.current;
+    closePromptResolver.current = null;
+    setClosePromptTabs(null);
+    resolve?.(action);
+  }, []);
 
   const balanceDocumentPanes = useCallback((proofreadWidth = proofreadPanelWidth, chatWidth = chatbotPanelWidth) => {
     const appBody = dividerRef.current?.closest('.app-body') as HTMLElement | null;
@@ -195,27 +210,7 @@ function App() {
 
       try {
         const result = await guardWindowClose(useAppStore.getState().tabs, {
-          askToSave: async modifiedTabs => {
-            const names = modifiedTabs.map(tab => `• ${tab.title}`).join('\n');
-            return ask(
-              `检测到 ${modifiedTabs.length} 个标签页有未保存的修改：\n\n${names}\n\n退出前是否保存全部修改？`,
-              {
-                title: '未保存的修改',
-                kind: 'warning',
-                okLabel: '全部保存',
-                cancelLabel: '暂不保存',
-              },
-            );
-          },
-          confirmDiscard: async modifiedTabs => ask(
-            `仍有 ${modifiedTabs.length} 个标签页未保存。确定放弃这些修改并退出吗？`,
-            {
-              title: '确认退出',
-              kind: 'warning',
-              okLabel: '放弃修改并退出',
-              cancelLabel: '返回编辑',
-            },
-          ),
+          promptAction: promptUnsavedChanges,
           chooseSavePath: async tab => {
             const selected = await chooseSaveFile({
               title: `保存“${tab.title}”`,
@@ -244,7 +239,7 @@ function App() {
     });
 
     return () => { unlisten.then(fn => fn()); };
-  }, []);
+  }, [promptUnsavedChanges]);
 
   useEffect(() => {
     if (mode === 'split') return;
@@ -813,6 +808,9 @@ function App() {
         }}
       />
       <AIDiffConfirmDialog />
+      {closePromptTabs && (
+        <UnsavedChangesDialog tabs={closePromptTabs} onAction={resolveClosePrompt} />
+      )}
     </div>
   );
 }

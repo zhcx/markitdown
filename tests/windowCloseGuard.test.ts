@@ -11,8 +11,7 @@ const tabs: CloseGuardTab[] = [
 test('closes immediately when every tab is saved', async () => {
   let prompted = false;
   const result = await guardWindowClose(tabs.map(tab => ({ ...tab, modified: false })), {
-    askToSave: async () => { prompted = true; return true; },
-    confirmDiscard: async () => false,
+    promptAction: async () => { prompted = true; return 'save'; },
     chooseSavePath: async () => null,
     saveTab: async () => undefined,
   });
@@ -24,11 +23,10 @@ test('closes immediately when every tab is saved', async () => {
 test('saves every modified tab before closing', async () => {
   const saved: Array<[string, string]> = [];
   const result = await guardWindowClose(tabs, {
-    askToSave: async modifiedTabs => {
+    promptAction: async modifiedTabs => {
       assert.deepEqual(modifiedTabs.map(tab => tab.id), ['existing', 'untitled']);
-      return true;
+      return 'save';
     },
-    confirmDiscard: async () => false,
     chooseSavePath: async tab => `C:\\docs\\${tab.id}.md`,
     saveTab: async (tabId, path) => { saved.push([tabId, path]); },
   });
@@ -43,8 +41,7 @@ test('saves every modified tab before closing', async () => {
 test('keeps the window open when save-as is cancelled', async () => {
   const saved: Array<[string, string]> = [];
   const result = await guardWindowClose(tabs, {
-    askToSave: async () => true,
-    confirmDiscard: async () => false,
+    promptAction: async () => 'save',
     chooseSavePath: async () => null,
     saveTab: async (tabId, path) => { saved.push([tabId, path]); },
   });
@@ -53,16 +50,22 @@ test('keeps the window open when save-as is cancelled', async () => {
   assert.deepEqual(saved, [['existing', 'C:\\docs\\existing.md']]);
 });
 
-test('only closes without saving after discard is confirmed', async () => {
-  let discardConfirmed = false;
-  const dependencies = {
-    askToSave: async () => false,
-    confirmDiscard: async () => discardConfirmed,
+test('closes without saving when discard is selected', async () => {
+  const result = await guardWindowClose(tabs, {
+    promptAction: async () => 'discard',
     chooseSavePath: async () => null,
     saveTab: async () => undefined,
-  };
+  });
 
-  assert.equal(await guardWindowClose(tabs, dependencies), 'stay');
-  discardConfirmed = true;
-  assert.equal(await guardWindowClose(tabs, dependencies), 'close');
+  assert.equal(result, 'close');
+});
+
+test('keeps the window open when the close prompt is dismissed', async () => {
+  const result = await guardWindowClose(tabs, {
+    promptAction: async () => 'cancel',
+    chooseSavePath: async () => null,
+    saveTab: async () => undefined,
+  });
+
+  assert.equal(result, 'stay');
 });

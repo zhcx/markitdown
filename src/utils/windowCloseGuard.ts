@@ -5,9 +5,10 @@ export interface CloseGuardTab {
   modified: boolean;
 }
 
+export type UnsavedChangesAction = 'save' | 'discard' | 'cancel';
+
 interface WindowCloseDependencies {
-  askToSave: (tabs: CloseGuardTab[]) => Promise<boolean>;
-  confirmDiscard: (tabs: CloseGuardTab[]) => Promise<boolean>;
+  promptAction: (tabs: CloseGuardTab[]) => Promise<UnsavedChangesAction>;
   chooseSavePath: (tab: CloseGuardTab) => Promise<string | null>;
   saveTab: (tabId: string, path: string) => Promise<void>;
 }
@@ -21,10 +22,9 @@ export async function guardWindowClose(
   const modifiedTabs = tabs.filter(tab => tab.modified);
   if (modifiedTabs.length === 0) return 'close';
 
-  const shouldSave = await dependencies.askToSave(modifiedTabs);
-  if (!shouldSave) {
-    return await dependencies.confirmDiscard(modifiedTabs) ? 'close' : 'stay';
-  }
+  const action = await dependencies.promptAction(modifiedTabs);
+  if (action === 'cancel') return 'stay';
+  if (action === 'discard') return 'close';
 
   try {
     for (const tab of modifiedTabs) {

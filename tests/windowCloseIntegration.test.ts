@@ -8,6 +8,8 @@ test('desktop close requests inspect all tabs and only destroy after the close g
   assert.match(source, /onCloseRequested/);
   assert.match(source, /event\.preventDefault\(\)/);
   assert.match(source, /guardWindowClose\(useAppStore\.getState\(\)\.tabs/);
+  assert.match(source, /<UnsavedChangesDialog/);
+  assert.doesNotMatch(source, /askToSave:[\s\S]*?return ask\(/);
   assert.match(source, /result === 'close'[\s\S]*?\.destroy\(\)/);
 });
 
