@@ -11,6 +11,7 @@ import { ImageExportDialog } from '../Export/ImageExportDialog';
 import { WeChatExportDialog } from '../Export/WeChatExportDialog';
 import { applyExportTemplate, loadExportTemplate } from '../Export/exportTemplates';
 import { MarkdownSyntaxGuide } from '../Help/MarkdownSyntaxGuide';
+import { sanitizeRenderedHtml } from '../../utils/safeHtml';
 
 interface MenuItem {
   label: string;
@@ -268,7 +269,7 @@ https://github.com/zhcx/markitdown
                       <h4>更新内容</h4>
                       <div
                         className="update-notes-content"
-                        dangerouslySetInnerHTML={{ __html: md.render(updateInfo.release_notes || '暂无更新说明') }}
+                        dangerouslySetInnerHTML={{ __html: sanitizeRenderedHtml(md.render(updateInfo.release_notes || '暂无更新说明')) }}
                       />
                     </div>
                     <div className="update-installer-info">
@@ -345,7 +346,7 @@ https://github.com/zhcx/markitdown
           ) : (
             <div
               className="help-content"
-              dangerouslySetInnerHTML={{ __html: md.render(content[type].body) }}
+              dangerouslySetInnerHTML={{ __html: sanitizeRenderedHtml(md.render(content[type].body)) }}
             />
           )}
         </div>
@@ -507,7 +508,7 @@ export function MenuBar() {
 
   // Render markdown to HTML using the same markdown-it as the preview
   const renderMarkdown = (text: string): string => {
-    return md.render(text);
+    return sanitizeRenderedHtml(md.render(text));
   };
 
   const handleExport = async (format: 'pdf' | 'html' | 'word') => {

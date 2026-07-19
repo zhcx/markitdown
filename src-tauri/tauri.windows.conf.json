@@ -2,7 +2,17 @@
   "bundle": {
     "resources": [
       "resources/document_converter.py",
-      "resources/document_converter.exe"
-    ]
+      "resources/document_converter.exe",
+      "icons/markdown-file.ico"
+    ],
+    "windows": {
+      "nsis": {
+        "installerHooks": "windows/markdown-file-association.nsh"
+      },
+      "wix": {
+        "fragmentPaths": ["windows/markdown-file-association.wxs"],
+        "componentRefs": ["MarkdownFileAssociationIcon"]
+      }
+    }
   }
 }

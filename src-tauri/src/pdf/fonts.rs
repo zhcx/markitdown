@@ -62,15 +62,15 @@ impl FontConfig {
     /// 检测系统中可用的中文字体
     fn detect_chinese_font(font_dirs: &[PathBuf]) -> Option<String> {
         let chinese_fonts = [
-            "Microsoft YaHei",      // Windows 微软雅黑
-            "SimSun",               // Windows 宋体
-            "SimHei",               // Windows 黑体
-            "PingFang SC",          // macOS 苹方
-            "Hiragino Sans GB",     // macOS 冬青黑体
-            "STHeiti",              // macOS 华文黑体
-            "Noto Sans CJK SC",     // Linux 思源黑体
-            "WenQuanYi Micro Hei",  // Linux 文泉驿
-            "Source Han Sans SC",   // 思源黑体
+            "Microsoft YaHei",     // Windows 微软雅黑
+            "SimSun",              // Windows 宋体
+            "SimHei",              // Windows 黑体
+            "PingFang SC",         // macOS 苹方
+            "Hiragino Sans GB",    // macOS 冬青黑体
+            "STHeiti",             // macOS 华文黑体
+            "Noto Sans CJK SC",    // Linux 思源黑体
+            "WenQuanYi Micro Hei", // Linux 文泉驿
+            "Source Han Sans SC",  // 思源黑体
         ];
 
         for font_dir in font_dirs {
@@ -82,9 +82,7 @@ impl FontConfig {
                     let name = entry.file_name().to_string_lossy().to_string();
                     for chinese_font in &chinese_fonts {
                         if name.contains(chinese_font)
-                            || name
-                                .to_lowercase()
-                                .contains(&chinese_font.to_lowercase())
+                            || name.to_lowercase().contains(&chinese_font.to_lowercase())
                         {
                             return Some(chinese_font.to_string());
                         }

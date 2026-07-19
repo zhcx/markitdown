@@ -19,6 +19,7 @@ import { UnsavedChangesDialog } from './components/UnsavedChangesDialog/UnsavedC
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import { message, save as chooseSaveFile } from '@tauri-apps/plugin-dialog';
 import { createElementScrollViewport, getSyncedScrollTop, type ObservableScrollViewport, type ScrollAnchor } from './utils/scrollSync';
 import { getImmersiveWorkspacePolicy } from './utils/immersiveWorkspace';
@@ -243,6 +244,39 @@ function App() {
   useEffect(() => {
     loadSettings();
   }, [loadSettings]);
+
+  useEffect(() => {
+    if (!('__TAURI_INTERNALS__' in window)) return undefined;
+
+    let disposed = false;
+    let removeListener: (() => void) | undefined;
+    const openPaths = async (paths: string[]) => {
+      for (const path of paths) await openFile(path);
+    };
+
+    // Install the runtime listener before draining startup argv so a second
+    // launch cannot slip through the gap while the first window is mounting.
+    void listen<string[]>('open-files', () => {
+      void invoke<string[]>('take_pending_open_files').then(openPaths).catch(error => {
+        console.error('Failed to open files from a later launch:', error);
+      });
+    }).then(async unlisten => {
+      if (disposed) {
+        unlisten();
+        return;
+      }
+      removeListener = unlisten;
+      const pending = await invoke<string[]>('take_pending_open_files');
+      await openPaths(pending);
+    }).catch(error => {
+      console.error('Failed to initialize file-open integration:', error);
+    });
+
+    return () => {
+      disposed = true;
+      removeListener?.();
+    };
+  }, [openFile]);
 
   useEffect(() => {
     if (!('__TAURI_INTERNALS__' in window)) return undefined;

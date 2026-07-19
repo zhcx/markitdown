@@ -38,7 +38,10 @@ fn get_client() -> Result<Client, String> {
     // that it is empty, but guard against a race by ignoring the result.
     let _ = HTTP_CLIENT.set(client);
     // get() must succeed after set() succeeds.
-    HTTP_CLIENT.get().cloned().ok_or_else(|| "HTTP 客户端未初始化".to_string())
+    HTTP_CLIENT
+        .get()
+        .cloned()
+        .ok_or_else(|| "HTTP 客户端未初始化".to_string())
 }
 
 fn is_retryable_status(status: reqwest::StatusCode) -> bool {
@@ -478,7 +481,9 @@ pub async fn proofread(content: &str, settings: &AISettings) -> Result<AIRespons
             Ok(results) => results,
             Err(error) if is_transient_ai_error(&error) => {
                 // concurrent chunked proofread transient failure → fall back sequentially
-                eprintln!("proofread: concurrent chunked failed ({error}), trying sequential fallback…");
+                eprintln!(
+                    "proofread: concurrent chunked failed ({error}), trying sequential fallback…"
+                );
                 match proofread_chunks_sequentially(chunks, settings).await {
                     Ok(results) => results,
                     Err(error2) if is_transient_ai_error(&error2) => {
@@ -623,10 +628,7 @@ fn parse_proofread_result(result: &str) -> Result<Vec<serde_json::Value>, String
         .replace(",}", "}")
         .replace("\n", "")
         .replace("\r", "")
-        .replace('\t', "")
-        // 移除 JSON 字符串值中可能导致解析失败的控制字符
-        .replace("\\n", "\\n")
-        .replace("\\r", "\\r");
+        .replace('\t', "");
 
     let data: serde_json::Value = match serde_json::from_str(&cleaned) {
         Ok(val) => val,
@@ -691,9 +693,7 @@ fn parse_proofread_fallback(result: &str) -> Result<serde_json::Value, String> {
         if let Some(end) = result.rfind(']') {
             if end > start {
                 let bracket_content = &result[start..=end];
-                let cleaned = bracket_content
-                    .replace(",]", "]")
-                    .replace(",}", "}");
+                let cleaned = bracket_content.replace(",]", "]").replace(",}", "}");
                 if let Ok(val) = serde_json::from_str(&cleaned) {
                     return Ok(val);
                 }
@@ -770,15 +770,7 @@ fn split_proofread_chunks(content: &str) -> Vec<ProofreadChunk> {
 fn is_proofread_chunk_boundary(ch: char) -> bool {
     matches!(
         ch,
-        '\n'
-            | '\u{3002}'
-            | '\u{ff01}'
-            | '\u{ff1f}'
-            | '\u{ff1b}'
-            | '.'
-            | '!'
-            | '?'
-            | ';'
+        '\n' | '\u{3002}' | '\u{ff01}' | '\u{ff1f}' | '\u{ff1b}' | '.' | '!' | '?' | ';'
     )
 }
 
@@ -878,7 +870,9 @@ fn extract_json_array(text: &str) -> String {
             if let Some(start_idx) = cleaned.find(pattern) {
                 let after_start = &cleaned[start_idx + pattern.len()..];
                 // 跳过可能的换行
-                let after_start = after_start.trim_start_matches('\n').trim_start_matches('\r');
+                let after_start = after_start
+                    .trim_start_matches('\n')
+                    .trim_start_matches('\r');
                 if let Some(end_idx) = after_start.find("```") {
                     cleaned = after_start[..end_idx].to_string();
                     break;
@@ -1074,6 +1068,9 @@ pub async fn outline(content: &str, settings: &AISettings) -> Result<AIResponse,
     })
 }
 
+// These parameters mirror the provider-neutral chat contract used by the
+// Tauri boundary; grouping them would only move the same fields into a DTO.
+#[allow(clippy::too_many_arguments)]
 pub async fn chat(
     content: &str,
     context: Option<&str>,
@@ -1177,6 +1174,7 @@ fn build_chat_messages(
     messages
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn chat_streaming(
     content: &str,
     context: Option<&str>,
@@ -1243,7 +1241,10 @@ pub async fn chat_streaming(
         let body_text = response.text().await.unwrap_or_default();
         let err_msg = format!("API错误 ({}): {}", status, trim_error_body(&body_text));
         window
-            .emit("ai-chat-error", serde_json::json!({ "message": &err_msg, "requestId": &request_id }))
+            .emit(
+                "ai-chat-error",
+                serde_json::json!({ "message": &err_msg, "requestId": &request_id }),
+            )
             .ok();
         return Err(err_msg);
     }
@@ -1320,10 +1321,18 @@ pub async fn chat_streaming(
 
     if !reasoning_done {
         window
-            .emit("ai-chat-reasoning-done", serde_json::json!({ "requestId": &request_id }))
+            .emit(
+                "ai-chat-reasoning-done",
+                serde_json::json!({ "requestId": &request_id }),
+            )
             .ok();
     }
-    window.emit("ai-chat-done", serde_json::json!({ "requestId": &request_id })).ok();
+    window
+        .emit(
+            "ai-chat-done",
+            serde_json::json!({ "requestId": &request_id }),
+        )
+        .ok();
 
     Ok(())
 }
@@ -1369,7 +1378,10 @@ async fn chat_streaming_anthropic_fallback(
     .await?;
 
     window
-        .emit("ai-chat-reasoning-done", serde_json::json!({ "requestId": request_id }))
+        .emit(
+            "ai-chat-reasoning-done",
+            serde_json::json!({ "requestId": request_id }),
+        )
         .ok();
     window
         .emit(
@@ -1377,7 +1389,12 @@ async fn chat_streaming_anthropic_fallback(
             serde_json::json!({ "content": &text, "requestId": request_id }),
         )
         .ok();
-    window.emit("ai-chat-done", serde_json::json!({ "requestId": request_id })).ok();
+    window
+        .emit(
+            "ai-chat-done",
+            serde_json::json!({ "requestId": request_id }),
+        )
+        .ok();
 
     Ok(())
 }

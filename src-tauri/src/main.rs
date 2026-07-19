@@ -1,8 +1,11 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-#[cfg(debug_assertions)]
-use tauri::Manager;
+use std::{
+    path::{Path, PathBuf},
+    sync::Mutex,
+};
+use tauri::{Emitter, Manager, State};
 
 mod ai;
 mod commands;
@@ -12,6 +15,68 @@ mod pdf;
 #[tauri::command]
 fn exit_application(app: tauri::AppHandle) {
     app.exit(0);
+}
+
+#[derive(Default)]
+struct PendingOpenFiles(Mutex<Vec<String>>);
+
+impl PendingOpenFiles {
+    fn enqueue_open_files(&self, paths: Vec<String>) {
+        let mut pending = self
+            .0
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        for path in paths {
+            if !pending.contains(&path) {
+                pending.push(path);
+            }
+        }
+    }
+
+    fn take(&self) -> Vec<String> {
+        let mut pending = self
+            .0
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        std::mem::take(&mut *pending)
+    }
+}
+
+fn openable_document_paths<I, S>(args: I, cwd: &Path) -> Vec<String>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<std::ffi::OsStr>,
+{
+    args.into_iter()
+        .filter_map(|argument| {
+            let argument = PathBuf::from(argument.as_ref());
+            let path = if argument.is_absolute() {
+                argument
+            } else {
+                cwd.join(argument)
+            };
+            let supported = path
+                .extension()
+                .and_then(|extension| extension.to_str())
+                .is_some_and(|extension| {
+                    matches!(
+                        extension.to_ascii_lowercase().as_str(),
+                        "md" | "markdown" | "txt"
+                    )
+                });
+            supported.then(|| path.to_string_lossy().into_owned())
+        })
+        .collect()
+}
+
+fn initial_open_files() -> Vec<String> {
+    let cwd = std::env::current_dir().unwrap_or_default();
+    openable_document_paths(std::env::args_os().skip(1), &cwd)
+}
+
+#[tauri::command]
+fn take_pending_open_files(state: State<'_, PendingOpenFiles>) -> Vec<String> {
+    state.take()
 }
 
 // Prevent Tauri commands from panicking across the FFI boundary.
@@ -33,17 +98,39 @@ fn main() {
         // 同时写入文件，方便 Windows GUI 模式下诊断
         let log_path = std::env::temp_dir().join("markitdown_crash.log");
         use std::io::Write;
-        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&log_path) {
+        if let Ok(mut f) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&log_path)
+        {
             let _ = writeln!(f, "[PANIC] {}", full);
         }
     }));
 
+    let pending_open_files = PendingOpenFiles(Mutex::new(initial_open_files()));
+
     tauri::Builder::default()
+        // This must be the first plugin: later launches deliver their argv to
+        // the existing process instead of opening a second editor window.
+        .plugin(tauri_plugin_single_instance::init(|app, args, cwd| {
+            let paths = openable_document_paths(args.into_iter().skip(1), Path::new(&cwd));
+            if !paths.is_empty() {
+                app.state::<PendingOpenFiles>()
+                    .enqueue_open_files(paths.clone());
+                let _ = app.emit("open-files", paths);
+            }
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.unminimize();
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        }))
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .invoke_handler(tauri::generate_handler![
             exit_application,
+            take_pending_open_files,
             commands::get_settings,
             commands::save_settings,
             commands::get_local_font_families,
@@ -52,8 +139,8 @@ fn main() {
             commands::export_pdf,
             commands::export_html,
             commands::export_word,
-            commands::cleanup_export_file,
             commands::get_file_content,
+            commands::get_text_attachment_content,
             commands::convert_document,
             commands::save_file_content,
             commands::read_file_base64,
@@ -71,14 +158,45 @@ fn main() {
             ai::fetch_ai_models,
             pdf::converter::export_pdf_direct,
         ])
+        .manage(pending_open_files)
         .setup(|_app| {
             #[cfg(debug_assertions)]
             {
-                let window = _app.get_webview_window("main").unwrap();
-                window.open_devtools();
+                if let Some(window) = _app.get_webview_window("main") {
+                    window.open_devtools();
+                }
             }
             Ok(())
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::openable_document_paths;
+    use std::path::Path;
+
+    #[test]
+    fn resolves_supported_launch_arguments_against_the_launch_directory() {
+        let paths = openable_document_paths(
+            [
+                "notes.md",
+                "chapter.MARKDOWN",
+                "draft.txt",
+                "image.png",
+                "--flag",
+            ],
+            Path::new("C:\\documents"),
+        );
+
+        assert_eq!(
+            paths,
+            vec![
+                "C:\\documents\\notes.md",
+                "C:\\documents\\chapter.MARKDOWN",
+                "C:\\documents\\draft.txt",
+            ]
+        );
+    }
 }

@@ -54,8 +54,13 @@ export function WorkspaceContextPanel({
   useEffect(() => {
     if (!linkedDocument) return;
     const id = `current-${linkedDocument.title}`;
-    setSources((current) => current.some((source) => source.id === id) ? current : [...current, { id, name: linkedDocument.title, content: linkedDocument.content, sections: [] }]);
-    setSelected((current) => current.includes(id) ? current : [...current, id]);
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      setSources((current) => current.some((source) => source.id === id) ? current : [...current, { id, name: linkedDocument.title, content: linkedDocument.content, sections: [] }]);
+      setSelected((current) => current.includes(id) ? current : [...current, id]);
+    });
+    return () => { cancelled = true; };
   }, [linkedDocument]);
 
   const selectedSources = useMemo(() => sources.filter((source) => selected.includes(source.id)), [sources, selected]);
@@ -82,7 +87,7 @@ export function WorkspaceContextPanel({
     const selectedPaths = await open({ multiple: true, filters: [{ name: '可读取文本', extensions: textExtensions }] });
     if (!selectedPaths) return;
     const paths = Array.isArray(selectedPaths) ? selectedPaths : [selectedPaths];
-    const newSources = await Promise.all(paths.map(async (path) => ({ id: `file-${path}`, name: path.split(/[/\\]/).pop() || path, path, content: await invoke<string>('get_file_content', { path }), sections: [] })));
+    const newSources = await Promise.all(paths.map(async (path) => ({ id: `file-${path}`, name: path.split(/[/\\]/).pop() || path, path, content: await invoke<string>('get_text_attachment_content', { path }), sections: [] })));
     setSources((current) => [...current.filter((source) => !newSources.some((item) => item.id === source.id)), ...newSources]);
     setSelected((current) => [...new Set([...current, ...newSources.map((source) => source.id)])]);
   };

@@ -1,4 +1,4 @@
-use super::ImageError;
+use super::{http_client, read_upload_file, ImageError};
 use reqwest::multipart;
 use serde::{Deserialize, Serialize};
 use sha1::{Digest, Sha1};
@@ -13,14 +13,22 @@ pub struct CloudinaryConfig {
 
 pub async fn upload(file_path: &str, config: CloudinaryConfig) -> Result<String, ImageError> {
     if config.cloud_name.is_empty() || config.api_key.is_empty() || config.api_secret.is_empty() {
-        return Err(ImageError::Api("Cloudinary credentials not configured".into()));
+        return Err(ImageError::Api(
+            "Cloudinary credentials not configured".into(),
+        ));
     }
 
-    let file_data = tokio::fs::read(file_path).await?;
+    let path = std::path::Path::new(file_path);
+    let file_name = path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| ImageError::Api("Image file has no valid name".into()))?;
+    let file_data = read_upload_file(path).await?;
     let timestamp = chrono::Utc::now().timestamp().to_string();
 
     let folder = config.upload_folder.as_deref().unwrap_or("");
-    let public_id = generate_public_id(file_path);
+    let public_id = generate_public_id(path)?;
 
     let signature_string = if folder.is_empty() {
         format!(
@@ -43,7 +51,7 @@ pub async fn upload(file_path: &str, config: CloudinaryConfig) -> Result<String,
         config.cloud_name
     );
 
-    let client = reqwest::Client::new();
+    let client = http_client()?;
     let mut form = multipart::Form::new()
         .text("api_key", config.api_key.clone())
         .text("timestamp", timestamp.clone())
@@ -51,13 +59,7 @@ pub async fn upload(file_path: &str, config: CloudinaryConfig) -> Result<String,
         .text("public_id", public_id.clone())
         .part(
             "file",
-            multipart::Part::bytes(file_data).file_name(
-                std::path::Path::new(file_path)
-                    .file_name()
-                    .unwrap()
-                    .to_string_lossy()
-                    .to_string(),
-            ),
+            multipart::Part::bytes(file_data).file_name(file_name.to_string()),
         );
 
     if !folder.is_empty() {
@@ -89,11 +91,12 @@ pub async fn upload(file_path: &str, config: CloudinaryConfig) -> Result<String,
     Ok(result.secure_url)
 }
 
-fn generate_public_id(file_path: &str) -> String {
-    let stem = std::path::Path::new(file_path)
+fn generate_public_id(file_path: &std::path::Path) -> Result<String, ImageError> {
+    let stem = file_path
         .file_stem()
-        .unwrap()
-        .to_string_lossy();
+        .and_then(|value| value.to_str())
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| ImageError::Api("Image file has no valid name".into()))?;
     let timestamp = chrono::Utc::now().format("%Y%m%d%H%M%S");
-    format!("{}_{}", stem, timestamp)
+    Ok(format!("{}_{}", stem, timestamp))
 }

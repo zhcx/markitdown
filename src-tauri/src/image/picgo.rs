@@ -1,4 +1,4 @@
-use super::ImageError;
+use super::{http_client, ImageError};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -17,7 +17,7 @@ pub async fn upload(file_path: &str, config: PicGoConfig) -> Result<String, Imag
 }
 
 async fn upload_via_server(file_path: &str, config: &PicGoConfig) -> Result<String, ImageError> {
-    let client = reqwest::Client::new();
+    let client = http_client()?;
 
     #[derive(serde::Serialize)]
     struct PicGoRequest {
@@ -60,7 +60,9 @@ async fn upload_via_server(file_path: &str, config: &PicGoConfig) -> Result<Stri
 
     if !result.success {
         return Err(ImageError::Api(
-            result.message.unwrap_or_else(|| "PicGo upload failed".into()),
+            result
+                .message
+                .unwrap_or_else(|| "PicGo upload failed".into()),
         ));
     }
 

@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { save } from '@tauri-apps/plugin-dialog';
 import MarkdownIt from 'markdown-it';
+import { sanitizeRenderedHtml } from '../../utils/safeHtml';
 import { applyExportTemplate, EXPORT_TEMPLATES, loadExportTemplate, saveExportTemplate, type ExportTemplate } from './exportTemplates';
 
 interface ProgressEvent {
@@ -82,7 +83,7 @@ export function PdfExportDialog({ content, filePath, onClose }: PdfExportDialogP
     try {
       const md = new MarkdownIt({ html: true, linkify: true, typographer: true, breaks: true });
       const title = filePath?.split(/[\\/]/).pop()?.replace(/\.md$/i, '') || '文档';
-      const htmlBody = applyExportTemplate(md.render(content), title, template);
+      const htmlBody = applyExportTemplate(sanitizeRenderedHtml(md.render(content)), title, template);
 
       const defaultFilename = filePath
         ? filePath.split(/[\\/]/).pop()?.replace(/\.md$/i, '') || 'document'

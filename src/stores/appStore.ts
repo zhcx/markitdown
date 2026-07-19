@@ -8,6 +8,7 @@ import { applySavedTab } from '../utils/tabPersistence';
 const isTauriRuntime = () => typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 const browserSettingsKey = 'markitdown.browser.settings';
 let settingsMutationVersion = 0;
+let settingsSaveQueue: Promise<unknown> = Promise.resolve();
 
 const cacheSettingsForStartup = (settings: Settings) => {
   try {
@@ -316,6 +317,8 @@ const TIMELINE_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 const TIMELINE_CAPTURE_DELAY = 1500;
 const timelineCaptureTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const pendingTimelineBaselines = new Map<string, string>();
+let uploadStatusResetTimer: ReturnType<typeof setTimeout> | null = null;
+let conversionStatusResetTimer: ReturnType<typeof setTimeout> | null = null;
 
 const formatTimelineText = (text: string) => text
   .replace(/\r?\n/g, '↵')
@@ -421,7 +424,7 @@ export const useAppStore = create<AppState>((set, get) => ({
                   label: shortenTimelineLabel(operation),
                   operation,
                 },
-                ...(latestTimeline[activeTabId] || []),
+                ...(nextTimeline[activeTabId] || []),
               ], now),
             },
           });
@@ -498,8 +501,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!isTauriRuntime()) {
       return;
     }
+    const persist = settingsSaveQueue.then(() => invoke('save_settings', { settings }));
+    settingsSaveQueue = persist.catch(() => undefined);
     try {
-      await invoke('save_settings', { settings });
+      await persist;
     } catch (error) {
       console.error('Failed to save settings:', error);
     }
@@ -634,9 +639,15 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   closeTab: (id) => {
-    const { tabs, activeTabId } = get();
+    const { tabs, activeTabId, timeline } = get();
     const tabIndex = tabs.findIndex(t => t.id === id);
     const newTabs = tabs.filter(t => t.id !== id);
+    const pendingTimer = timelineCaptureTimers.get(id);
+    if (pendingTimer) clearTimeout(pendingTimer);
+    timelineCaptureTimers.delete(id);
+    pendingTimelineBaselines.delete(id);
+    const nextTimeline = { ...timeline };
+    delete nextTimeline[id];
 
     if (newTabs.length === 0) {
       const newTab: Tab = {
@@ -646,7 +657,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         content: '',
         modified: false,
       };
-      set({ tabs: [newTab], activeTabId: newTab.id, content: '', currentFile: null });
+      set({ tabs: [newTab], activeTabId: newTab.id, content: '', currentFile: null, timeline: nextTimeline });
     } else if (id === activeTabId) {
       const newActiveIndex = Math.min(tabIndex, newTabs.length - 1);
       const newActiveTab = newTabs[newActiveIndex];
@@ -655,9 +666,10 @@ export const useAppStore = create<AppState>((set, get) => ({
         activeTabId: newActiveTab.id,
         content: newActiveTab.content,
         currentFile: newActiveTab.path,
+        timeline: nextTimeline,
       });
     } else {
-      set({ tabs: newTabs });
+      set({ tabs: newTabs, timeline: nextTimeline });
     }
     get().updateWordCount();
   },
@@ -699,14 +711,19 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   setUploadStatus: (status, progress = 0, message = '') => {
+    if (uploadStatusResetTimer) clearTimeout(uploadStatusResetTimer);
+    uploadStatusResetTimer = null;
     set({
       uploadStatus: status,
       uploadProgress: progress,
       uploadMessage: message,
     });
     if (status === 'success' || status === 'error') {
-      setTimeout(() => {
-        set({ uploadStatus: 'idle', uploadProgress: 0, uploadMessage: '' });
+      uploadStatusResetTimer = setTimeout(() => {
+        uploadStatusResetTimer = null;
+        if (get().uploadStatus === status) {
+          set({ uploadStatus: 'idle', uploadProgress: 0, uploadMessage: '' });
+        }
       }, 3000);
     }
   },
@@ -752,9 +769,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   cleanupTimeline: () => set(({ timeline }) => ({ timeline: pruneTimeline(timeline) })),
 
   setConversionStatus: (status, message = '') => {
+    if (conversionStatusResetTimer) clearTimeout(conversionStatusResetTimer);
+    conversionStatusResetTimer = null;
     set({ conversionStatus: status, conversionMessage: message });
     if (status === 'success' || status === 'error') {
-      setTimeout(() => {
+      conversionStatusResetTimer = setTimeout(() => {
+        conversionStatusResetTimer = null;
         if (get().conversionStatus === status) {
           set({ conversionStatus: 'idle', conversionMessage: '' });
         }

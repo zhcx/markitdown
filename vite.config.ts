@@ -236,5 +236,16 @@ export default defineConfig({
   ],
   build: {
     chunkSizeWarningLimit: 2500,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          const normalized = id.replace(/\\/g, '/');
+          if (normalized.includes('/node_modules/monaco-editor/')) return 'monaco-editor';
+          if (/\/node_modules\/(react|react-dom|scheduler)\//.test(normalized)) return 'react-vendor';
+          if (/\/node_modules\/(markdown-it|linkify-it|mdurl|uc\.micro|highlight\.js|katex|dompurify)\//.test(normalized)) return 'markdown-rendering';
+          return undefined;
+        },
+      },
+    },
   },
 })

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Fragment>
+    <DirectoryRef Id="TARGETDIR">
+      <Component Id="MarkdownFileAssociationIcon" Guid="*">
+        <RegistryKey
+          Root="HKCR"
+          Key="MarkitDown.Markdown\DefaultIcon"
+          Action="createAndRemoveOnUninstall"
+        >
+          <RegistryValue
+            Type="string"
+            Value="[INSTALLDIR]icons\markdown-file.ico,0"
+            KeyPath="yes"
+          />
+        </RegistryKey>
+      </Component>
+    </DirectoryRef>
+  </Fragment>
+</Wix>

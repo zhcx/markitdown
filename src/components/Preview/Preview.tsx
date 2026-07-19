@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import { useDeferredValue, useEffect, useRef, useState } from 'react';
 import MarkdownIt from 'markdown-it';
 import taskLists from 'markdown-it-task-lists';
 import hljs from 'highlight.js';
 import katex from 'katex';
 import 'katex/dist/katex.min.css';
 import { useAppStore } from '../../stores/appStore';
+import { sanitizeRenderedHtml } from '../../utils/safeHtml';
 
 interface PreviewProps {
   className?: string;
@@ -80,7 +81,7 @@ function renderVideoExtensions(source: string) {
     if (!match) return line;
     const embed = videoEmbedUrl(match[1]);
     if (!embed) return line;
-    return `<figure class="video-embed"><iframe src="${md.utils.escapeHtml(embed.src)}" title="${embed.title}" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe><figcaption><a href="${md.utils.escapeHtml(match[1])}" target="_blank" rel="noreferrer">${embed.title}</a></figcaption></figure>`;
+    return `<figure class="video-embed" data-markitdown-video-src="${md.utils.escapeHtml(embed.src)}" data-markitdown-video-title="${embed.title}"><figcaption><a href="${md.utils.escapeHtml(match[1])}" target="_blank" rel="noreferrer">${embed.title}</a></figcaption></figure>`;
   }).join('\n');
 }
 
@@ -119,6 +120,9 @@ export function Preview({ className, style, onScrollContainerReady, onContentRen
   const mermaidSequenceRef = useRef(0);
   const [mermaidThemeVersion, setMermaidThemeVersion] = useState(0);
   const { content, settings } = useAppStore();
+  // Markdown parsing, sanitization and DOM replacement are comparatively
+  // expensive. Deferring them keeps Monaco's keystroke updates responsive.
+  const deferredContent = useDeferredValue(content);
   const isEmpty = content.trim().length === 0;
 
   useEffect(() => {
@@ -150,7 +154,7 @@ export function Preview({ className, style, onScrollContainerReady, onContentRen
     if (!containerRef.current) return;
     let disposed = false;
 
-    const rendered = md.render(renderMath(renderVideoExtensions(content)));
+    const rendered = sanitizeRenderedHtml(md.render(renderMath(renderVideoExtensions(deferredContent))));
     containerRef.current.innerHTML = rendered;
     onContentRendered?.();
 
@@ -158,20 +162,25 @@ export function Preview({ className, style, onScrollContainerReady, onContentRen
     // visible preview. A long document can therefore contain many diagrams
     // without blocking initial render or editor input.
     const mermaidBlocks = containerRef.current.querySelectorAll('code.language-mermaid');
+    const mermaidPromise = mermaidBlocks.length > 0
+      ? import('mermaid').then(({ default: mermaid }) => {
+        mermaid.initialize({
+          startOnLoad: false,
+          securityLevel: 'strict',
+          theme: resolvedThemeRef.current.endsWith('-dark') ? 'dark' : 'neutral',
+        });
+        return mermaid;
+      })
+      : null;
     const renderMermaid = async (block: Element) => {
       const code = block.textContent || '';
       try {
-        // Dynamic import mermaid
-        const mermaid = (await import('mermaid')).default;
-        mermaid.initialize({
-          startOnLoad: false,
-          theme: resolvedThemeRef.current.endsWith('-dark') ? 'dark' : 'neutral',
-        });
+        const mermaid = await mermaidPromise!;
         const { svg } = await mermaid.render(`mermaid-${Date.now()}-${mermaidSequenceRef.current++}`, code);
         const pre = block.parentElement;
         if (!disposed && pre) {
           const wrapper = document.createElement('div');
-          wrapper.innerHTML = `<figure class="mermaid-container"><figcaption>Mermaid 图表</figcaption>${svg}</figure>`;
+          wrapper.innerHTML = sanitizeRenderedHtml(`<figure class="mermaid-container"><figcaption>Mermaid 图表</figcaption>${svg}</figure>`);
           if (wrapper.firstElementChild) pre.replaceWith(wrapper.firstElementChild);
           onContentRendered?.();
         }
@@ -217,7 +226,7 @@ export function Preview({ className, style, onScrollContainerReady, onContentRen
         if (onContentRendered) img.removeEventListener('load', onContentRendered);
       });
     };
-  }, [content, mermaidThemeVersion, onContentRendered]);
+  }, [deferredContent, mermaidThemeVersion, onContentRendered]);
 
   const containerStyle: React.CSSProperties = {
     fontFamily: settings.appearance.font_family,

@@ -29,7 +29,7 @@ function wrapTextLeaves(root: HTMLElement) {
   });
 }
 
-export function renderWeChatHtml(markdown: string, title: string, theme: WeChatTheme) {
+function renderWeChatHtml(markdown: string, title: string, theme: WeChatTheme) {
   const documentNode = new DOMParser().parseFromString(`<section>${md.render(markdown || '暂无内容')}</section>`, 'text/html');
   const root = documentNode.body.firstElementChild as HTMLElement;
   root.setAttribute('style', `max-width:677px;margin:0 auto;padding:4px 0;font-size:16px;${textStyle(theme)}`);
@@ -55,7 +55,12 @@ export function renderWeChatHtml(markdown: string, title: string, theme: WeChatT
   });
   const cover = documentNode.createElement('section');
   cover.setAttribute('style', `margin:8px 0 30px;padding:30px 24px 24px;border-top:5px solid ${theme.primary};background:${theme.pale};`);
-  cover.innerHTML = `<p style="margin:0 0 10px;color:${theme.primary};font-size:12px;letter-spacing:2px;font-family:${WECHAT_FONT_FAMILY};"><span leaf="">MARKITDOWN · WECHAT</span></p><p style="margin:0;font-size:28px;line-height:1.35;font-weight:700;${textStyle(theme)}"><span leaf="">${title}</span></p><p style="margin:14px 0 0;color:${theme.primary};font-family:${WECHAT_FONT_FAMILY};font-size:13px;"><span leaf="">阅读这篇文章</span></p>`;
+  cover.innerHTML = `<p style="margin:0 0 10px;color:${theme.primary};font-size:12px;letter-spacing:2px;font-family:${WECHAT_FONT_FAMILY};"><span leaf="">MARKITDOWN · WECHAT</span></p><p style="margin:0;font-size:28px;line-height:1.35;font-weight:700;${textStyle(theme)}"><span leaf="" data-wechat-title></span></p><p style="margin:14px 0 0;color:${theme.primary};font-family:${WECHAT_FONT_FAMILY};font-size:13px;"><span leaf="">阅读这篇文章</span></p>`;
+  const titleNode = cover.querySelector<HTMLElement>('[data-wechat-title]');
+  if (titleNode) {
+    titleNode.textContent = title;
+    titleNode.removeAttribute('data-wechat-title');
+  }
   root.prepend(cover); wrapTextLeaves(root);
   return root.outerHTML;
 }

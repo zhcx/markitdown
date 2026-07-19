@@ -6999,40 +6999,125 @@ textarea:focus-visible {
 .explorer-icon.file-icon.audio { background: #6f82bd; font-size: 13px; }
 .explorer-icon.file-icon.archive { background: #9b7a43; font-size: 6px; }
 
-/* VS Code-inspired file glyphs: compact fold-corner pages with type colors. */
+/* VS Code-inspired file glyphs: recognizable silhouettes with semantic colors. */
 .explorer-icon.vscode-file-icon {
-  flex: 0 0 18px;
-  width: 18px;
-  height: 18px;
+  --file-icon-contrast: #fff;
+  flex: 0 0 19px;
+  width: 19px;
+  height: 19px;
   overflow: visible;
   border: 0;
   border-radius: 0;
   background: transparent !important;
-  color: #8b97a8;
+  color: #8391a2;
+  shape-rendering: geometricPrecision;
 }
-.vscode-file-icon .vscode-file-paper { fill: currentColor; }
-.vscode-file-icon .vscode-file-fold { fill: none; stroke: color-mix(in srgb, currentColor 48%, #fff); stroke-width: 1.25; }
-.vscode-file-icon text { fill: #fff; font-family: Arial, sans-serif; font-size: 6.3px; font-weight: 800; letter-spacing: -.35px; }
-.vscode-file-icon.markdown { color: #d85d5d; }
-.vscode-file-icon.readme { color: #4d9ad1; }
-.vscode-file-icon.rust { color: #d19a43; }
-.vscode-file-icon.cargo { color: #e5ae43; }
-.vscode-file-icon.typescript { color: #3178c6; }
-.vscode-file-icon.javascript { color: #d9b722; }
-.vscode-file-icon.python { color: #4b8bbe; }
-.vscode-file-icon.json { color: #d5a92d; }
-.vscode-file-icon.html { color: #e26b43; }
-.vscode-file-icon.css { color: #5d9bd3; }
-.vscode-file-icon.git { color: #ce6c59; }
-.vscode-file-icon.config { color: #8290a2; }
-.vscode-file-icon.image { color: #a970c4; }
-.vscode-file-icon.pdf { color: #d14e4e; }
-.vscode-file-icon.word { color: #4f78b5; }
-.vscode-file-icon.slides { color: #d67b45; }
-.vscode-file-icon.sheet { color: #4b976c; }
-.vscode-file-icon.audio { color: #7f86c7; }
-.vscode-file-icon.archive { color: #a9864b; }
-.vscode-file-icon text { dominant-baseline: middle; }
+.vscode-file-icon .file-glyph-outline {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.45;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.vscode-file-icon .file-glyph-detail {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.35;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.vscode-file-icon .file-glyph-solid { fill: currentColor; }
+.vscode-file-icon .file-glyph-cutout { fill: var(--file-icon-contrast); }
+.vscode-file-icon .file-glyph-cutout-stroke {
+  fill: none;
+  stroke: var(--file-icon-contrast);
+  stroke-width: 1.15;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.vscode-file-icon .file-glyph-language,
+.vscode-file-icon .file-glyph-knockout,
+.vscode-file-icon .file-glyph-binary {
+  font-family: "Segoe UI", Arial, sans-serif;
+  font-weight: 800;
+  dominant-baseline: auto;
+}
+.vscode-file-icon .file-glyph-language { fill: currentColor; font-size: 9.5px; letter-spacing: -.6px; }
+.vscode-file-icon .file-glyph-language.long { font-size: 7.5px; letter-spacing: -.75px; }
+.vscode-file-icon .file-glyph-brace { font-size: 8.4px; letter-spacing: -1.5px; }
+.vscode-file-icon .file-glyph-font { font-family: Georgia, serif; font-size: 10px; font-weight: 700; }
+.vscode-file-icon .file-glyph-binary { fill: currentColor; font-size: 6.2px; letter-spacing: -.45px; }
+.vscode-file-icon .file-glyph-knockout { fill: var(--file-icon-contrast); font-size: 8.8px; letter-spacing: -.55px; }
+.vscode-file-icon.file-kind-pdf .file-glyph-knockout { font-size: 6.2px; letter-spacing: -.65px; }
+.vscode-file-icon .file-glyph-grid { fill: none; stroke: color-mix(in srgb, currentColor 70%, #fff); stroke-width: .55; opacity: .75; }
+.vscode-file-icon .file-glyph-lines { stroke-width: 1.15; opacity: .85; }
+
+/* Language and file-family palette, tuned for both light and dark explorer themes. */
+.vscode-file-icon.file-kind-markdown { color: #4d9ad1; }
+.vscode-file-icon.file-kind-readme { color: #4ba185; }
+.vscode-file-icon.file-kind-changelog { color: #47a1b8; }
+.vscode-file-icon.file-kind-license { color: #d3a536; }
+.vscode-file-icon.file-kind-c,
+.vscode-file-icon.file-kind-cpp,
+.vscode-file-icon.file-kind-csharp,
+.vscode-file-icon.file-kind-fsharp,
+.vscode-file-icon.file-kind-dart,
+.vscode-file-icon.file-kind-go { color: #419bc7; }
+.vscode-file-icon.file-kind-rust,
+.vscode-file-icon.file-kind-cargo { color: #c98b47; }
+.vscode-file-icon.file-kind-typescript { color: #3d8dcc; }
+.vscode-file-icon.file-kind-javascript { color: #d5b51f; }
+.vscode-file-icon.file-kind-react { color: #3aa9d8; }
+.vscode-file-icon.file-kind-python { color: #4b8bbe; }
+.vscode-file-icon.file-kind-java { color: #dc4b55; }
+.vscode-file-icon.file-kind-ruby { color: #d9505d; }
+.vscode-file-icon.file-kind-php { color: #777bb3; }
+.vscode-file-icon.file-kind-swift,
+.vscode-file-icon.file-kind-kotlin { color: #e76f3c; }
+.vscode-file-icon.file-kind-julia { color: #a66bd4; }
+.vscode-file-icon.file-kind-lua,
+.vscode-file-icon.file-kind-visual-basic { color: #5b81bd; }
+.vscode-file-icon.file-kind-scala,
+.vscode-file-icon.file-kind-elixir { color: #b44d62; }
+.vscode-file-icon.file-kind-groovy { color: #75a940; }
+.vscode-file-icon.file-kind-json { color: #d2b52d; }
+.vscode-file-icon.file-kind-yaml { color: #b55c9e; }
+.vscode-file-icon.file-kind-toml,
+.vscode-file-icon.file-kind-config,
+.vscode-file-icon.file-kind-env,
+.vscode-file-icon.file-kind-makefile { color: #7e91a7; }
+.vscode-file-icon.file-kind-vite { color: #8b73d6; }
+.vscode-file-icon.file-kind-html { color: #e5623e; }
+.vscode-file-icon.file-kind-xml,
+.vscode-file-icon.file-kind-rss { color: #e07b35; }
+.vscode-file-icon.file-kind-css { color: #458ec7; }
+.vscode-file-icon.file-kind-scss { color: #c45a91; }
+.vscode-file-icon.file-kind-less { color: #416d9c; }
+.vscode-file-icon.file-kind-vue { color: #49a879; }
+.vscode-file-icon.file-kind-svelte { color: #ef6840; }
+.vscode-file-icon.file-kind-shell { color: #63a74f; }
+.vscode-file-icon.file-kind-powershell { color: #3978b9; }
+.vscode-file-icon.file-kind-git { color: #df6d51; }
+.vscode-file-icon.file-kind-docker { color: #2796d2; }
+.vscode-file-icon.file-kind-npm { color: #cb4b4b; }
+.vscode-file-icon.file-kind-pnpm { color: #e0a12c; }
+.vscode-file-icon.file-kind-yarn { color: #4288b8; }
+.vscode-file-icon.file-kind-database { color: #d1a13b; }
+.vscode-file-icon.file-kind-notebook { color: #e58c3e; }
+.vscode-file-icon.file-kind-pdf { color: #d85151; }
+.vscode-file-icon.file-kind-word { color: #3d73b9; }
+.vscode-file-icon.file-kind-slides { color: #d56a3c; }
+.vscode-file-icon.file-kind-sheet { color: #3f9563; }
+.vscode-file-icon.file-kind-image,
+.vscode-file-icon.file-kind-svg { color: #aa68bd; }
+.vscode-file-icon.file-kind-audio { color: #806fc3; }
+.vscode-file-icon.file-kind-video { color: #c05a9d; }
+.vscode-file-icon.file-kind-archive { color: #a98543; }
+.vscode-file-icon.file-kind-epub { color: #699d53; }
+.vscode-file-icon.file-kind-mail { color: #5d8fb9; }
+.vscode-file-icon.file-kind-font { color: #607d8b; }
+.vscode-file-icon.file-kind-binary,
+.vscode-file-icon.file-kind-wasm { color: #7766b4; }
 .explorer-children { border: 0; margin: 0; }
 .explorer-empty-folder,
 .explorer-empty-state { min-height: 24px; color: var(--text-muted); font-size: 12px; line-height: 24px; }
@@ -7080,11 +7165,11 @@ textarea:focus-visible {
   padding-right: 8px;
 }
 .vscode-explorer .open-editor-row .explorer-icon.file-icon {
-  flex: 0 0 18px;
-  width: 18px;
-  height: 18px;
+  flex: 0 0 19px;
+  width: 19px;
+  height: 19px;
 }
-.vscode-explorer .file-icon.document {
+.vscode-explorer .file-icon.file-kind-document {
   color: #8b97a8;
 }
 .vscode-explorer .open-editor-row.active {
@@ -7889,21 +7974,175 @@ textarea:focus-visible {
   border-radius: 6px;
 }
 
-/* Give the active model the header space it needs; provider names remain
-   bounded so long model IDs (for example deepseek-ai/DeepSeek-V3) stay legible. */
-.chatbot-header-left { gap: 10px; }
-.chatbot-ai-selectors { flex: 1 1 auto; min-width: 0; }
+/* AI panel header: separate identity from model configuration so long model
+   names remain readable without pushing the title or close action around. */
+.chatbot-header {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  min-height: 0;
+  padding: 10px 14px 11px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--surface-muted) 45%, transparent), transparent);
+}
+
+.chatbot-header-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.chatbot-header-identity {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+
+.chatbot-header-mark {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  border: 1px solid color-mix(in srgb, var(--accent-color) 38%, var(--border-color));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent-color) 13%, var(--surface-raised));
+  color: var(--accent-color);
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.06);
+}
+
+.chatbot-header h4 {
+  font-size: 14px;
+  line-height: 1.15;
+}
+
+.chatbot-header-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.chatbot-header-subtitle {
+  display: block;
+  margin-top: 3px;
+  color: var(--text-muted);
+  font-size: 10.5px;
+  line-height: 1;
+}
+
+.chatbot-close-btn {
+  width: 28px;
+  height: 28px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+}
+
+.chatbot-close-btn svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+}
+
+.chatbot-close-btn:hover {
+  border-color: var(--border-soft);
+  background: var(--surface-muted);
+  color: var(--text-color);
+}
+
+.chatbot-ai-selectors {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.5fr);
+  grid-template-rows: 12px 32px;
+  column-gap: 8px;
+  row-gap: 3px;
+  align-items: stretch;
+  min-width: 0;
+}
+
+.chatbot-selector-label {
+  align-self: center;
+  min-width: 0;
+  padding-left: 2px;
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 12px;
+  letter-spacing: 0.02em;
+}
+
 .chatbot-provider-select {
-  width: 172px;
-  min-width: 118px;
-  max-width: 38%;
-  flex: 0 1 172px;
+  grid-column: 1;
+  grid-row: 2;
+  width: 100%;
+  min-width: 0;
+  max-width: none;
 }
 .chatbot-model-select {
-  width: 0;
-  min-width: 150px;
+  grid-column: 2;
+  grid-row: 2;
+  width: 100%;
+  min-width: 0;
   max-width: none;
-  flex: 1 1 220px;
+}
+
+.chatbot-provider-select,
+.chatbot-model-select {
+  box-sizing: border-box;
+  height: 32px;
+  min-height: 32px;
+  max-height: 32px;
+  padding: 0 30px 0 10px;
+  border-color: var(--border-soft);
+  border-radius: 7px;
+  background-color: var(--surface-muted);
+  color: var(--text-color);
+  font-size: 12px;
+  outline: none;
+  transition: border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.chatbot-provider-select:hover,
+.chatbot-model-select:hover {
+  border-color: var(--border-strong);
+  background-color: var(--surface-raised);
+}
+
+.chatbot-provider-select:focus,
+.chatbot-model-select:focus {
+  border-color: var(--accent-color);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-color) 15%, transparent);
+}
+
+.workspace-ai-scope {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 20px;
+  padding: 0 7px;
+  border: 1px solid color-mix(in srgb, var(--accent-color) 24%, var(--border-soft));
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--accent-color) 8%, var(--surface-muted));
+  color: var(--text-secondary);
+  font-size: 10.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.workspace-ai-scope-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent-color);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-color) 15%, transparent);
 }
 
 /* VS Code-style pane boundaries: a generous hit target for resizing, with a
@@ -7955,11 +8194,7 @@ textarea:focus-visible {
 }
 
 @media (max-width: 520px) {
-  .chatbot-header { align-items: flex-start; }
-  .chatbot-header-left { flex-wrap: wrap; }
-  .chatbot-ai-selectors { flex-basis: 100%; }
-  .chatbot-provider-select { width: 42%; max-width: 42%; }
-  .chatbot-model-select { min-width: 0; }
+  .chatbot-ai-selectors { grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); }
 }
 
 /* AI composer: one calm writing surface, with controls anchored beneath the

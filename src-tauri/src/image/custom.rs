@@ -19,8 +19,9 @@ pub async fn upload(file_path: &str, config: CustomApiConfig) -> Result<String, 
     let file_data = tokio::fs::read(file_path).await?;
     let file_name = std::path::Path::new(file_path)
         .file_name()
-        .unwrap()
-        .to_string_lossy()
+        .and_then(|value| value.to_str())
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| ImageError::Api("Image file has no valid name".into()))?
         .to_string();
 
     let client = reqwest::Client::new();

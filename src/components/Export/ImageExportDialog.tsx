@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import MarkdownIt from 'markdown-it';
 import { applyExportTemplate, EXPORT_TEMPLATES, loadExportTemplate, saveExportTemplate, type ExportTemplate } from './exportTemplates';
+import { sanitizeRenderedHtml } from '../../utils/safeHtml';
 
 type ImageRatio = 'square' | 'landscape' | 'wide' | 'portrait' | 'a4';
 
@@ -32,7 +33,7 @@ export function ImageExportDialog({ content, onClose }: ImageExportDialogProps) 
   const [exporting, setExporting] = useState(false);
   const [template, setTemplate] = useState<ExportTemplate>(loadExportTemplate);
   const current = formats.find((format) => format.id === selected) || formats[0];
-  const renderedHtml = useMemo(() => md.render(content || '暂无内容'), [content]);
+  const renderedHtml = useMemo(() => sanitizeRenderedHtml(md.render(content || '暂无内容')), [content]);
 
   const handleExport = async () => {
     saveExportTemplate(template);

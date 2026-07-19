@@ -8,6 +8,9 @@ import {
   selectActiveDocumentContent,
   shouldAutoRevealOutline,
 } from '../../utils/markdownOutline';
+import { readStoredStringArray, writeStoredStringArray } from '../../utils/storage';
+import { isTextFileName } from '../../utils/fileIcon';
+import { FileTypeIcon } from './FileTypeIcon';
 
 interface FileNode {
   name: string;
@@ -45,7 +48,7 @@ type TimelineDiffLine = { kind: 'same' | 'added' | 'removed' | 'collapsed'; text
 const OPEN_EDITORS_ID = 'virtual:open-editors';
 const WORKSPACE_ROOTS_KEY = 'markitdown.workspace-roots';
 const isTauriRuntime = () => '__TAURI_INTERNALS__' in window;
-const isDirectOpenFile = (name: string) => /\.(md|markdown|txt)$/i.test(name);
+const isDirectOpenFile = isTextFileName;
 // Keep this in sync with the desktop command. These are the file types offered
 // by MarkItDown in the workspace, rather than only files the editor can read.
 const isConvertibleFile = (name: string) => /\.(pdf|doc|docx|ppt|pptx|xls|xlsx|html?|csv|json|xml|epub|zip|png|jpe?g|gif|webp|bmp|svg|mp3|wav|m4a|ogg|eml|msg|rss|atom|ipynb)$/i.test(name);
@@ -152,35 +155,7 @@ function ExplorerActionIcon({ type }: { type: 'newFile' | 'openFile' | 'openFold
 }
 
 function FileIcon({ filename }: { filename: string }) {
-  const name = filename.toLowerCase();
-  const extension = name.split('.').pop() || '';
-  const [type, label] = name === 'cargo.toml' || name === 'cargo.lock' ? ['cargo', 'C']
-    : name === 'package.json' || name === 'package-lock.json' ? ['npm', 'N']
-      : name.startsWith('.git') ? ['git', '◆']
-        : name.startsWith('.env') ? ['config', '⚙']
-          : name === 'readme.md' ? ['readme', 'i']
-            : extension === 'md' || extension === 'markdown' ? ['markdown', 'M']
-              : extension === 'rs' ? ['rust', '{}']
-                : extension === 'ts' || extension === 'tsx' ? ['typescript', 'TS']
-                  : extension === 'js' || extension === 'jsx' ? ['javascript', 'JS']
-                    : extension === 'py' ? ['python', 'Py']
-                      : extension === 'json' ? ['json', '{}']
-                        : extension === 'yaml' || extension === 'yml' || extension === 'toml' ? ['config', '⚙']
-                          : extension === 'html' || extension === 'htm' || extension === 'xml' ? ['html', '</>']
-                            : extension === 'css' || extension === 'scss' || extension === 'less' ? ['css', '#']
-                              : extension === 'txt' || extension === 'log' ? ['text', '≡']
-                                : extension === 'pdf' ? ['pdf', 'PDF']
-                                  : extension === 'doc' || extension === 'docx' ? ['word', 'W']
-                                    : extension === 'ppt' || extension === 'pptx' ? ['slides', 'P']
-                                      : extension === 'xls' || extension === 'xlsx' || extension === 'csv' ? ['sheet', 'X']
-                                        : /^(png|jpg|jpeg|gif|webp|bmp|svg)$/.test(extension) ? ['image', '▧']
-                                          : /^(mp3|wav|m4a|ogg)$/.test(extension) ? ['audio', '♪']
-                                            : extension === 'zip' ? ['archive', '□'] : ['document', '≡'];
-  return <svg className={`explorer-icon file-icon vscode-file-icon ${type}`} viewBox="0 0 20 20" aria-hidden="true">
-    <path className="vscode-file-paper" d="M4 1.5h7l4 4v12.5H4z" />
-    <path className="vscode-file-fold" d="M11 1.5v4h4" />
-    <text x="9.5" y="14" textAnchor="middle">{label}</text>
-  </svg>;
+  return <FileTypeIcon filename={filename} />;
 }
 
 function SearchSidebar({ style }: SidebarProps) {
@@ -196,10 +171,10 @@ function SearchSidebar({ style }: SidebarProps) {
   const [status, setStatus] = useState('');
   const [searching, setSearching] = useState(false);
   const searchSequence = useRef(0);
-  const [history, setHistory] = useState<string[]>(() => JSON.parse(localStorage.getItem('markitdown.workspace-search-history') || '[]'));
+  const [history, setHistory] = useState<string[]>(() => readStoredStringArray('markitdown.workspace-search-history'));
 
   const options = (applyReplace = false) => ({
-    roots: JSON.parse(localStorage.getItem(WORKSPACE_ROOTS_KEY) || '[]') as string[], query,
+    roots: readStoredStringArray(WORKSPACE_ROOTS_KEY), query,
     caseSensitive, useRegex,
     extensions: extensions.split(',').map(value => value.trim()).filter(Boolean),
     ignoreDirs: ignoreDirs.split(',').map(value => value.trim()).filter(Boolean),
@@ -217,7 +192,7 @@ function SearchSidebar({ style }: SidebarProps) {
       setResults(response.matches); setDiffs(response.diffs);
       setStatus(`${response.scanned_files} 个文件，${response.matches.length} 处匹配${response.truncated ? '（结果已截断）' : ''}${response.applied ? '；替换已写入' : ''}`);
       const next = [query, ...history.filter(item => item !== query)].slice(0, 12);
-      setHistory(next); localStorage.setItem('markitdown.workspace-search-history', JSON.stringify(next));
+      setHistory(next); writeStoredStringArray('markitdown.workspace-search-history', next);
     } catch (error) { setStatus(String(error)); } finally { setSearching(false); }
   };
 
@@ -324,14 +299,17 @@ function ExplorerSidebar({ style }: SidebarProps) {
 
   const readBrowserFolder = useCallback(async (handle: FileSystemDirectoryHandle, parentPath: string): Promise<FileNode[]> => {
     const entries: FileNode[] = [];
+    const fileReads: Array<Promise<FileNode>> = [];
     for await (const [name, entry] of (handle as DirectoryHandleWithEntries).entries()) {
       const path = `${parentPath}/${name}`;
       if (entry.kind === 'directory') {
         entries.push({ name, path, isDirectory: true, children: [], directoryHandle: entry as FileSystemDirectoryHandle });
       } else if (isDirectOpenFile(name) || isConvertibleFile(name)) {
-        entries.push({ name, path, isDirectory: false, file: await (entry as FileSystemFileHandle).getFile() });
+        fileReads.push((entry as FileSystemFileHandle).getFile().then((file) => ({ name, path, isDirectory: false, file })));
+        if (fileReads.length >= 32) entries.push(...await Promise.all(fileReads.splice(0)));
       }
     }
+    entries.push(...await Promise.all(fileReads));
     return entries.sort((a, b) => Number(b.isDirectory) - Number(a.isDirectory) || a.name.localeCompare(b.name));
   }, []);
 
@@ -353,8 +331,8 @@ function ExplorerSidebar({ style }: SidebarProps) {
         ? previous
         : [...previous, { name: browserHandle?.name || getFolderName(folderPath), path: folderPath, tree }]);
       if (!folderPath.startsWith('web://')) {
-        const roots = JSON.parse(localStorage.getItem(WORKSPACE_ROOTS_KEY) || '[]') as string[];
-        if (!roots.includes(folderPath)) localStorage.setItem(WORKSPACE_ROOTS_KEY, JSON.stringify([...roots, folderPath]));
+        const roots = readStoredStringArray(WORKSPACE_ROOTS_KEY);
+        if (!roots.includes(folderPath)) writeStoredStringArray(WORKSPACE_ROOTS_KEY, [...roots, folderPath]);
       }
       setLoadedFolders(previous => new Set(previous).add(folderPath));
       setExpandedNodes(previous => new Set(previous).add(folderPath));

@@ -6,6 +6,8 @@ import { formatWebSearchContext, formatWebSearchMarkdown, performWebSearch, type
 import { open } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
 import MarkdownIt from 'markdown-it';
+import { readStoredStringArray } from '../../utils/storage';
+import { sanitizeRenderedHtml } from '../../utils/safeHtml';
 
 const md = new MarkdownIt({ html: false, breaks: true, linkify: true });
 
@@ -79,8 +81,20 @@ export function AIChatbotPanel() {
   } = useAIStore();
 
   const { settings } = useAppStore();
-  const [chatProvider, setChatProvider] = useState<AIProviderId>(settings.ai.provider);
-  const [chatModel, setChatModel] = useState(settings.ai.model);
+  const workspaceConfig = useMemo(() => {
+    try {
+      const roots = readStoredStringArray('markitdown.workspace-roots');
+      const key = roots[0] ? `markitdown.workspace-ai-config:${roots[0]}` : '';
+      if (!key) return { key };
+      const saved = JSON.parse(localStorage.getItem(key) || '{}') as { provider?: AIProviderId; model?: string };
+      return { key, ...saved };
+    } catch {
+      return { key: '' };
+    }
+  }, []);
+  const workspaceConfigKey = workspaceConfig.key;
+  const [chatProvider, setChatProvider] = useState<AIProviderId>(() => workspaceConfig.provider || settings.ai.provider);
+  const [chatModel, setChatModel] = useState(() => workspaceConfig.model || settings.ai.model);
   const listRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const composerResizeRef = useRef({ active: false, startY: 0, startHeight: 84 });
@@ -91,24 +105,11 @@ export function AIChatbotPanel() {
   const [webSearchLoading, setWebSearchLoading] = useState(false);
   const [workspaceContext, setWorkspaceContext] = useState<WorkspaceContextPayload | null>(null);
   const webSearchEnabled = settings.web_search.enabled;
-  const workspaceConfigKey = useMemo(() => {
-    try {
-      const roots = JSON.parse(localStorage.getItem('markitdown.workspace-roots') || '[]') as Array<{ path?: string }>;
-      return roots[0]?.path ? `markitdown.workspace-ai-config:${roots[0].path}` : '';
-    } catch { return ''; }
-  }, []);
-
   useEffect(() => {
     if (!workspaceConfigKey) return;
     try {
-      const config = JSON.parse(localStorage.getItem(workspaceConfigKey) || '{}') as { provider?: AIProviderId; model?: string };
-      if (config.provider) setChatProvider(config.provider);
-      if (config.model) setChatModel(config.model);
-    } catch { /* Ignore malformed local workspace preferences. */ }
-  }, [workspaceConfigKey]);
-
-  useEffect(() => {
-    if (workspaceConfigKey) localStorage.setItem(workspaceConfigKey, JSON.stringify({ provider: chatProvider, model: chatModel }));
+      localStorage.setItem(workspaceConfigKey, JSON.stringify({ provider: chatProvider, model: chatModel }));
+    } catch { /* Storage may be unavailable in restricted WebViews. */ }
   }, [workspaceConfigKey, chatProvider, chatModel]);
   useEffect(() => {
     if (listRef.current) {
@@ -228,7 +229,7 @@ export function AIChatbotPanel() {
           const dataUrl = await invoke<string>('read_file_base64', { path });
           newAttachments.push({ type: 'image', name, dataUrl });
         } else {
-          const content = await invoke<string>('get_file_content', { path });
+          const content = await invoke<string>('get_text_attachment_content', { path });
           newAttachments.push({ type: 'text', name, content });
         }
       }
@@ -262,35 +263,54 @@ export function AIChatbotPanel() {
   return (
     <div className="chatbot-panel">
       <div className="chatbot-header">
-        <div className="chatbot-header-left">
-          <h4>AI 对话</h4>
-          <div className="chatbot-ai-selectors">
-            <select
-              className="chatbot-provider-select"
-              value={chatProvider}
-              onChange={(event) => handleChatProviderChange(event.target.value as AIProviderId)}
-              title="选择 AI 服务商"
-            >
-              {availableProviders.map((provider) => (
-                <option key={provider.id} value={provider.id}>{provider.label}</option>
-              ))}
-            </select>
-            <select
-              className="chatbot-model-select"
-              value={chatModel}
-              onChange={(event) => setChatModel(event.target.value)}
-              title={selectedDefinition ? `${selectedDefinition.label} 模型` : '选择模型'}
-            >
-              {chatModels.length > 0 ? chatModels.map((model) => (
-                <option key={model} value={model}>{model}</option>
-              )) : <option value="">请先在设置中配置模型</option>}
-            </select>
-            {workspaceConfigKey && <span className="workspace-ai-scope" title="服务商与模型偏好仅保存于当前工作区">工作区</span>}
+        <div className="chatbot-header-main">
+          <div className="chatbot-header-identity">
+            <span className="chatbot-header-mark" aria-hidden="true">AI</span>
+            <div>
+              <div className="chatbot-header-title-row">
+                <h4>AI 对话</h4>
+                {workspaceConfigKey && (
+                  <span className="workspace-ai-scope" title="服务商与模型偏好仅保存于当前工作区">
+                    <span className="workspace-ai-scope-dot" aria-hidden="true" />
+                    当前工作区
+                  </span>
+                )}
+              </div>
+              <span className="chatbot-header-subtitle">智能写作助手</span>
+            </div>
           </div>
+          <button className="chatbot-close-btn" onClick={() => setChatbotVisible(false)} title="关闭" aria-label="关闭 AI 对话">
+            <svg viewBox="0 0 16 16" aria-hidden="true">
+              <path d="M4 4l8 8M12 4l-8 8" />
+            </svg>
+          </button>
         </div>
-        <button className="chatbot-close-btn" onClick={() => setChatbotVisible(false)} title="关闭">
-          ×
-        </button>
+        <div className="chatbot-ai-selectors">
+          <label className="chatbot-selector-label chatbot-provider-label" htmlFor="chatbot-provider">服务商</label>
+          <label className="chatbot-selector-label chatbot-model-label" htmlFor="chatbot-model">模型</label>
+          <select
+            id="chatbot-provider"
+            className="chatbot-provider-select"
+            value={chatProvider}
+            onChange={(event) => handleChatProviderChange(event.target.value as AIProviderId)}
+            title="选择 AI 服务商"
+          >
+            {availableProviders.map((provider) => (
+              <option key={provider.id} value={provider.id}>{provider.label}</option>
+            ))}
+          </select>
+          <select
+            id="chatbot-model"
+            className="chatbot-model-select"
+            value={chatModel}
+            onChange={(event) => setChatModel(event.target.value)}
+            title={selectedDefinition ? `${selectedDefinition.label} 模型` : '选择模型'}
+          >
+            {chatModels.length > 0 ? chatModels.map((model) => (
+              <option key={model} value={model}>{model}</option>
+            )) : <option value="">请先在设置中配置模型</option>}
+          </select>
+        </div>
       </div>
 
       <div className="chatbot-messages" ref={listRef}>
@@ -564,12 +584,12 @@ function ChatBubble({ message }: { message: ChatMessage }) {
 
   const renderedHtml = useMemo(() => {
     if (!message.content) return '';
-    return md.render(message.content);
+    return sanitizeRenderedHtml(md.render(message.content));
   }, [message.content]);
 
   const renderedReasoning = useMemo(() => {
     if (!message.reasoning) return '';
-    return md.render(message.reasoning);
+    return sanitizeRenderedHtml(md.render(message.reasoning));
   }, [message.reasoning]);
 
   return (

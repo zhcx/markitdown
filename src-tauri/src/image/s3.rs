@@ -1,4 +1,4 @@
-use super::ImageError;
+use super::{http_client, read_upload_file, ImageError};
 use chrono::Utc;
 use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
@@ -20,15 +20,21 @@ pub struct S3Config {
 }
 
 pub async fn upload(file_path: &str, config: S3Config) -> Result<String, ImageError> {
-    if config.endpoint.is_empty() || config.bucket.is_empty() || config.access_key.is_empty() || config.secret_key.is_empty() {
+    if config.endpoint.is_empty()
+        || config.bucket.is_empty()
+        || config.access_key.is_empty()
+        || config.secret_key.is_empty()
+    {
         return Err(ImageError::Api("S3 credentials not configured".into()));
     }
 
-    let file_data = tokio::fs::read(file_path).await?;
-    let file_name = Path::new(file_path)
+    let path = Path::new(file_path);
+    let file_data = read_upload_file(path).await?;
+    let file_name = path
         .file_name()
-        .unwrap()
-        .to_string_lossy()
+        .and_then(|value| value.to_str())
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| ImageError::Api("Image file has no valid name".into()))?
         .to_string();
 
     let timestamp = Utc::now().format("%Y%m%dT%H%M%SZ").to_string();
@@ -43,7 +49,10 @@ pub async fn upload(file_path: &str, config: S3Config) -> Result<String, ImageEr
     };
 
     let scheme = if config.use_ssl { "https" } else { "http" };
-    let host = config.endpoint.replace("https://", "").replace("http://", "");
+    let host = config
+        .endpoint
+        .replace("https://", "")
+        .replace("http://", "");
     let url = format!("{}://{}/{}", scheme, host, object_key);
 
     let content_type = get_content_type(&file_name);
@@ -59,7 +68,8 @@ pub async fn upload(file_path: &str, config: S3Config) -> Result<String, ImageEr
         &payload_hash,
     );
 
-    let string_to_sign = build_string_to_sign(&timestamp, &date, &config.region, &canonical_request);
+    let string_to_sign =
+        build_string_to_sign(&timestamp, &date, &config.region, &canonical_request);
     let signature = calculate_signature(&config.secret_key, &date, &config.region, &string_to_sign);
 
     let authorization = format!(
@@ -67,7 +77,7 @@ pub async fn upload(file_path: &str, config: S3Config) -> Result<String, ImageEr
         config.access_key, date, config.region, signature
     );
 
-    let client = reqwest::Client::new();
+    let client = http_client()?;
     let response = client
         .put(&url)
         .header("Host", &host)
@@ -91,8 +101,8 @@ pub async fn upload(file_path: &str, config: S3Config) -> Result<String, ImageEr
 fn get_content_type(file_name: &str) -> String {
     let ext = Path::new(file_name)
         .extension()
-        .unwrap()
-        .to_string_lossy()
+        .and_then(|value| value.to_str())
+        .unwrap_or("")
         .to_lowercase();
 
     match ext.as_str() {
@@ -103,7 +113,8 @@ fn get_content_type(file_name: &str) -> String {
         "svg" => "image/svg+xml",
         "bmp" => "image/bmp",
         _ => "application/octet-stream",
-    }.to_string()
+    }
+    .to_string()
 }
 
 fn build_canonical_request(
@@ -137,7 +148,10 @@ fn build_string_to_sign(
     let credential_scope = format!("{}/{}/s3/aws4_request", date, region);
     let request_hash = hex::encode(Sha256::digest(canonical_request.as_bytes()));
 
-    format!("AWS4-HMAC-SHA256\n{}\n{}\n{}", timestamp, credential_scope, request_hash)
+    format!(
+        "AWS4-HMAC-SHA256\n{}\n{}\n{}",
+        timestamp, credential_scope, request_hash
+    )
 }
 
 fn calculate_signature(secret_key: &str, date: &str, region: &str, string_to_sign: &str) -> String {

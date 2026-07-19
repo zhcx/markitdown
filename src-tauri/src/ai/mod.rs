@@ -9,6 +9,7 @@ pub use client::AIResponse;
 
 /// 将 AI 操作隔离到独立 tokio task 中，通过 JoinError 捕获 panic，
 /// 防止 hyper/reqwest 内部 panic 导致进程死亡。
+#[allow(clippy::too_many_arguments)]
 async fn run_ai_action_safely(
     action: String,
     content: String,
@@ -29,7 +30,19 @@ async fn run_ai_action_safely(
             "translate" => client::translate(&content, context.as_deref(), &settings).await,
             "summarize" => client::summarize(&content, &settings).await,
             "outline" => client::outline(&content, &settings).await,
-            "chat" => client::chat(&content, context.as_deref(), &settings, temperature, max_tokens, doc_context, doc_title, enable_thinking).await,
+            "chat" => {
+                client::chat(
+                    &content,
+                    context.as_deref(),
+                    &settings,
+                    temperature,
+                    max_tokens,
+                    doc_context,
+                    doc_title,
+                    enable_thinking,
+                )
+                .await
+            }
             _ => Err(format!("未知的AI操作: {}", action)),
         }
     });
@@ -56,6 +69,7 @@ async fn run_ai_action_safely(
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn ai_request(
     action: String,
     content: String,
@@ -90,6 +104,7 @@ pub async fn ai_request(
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn ai_chat_streaming(
     content: String,
     context: Option<String>,
@@ -120,7 +135,7 @@ pub async fn ai_chat_streaming(
             max_tokens,
             doc_context,
             doc_title,
-                enable_thinking.unwrap_or(false),
+            enable_thinking.unwrap_or(false),
             request_id,
             window,
         )
