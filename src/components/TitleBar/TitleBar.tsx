@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type MouseEvent } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { MenuBar } from '../MenuBar/MenuBar';
 import { useAppStore } from '../../stores/appStore';
@@ -74,35 +74,6 @@ export function TitleBar({ onRequestClose }: TitleBarProps) {
     await onRequestClose();
   }, [isTauri, onRequestClose]);
 
-  const handleStartDragging = useCallback((event: MouseEvent<HTMLElement>) => {
-    if (!isTauri) return;
-    if (event.button !== 0 || event.detail > 1) return;
-    getCurrentWindow().startDragging().catch(() => { /* not critical */ });
-  }, [isTauri]);
-
-  const handleDragDoubleClick = useCallback(async (event: MouseEvent<HTMLElement>) => {
-    event.preventDefault();
-    event.stopPropagation();
-    if (!isTauri) return;
-
-    try {
-      const appWindow = getCurrentWindow();
-      const maximized = await appWindow.isMaximized();
-
-      if (maximized) {
-        // Restore the saved window size first, then center that restored window
-        // in the current monitor's work area.
-        await appWindow.unmaximize();
-        await appWindow.center();
-      } else {
-        await appWindow.maximize();
-      }
-
-      const nextMaximized = await appWindow.isMaximized();
-      if (mountedRef.current) setIsMaximized(nextMaximized);
-    } catch { /* not critical */ }
-  }, [isTauri]);
-
   return (
     <div className="titlebar">
       <div className="titlebar-menu" data-tauri-drag-region="false">
@@ -111,10 +82,8 @@ export function TitleBar({ onRequestClose }: TitleBarProps) {
       <div
         className="titlebar-drag-spacer"
         data-tauri-drag-region
-        onMouseDown={handleStartDragging}
-        onDoubleClick={handleDragDoubleClick}
       >
-        <div className="titlebar-command-center" data-tauri-drag-region role="status" aria-label={`当前文档：${activeDocumentTitle}`}>
+        <div className="titlebar-command-center" role="status" aria-label={`当前文档：${activeDocumentTitle}`}>
           <span>{activeDocumentTitle}</span>
         </div>
       </div>
