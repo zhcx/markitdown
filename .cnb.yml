@@ -1,8 +1,13 @@
 main:
   push:
     - name: verify
+      runner:
+        tags: cnb:arch:amd64
+        cpus: 4
       docker:
         image: node:20-bookworm
+        volumes:
+          - /root/.npm
       stages:
         - name: install dependencies
           script: npm ci
@@ -13,7 +18,7 @@ main:
         - name: build frontend
           script: npm run build
 
-$:
+v*:
   tag_push:
     - name: linux-release
       runner:
@@ -21,6 +26,10 @@ $:
         cpus: 4
       docker:
         image: node:20-bookworm
+        volumes:
+          - /root/.npm
+          - /root/.cargo
+          - /root/.rustup
       env:
         TAURI_TARGET: x86_64-unknown-linux-gnu
       stages:
