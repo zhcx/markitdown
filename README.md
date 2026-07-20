@@ -138,15 +138,29 @@
 
 ## v0.3.2 更新
 
-本版本带来行首 `/` Markdown 快捷命令面板：输入 `/` 即可搜索并插入标题、引用、列表、任务、代码块、表格、图片、链接、公式、脚注、分割线和 Mermaid 图表。支持中文/英文筛选、方向键导航、Enter/Tab 插入和 Esc 关闭。
+### 更新日志
+
+- 新增行首 `/` Markdown 快捷命令面板，可搜索并插入标题、引用、列表、任务、代码块、表格、图片、链接、公式、脚注、分割线和 Mermaid 图表。
+- 支持中文/英文筛选、鼠标选择、方向键导航、`Enter` / `Tab` 插入和 `Esc` 关闭。
+- 命令面板会根据光标位置自动定位，在窗口边缘自动调整高度并提供滚动。
+- 修复 Windows 自定义标题栏偶发无法拖动、异常最小化以及从任务栏恢复失败的问题。
+- 新增快捷命令与标题栏窗口交互回归测试。
 
 ### v0.3.2 平台安装包对照
 
-| 平台 | 架构 | 推荐下载 | 安装包格式 |
+| 操作系统 | 架构 | 推荐安装包 | 适用场景 |
 | --- | --- | --- | --- |
-| Windows 10/11 | x86_64 | [NSIS 安装包](https://github.com/zhcx/markitdown/releases/tag/v0.3.2) | `.exe` / `.msi` |
-| macOS | x86_64 / arm64 | [GitHub Release](https://github.com/zhcx/markitdown/releases/tag/v0.3.2) | `.dmg` / `.app.tar.gz` |
-| Linux | x86_64 | [GitHub Release](https://github.com/zhcx/markitdown/releases/tag/v0.3.2) | `.deb` / `.rpm` / `.AppImage` |
+| Windows 10/11 | x86_64 | [NSIS `.exe`](https://github.com/zhcx/markitdown/releases/download/v0.3.2/MarkitDown_0.3.2_x64-setup.exe) | 推荐大多数用户使用，按向导安装 |
+| Windows 10/11 | x86_64 | [MSI](https://github.com/zhcx/markitdown/releases/download/v0.3.2/MarkitDown_0.3.2_x64_en-US.msi) | 企业部署、系统管理或静默安装 |
+| macOS Apple Silicon | arm64 | [DMG](https://github.com/zhcx/markitdown/releases/download/v0.3.2/MarkitDown_0.3.2_aarch64.dmg) | M1、M2、M3、M4 等 Apple 芯片 |
+| macOS Apple Silicon | arm64 | [APP 压缩包](https://github.com/zhcx/markitdown/releases/download/v0.3.2/MarkitDown_aarch64.app.tar.gz) | 手动解压或更新 |
+| macOS Intel | x86_64 | [DMG](https://github.com/zhcx/markitdown/releases/download/v0.3.2/MarkitDown_0.3.2_x64.dmg) | Intel 芯片 Mac |
+| macOS Intel | x86_64 | [APP 压缩包](https://github.com/zhcx/markitdown/releases/download/v0.3.2/MarkitDown_x64.app.tar.gz) | 手动解压或更新 |
+| Ubuntu / Debian | x86_64 | [DEB](https://github.com/zhcx/markitdown/releases/download/v0.3.2/MarkitDown_0.3.2_amd64.deb) | Ubuntu、Debian、Linux Mint 等 |
+| Fedora / RHEL / openSUSE | x86_64 | [RPM](https://github.com/zhcx/markitdown/releases/download/v0.3.2/MarkitDown-0.3.2-1.x86_64.rpm) | RPM 系发行版 |
+| 通用 Linux | x86_64 | [AppImage](https://github.com/zhcx/markitdown/releases/download/v0.3.2/MarkitDown_0.3.2_amd64.AppImage) | 无需安装，赋予执行权限后运行 |
+
+> 不确定如何选择？Windows 下载 `.exe`，Apple 芯片 Mac 下载 `aarch64.dmg`，Intel Mac 下载 `x64.dmg`，Ubuntu/Debian 下载 `.deb`。
 
 完整更新说明与安装提示见 [`docs/releases/v0.3.2.md`](docs/releases/v0.3.2.md)。
 
