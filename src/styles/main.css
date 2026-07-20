@@ -9166,3 +9166,165 @@ html[data-theme] .preview-container,
   line-height: 16px;
   white-space: nowrap;
 }
+
+/* Slash commands live beside the Monaco caret and follow the active theme. */
+.slash-command-menu {
+  position: fixed;
+  z-index: 10030;
+  box-sizing: border-box;
+  width: min(360px, calc(100vw - 24px));
+  max-height: min(420px, calc(100vh - 24px));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--border-color) 82%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--bg-elevated) 96%, transparent);
+  color: var(--text-primary);
+  box-shadow: 0 16px 44px rgba(22, 24, 27, .18), 0 2px 8px rgba(22, 24, 27, .08);
+  backdrop-filter: blur(16px);
+  animation: slash-command-enter 120ms ease-out;
+}
+
+@keyframes slash-command-enter {
+  from { opacity: 0; transform: translateY(-3px) scale(.99); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.slash-command-header,
+.slash-command-footer {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--text-muted);
+  font: 600 11px/1.2 var(--font-sans);
+}
+
+.slash-command-header {
+  min-height: 34px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--border-soft);
+  text-transform: uppercase;
+  letter-spacing: .05em;
+}
+
+.slash-command-key-hint {
+  overflow: hidden;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.slash-command-list {
+  min-height: 0;
+  padding: 6px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.slash-command-item {
+  width: 100%;
+  min-height: 54px;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font-family: var(--font-sans);
+  text-align: left;
+  cursor: pointer;
+}
+
+.slash-command-item:hover,
+.slash-command-item.selected {
+  background: var(--bg-hover);
+}
+
+.slash-command-item.selected {
+  box-shadow: inset 3px 0 0 var(--accent-color);
+}
+
+.slash-command-icon {
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border-soft);
+  border-radius: 7px;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font: 700 12px/1 var(--font-mono, monospace);
+}
+
+.slash-command-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.slash-command-copy strong {
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: 14px;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.slash-command-copy small {
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.slash-command-shortcut {
+  color: var(--text-muted);
+  font: 12px/1 var(--font-mono, monospace);
+}
+
+.slash-command-empty {
+  padding: 24px 12px;
+  color: var(--text-muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+.slash-command-footer {
+  min-height: 32px;
+  padding: 0 12px;
+  border-top: 1px solid var(--border-soft);
+  font-weight: 400;
+}
+
+.slash-command-footer kbd {
+  padding: 2px 5px;
+  border: 1px solid var(--border-soft);
+  border-radius: 4px;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font: inherit;
+}
+
+.slash-command-footer span { margin-left: auto; }
+
+@media (max-width: 520px) {
+  .slash-command-menu { width: calc(100vw - 24px); }
+  .slash-command-key-hint { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .slash-command-menu { animation: none; }
+}

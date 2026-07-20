@@ -136,6 +136,20 @@
 
 完整安装包请前往 [GitHub Releases](https://github.com/zhcx/markitdown/releases)。
 
+## v0.3.2 更新
+
+本版本带来行首 `/` Markdown 快捷命令面板：输入 `/` 即可搜索并插入标题、引用、列表、任务、代码块、表格、图片、链接、公式、脚注、分割线和 Mermaid 图表。支持中文/英文筛选、方向键导航、Enter/Tab 插入和 Esc 关闭。
+
+### v0.3.2 平台安装包对照
+
+| 平台 | 架构 | 推荐下载 | 安装包格式 |
+| --- | --- | --- | --- |
+| Windows 10/11 | x86_64 | [NSIS 安装包](https://github.com/zhcx/markitdown/releases/tag/v0.3.2) | `.exe` / `.msi` |
+| macOS | x86_64 / arm64 | [GitHub Release](https://github.com/zhcx/markitdown/releases/tag/v0.3.2) | `.dmg` / `.app.tar.gz` |
+| Linux | x86_64 | [GitHub Release](https://github.com/zhcx/markitdown/releases/tag/v0.3.2) | `.deb` / `.rpm` / `.AppImage` |
+
+完整更新说明与安装提示见 [`docs/releases/v0.3.2.md`](docs/releases/v0.3.2.md)。
+
 ## Contributors
 
 - CodeX

@@ -1627,8 +1627,8 @@ mod update_tests {
     #[test]
     fn accepts_only_safe_installers_from_this_projects_releases() {
         assert!(validate_update_download(
-            "https://github.com/zhcx/markitdown/releases/download/v0.3.1/MarkitDown_0.3.1_x64-setup.exe",
-            "MarkitDown_0.3.1_x64-setup.exe",
+            "https://github.com/zhcx/markitdown/releases/download/v0.3.2/MarkitDown_0.3.2_x64-setup.exe",
+            "MarkitDown_0.3.2_x64-setup.exe",
         ).is_ok());
         assert!(validate_update_download(
             "http://github.com/zhcx/markitdown/releases/download/v1/app.exe",

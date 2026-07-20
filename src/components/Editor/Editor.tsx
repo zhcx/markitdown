@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as monaco from 'monaco-editor/esm/vs/editor/editor.api.js';
 import 'monaco-editor/esm/vs/basic-languages/markdown/markdown.contribution';
 import EditorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker';
@@ -7,6 +7,8 @@ import { useAppStore, type Settings } from '../../stores/appStore';
 import { useAIStore, type ProofreadResult } from '../../stores/aiStore';
 import type { EditorController, EditorDispatchSpec, EditorLine } from '../../types/editor';
 import { EDITOR_OVERFLOW_OPTIONS, EDITOR_UNICODE_HIGHLIGHT_OPTIONS } from '../../utils/editorLayout';
+import { filterSlashCommands, findSlashCommandTrigger, type SlashCommand } from '../../utils/slashCommands';
+import { SlashCommandMenu, type SlashMenuAnchor } from './SlashCommandMenu';
 
 (self as typeof self & { MonacoEnvironment: { getWorker: () => Worker } }).MonacoEnvironment = {
   getWorker: () => new EditorWorker(),
@@ -20,6 +22,13 @@ interface EditorProps {
 const MIN_AUTO_COMPANION_CHARS = 6;
 const AUTO_COMPANION_CONTEXT_LIMIT = 800;
 const AUTO_COMPANION_MIN_INTERVAL = 1200;
+
+interface SlashMenuState {
+  from: number;
+  to: number;
+  query: string;
+  anchor: SlashMenuAnchor;
+}
 
 const isTauriRuntime = () => '__TAURI_INTERNALS__' in window;
 
@@ -153,9 +162,39 @@ export function Editor({ className, style }: EditorProps) {
   const autoCompanionTimerRef = useRef<number | null>(null);
   const autoCompanionLastPromptRef = useRef('');
   const autoCompanionLastRequestAtRef = useRef(0);
+  const slashMenuRef = useRef<SlashMenuState | null>(null);
+  const slashSelectedIndexRef = useRef(0);
+  const [slashMenu, setSlashMenu] = useState<SlashMenuState | null>(null);
+  const [slashSelectedIndex, setSlashSelectedIndex] = useState(0);
   const { content, setContent, settings, setEditorView } = useAppStore();
   const { proofreadResults } = useAIStore();
   const initialContentRef = useRef(content);
+  const slashCommands = useMemo(() => filterSlashCommands(slashMenu?.query || ''), [slashMenu?.query]);
+
+  const closeSlashMenu = useCallback(() => {
+    slashMenuRef.current = null;
+    setSlashMenu(null);
+  }, []);
+
+  const selectSlashIndex = useCallback((index: number) => {
+    slashSelectedIndexRef.current = index;
+    setSlashSelectedIndex(index);
+  }, []);
+
+  const applySlashCommand = useCallback((command: SlashCommand) => {
+    const menu = slashMenuRef.current;
+    const controller = controllerRef.current;
+    if (!menu || !controller) return;
+
+    const { text, selectionStart = text.length, selectionEnd = selectionStart } = command.insertion;
+    slashMenuRef.current = null;
+    setSlashMenu(null);
+    controller.replaceRange(menu.from, menu.to, text, {
+      from: menu.from + selectionStart,
+      to: menu.from + selectionEnd,
+    });
+    controller.focus();
+  }, []);
 
   useEffect(() => {
     const root = editorRef.current;
@@ -243,6 +282,42 @@ export function Editor({ className, style }: EditorProps) {
       autoCompanionTimerRef.current = null;
     };
 
+    const refreshSlashMenu = () => {
+      const selection = controller.getSelection();
+      if (!selection.empty) {
+        slashMenuRef.current = null;
+        setSlashMenu(null);
+        return;
+      }
+
+      const position = offsetToPosition(model, selection.to);
+      const line = toLine(model, position.lineNumber);
+      const trigger = findSlashCommandTrigger(line.text, line.from, selection.to);
+      const visible = editor.getScrolledVisiblePosition(position);
+      const editorNode = editor.getDomNode();
+      if (!trigger || !visible || !editorNode) {
+        slashMenuRef.current = null;
+        setSlashMenu(null);
+        return;
+      }
+
+      const editorRect = editorNode.getBoundingClientRect();
+      const nextMenu: SlashMenuState = {
+        ...trigger,
+        anchor: {
+          left: editorRect.left + visible.left,
+          top: editorRect.top + visible.top,
+          bottom: editorRect.top + visible.top + visible.height,
+        },
+      };
+      if (slashMenuRef.current?.query !== nextMenu.query) {
+        slashSelectedIndexRef.current = 0;
+        setSlashSelectedIndex(0);
+      }
+      slashMenuRef.current = nextMenu;
+      setSlashMenu(nextMenu);
+    };
+
     const scheduleCompanion = () => {
       const currentSettings = useAppStore.getState().settings;
       const selection = controller.getSelection();
@@ -269,9 +344,53 @@ export function Editor({ className, style }: EditorProps) {
       setContent(model.getValue());
       scheduleCompanion();
       scheduleTextFit();
+      refreshSlashMenu();
     });
-    const cursorDisposable = editor.onDidChangeCursorSelection(scheduleCompanion);
-    const scrollDisposable = editor.onDidScrollChange(scheduleTextFit);
+    const cursorDisposable = editor.onDidChangeCursorSelection(() => {
+      scheduleCompanion();
+      refreshSlashMenu();
+    });
+    const scrollDisposable = editor.onDidScrollChange(() => {
+      scheduleTextFit();
+      refreshSlashMenu();
+    });
+    const slashKeyDisposable = editor.onKeyDown((event) => {
+      const menu = slashMenuRef.current;
+      if (!menu) return;
+
+      const commands = filterSlashCommands(menu.query);
+      const key = event.browserEvent.key;
+      if (key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        slashMenuRef.current = null;
+        setSlashMenu(null);
+        return;
+      }
+      if (key === 'ArrowDown' || key === 'ArrowUp') {
+        event.preventDefault();
+        event.stopPropagation();
+        if (commands.length === 0) return;
+        const direction = key === 'ArrowDown' ? 1 : -1;
+        const next = (slashSelectedIndexRef.current + direction + commands.length) % commands.length;
+        slashSelectedIndexRef.current = next;
+        setSlashSelectedIndex(next);
+        return;
+      }
+      if ((key === 'Enter' || key === 'Tab') && commands.length > 0) {
+        event.preventDefault();
+        event.stopPropagation();
+        const command = commands[Math.min(slashSelectedIndexRef.current, commands.length - 1)];
+        const { text, selectionStart = text.length, selectionEnd = selectionStart } = command.insertion;
+        slashMenuRef.current = null;
+        setSlashMenu(null);
+        controller.replaceRange(menu.from, menu.to, text, {
+          from: menu.from + selectionStart,
+          to: menu.from + selectionEnd,
+        });
+        controller.focus();
+      }
+    });
 
     const handleTheme = (event: Event) => {
       const theme = (event as CustomEvent<string>).detail;
@@ -324,12 +443,14 @@ export function Editor({ className, style }: EditorProps) {
       contentDisposable.dispose();
       cursorDisposable.dispose();
       scrollDisposable.dispose();
+      slashKeyDisposable.dispose();
       layoutDisposable.dispose();
       editor.dispose();
       model.dispose();
       monacoRef.current = null;
       modelRef.current = null;
       controllerRef.current = null;
+      slashMenuRef.current = null;
       setEditorView(null);
     };
   }, [setContent, setEditorView]);
@@ -367,6 +488,17 @@ export function Editor({ className, style }: EditorProps) {
       <div className="editor-document-card monaco-document-card">
         <div ref={editorRef} className="editor-content monaco-host" />
       </div>
+      {slashMenu && (
+        <SlashCommandMenu
+          anchor={slashMenu.anchor}
+          commands={slashCommands}
+          selectedIndex={Math.min(slashSelectedIndex, Math.max(0, slashCommands.length - 1))}
+          query={slashMenu.query}
+          onSelect={applySlashCommand}
+          onSelectedIndexChange={selectSlashIndex}
+          onClose={closeSlashMenu}
+        />
+      )}
     </div>
   );
 }
