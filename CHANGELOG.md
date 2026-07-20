@@ -15,6 +15,8 @@
 
 - GitHub Actions 自动构建 Windows x64、macOS Intel、macOS Apple Silicon 和 Linux x64 安装包。
 - 同步更新应用版本号、自动更新下载地址及 v0.3.2 平台安装包说明。
+- 重新设计 Windows Markdown 关联文件图标，采用更简洁的文档轮廓与 Markdown 标识，并提供 16px 至 256px 七档 ICO 图层。
+- 重新生成并替换 v0.3.2 各平台安装包，确保安装包包含最新图标与文档。
 
 ## v0.3.1（2026-07-20 更新）
 
