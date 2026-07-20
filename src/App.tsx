@@ -16,6 +16,7 @@ import { ImmersiveOutline } from './components/Immersive/ImmersiveOutline';
 import { TitleBar } from './components/TitleBar/TitleBar';
 import { ActivityBar } from './components/ActivityBar/ActivityBar';
 import { UnsavedChangesDialog } from './components/UnsavedChangesDialog/UnsavedChangesDialog';
+import { UiLanguageBridge } from './i18n/UiLanguageBridge';
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { invoke } from '@tauri-apps/api/core';
@@ -639,6 +640,7 @@ function App() {
 
   return (
     <div className={`app ${immersivePolicy.active ? 'immersive-mode-active' : ''} ${mode === 'zen' ? 'zen-mode' : ''}`}>
+      <UiLanguageBridge />
       <TitleBar onRequestClose={requestAppClose} />
       <div className="app-workbench">
         <ActivityBar

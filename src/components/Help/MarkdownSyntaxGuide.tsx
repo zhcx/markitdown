@@ -107,7 +107,7 @@ export function MarkdownSyntaxGuide() {
         </div>
 
         <div className="syntax-guide-intro">
-          <div><span>BEGINNER GUIDE</span><h3>从一个符号开始写 Markdown</h3></div>
+          <div><span>入门指南</span><h3>从一个符号开始写 Markdown</h3></div>
           <p>每项都包含可直接粘贴的语法和预期效果。建议先复制示例到新文档，再替换成自己的内容。</p>
         </div>
 

@@ -9,6 +9,7 @@ import type { EditorController, EditorDispatchSpec, EditorLine } from '../../typ
 import { EDITOR_OVERFLOW_OPTIONS, EDITOR_UNICODE_HIGHLIGHT_OPTIONS } from '../../utils/editorLayout';
 import { filterSlashCommands, findSlashCommandTrigger, type SlashCommand } from '../../utils/slashCommands';
 import { SlashCommandMenu, type SlashMenuAnchor } from './SlashCommandMenu';
+import { normalizeLanguage, t } from '../../i18n';
 
 (self as typeof self & { MonacoEnvironment: { getWorker: () => Worker } }).MonacoEnvironment = {
   getWorker: () => new EditorWorker(),
@@ -28,6 +29,14 @@ interface SlashMenuState {
   to: number;
   query: string;
   anchor: SlashMenuAnchor;
+}
+
+interface EditorContextMenuState {
+  x: number;
+  y: number;
+  hasSelection: boolean;
+  canUndo: boolean;
+  canRedo: boolean;
 }
 
 const isTauriRuntime = () => '__TAURI_INTERNALS__' in window;
@@ -166,10 +175,48 @@ export function Editor({ className, style }: EditorProps) {
   const slashSelectedIndexRef = useRef(0);
   const [slashMenu, setSlashMenu] = useState<SlashMenuState | null>(null);
   const [slashSelectedIndex, setSlashSelectedIndex] = useState(0);
+  const [contextMenu, setContextMenu] = useState<EditorContextMenuState | null>(null);
   const { content, setContent, settings, setEditorView } = useAppStore();
   const { proofreadResults } = useAIStore();
   const initialContentRef = useRef(content);
   const slashCommands = useMemo(() => filterSlashCommands(slashMenu?.query || ''), [slashMenu?.query]);
+  const language = normalizeLanguage(settings.appearance.language);
+
+  const runContextMenuAction = useCallback(async (action: 'undo' | 'redo' | 'cut' | 'copy' | 'paste' | 'selectAll') => {
+    const editor = monacoRef.current;
+    const model = modelRef.current;
+    const controller = controllerRef.current;
+    setContextMenu(null);
+    if (!editor || !model || !controller) return;
+
+    if (action === 'undo' || action === 'redo') {
+      editor.trigger('markitdown-context-menu', action, null);
+    } else if (action === 'selectAll') {
+      editor.setSelection(model.getFullModelRange());
+    } else if (action === 'paste') {
+      try {
+        const text = await navigator.clipboard.readText();
+        const selection = controller.getSelection();
+        controller.replaceRange(selection.from, selection.to, text, {
+          from: selection.from + text.length,
+          to: selection.from + text.length,
+        });
+      } catch {
+        editor.trigger('markitdown-context-menu', 'editor.action.clipboardPasteAction', null);
+      }
+    } else {
+      const selection = controller.getSelection();
+      const selectedText = controller.getText(selection.from, selection.to);
+      if (!selectedText) return;
+      try {
+        await navigator.clipboard.writeText(selectedText);
+        if (action === 'cut') controller.replaceRange(selection.from, selection.to, '');
+      } catch {
+        editor.trigger('markitdown-context-menu', `editor.action.clipboard${action === 'cut' ? 'Cut' : 'Copy'}Action`, null);
+      }
+    }
+    editor.focus();
+  }, []);
 
   const closeSlashMenu = useCallback(() => {
     slashMenuRef.current = null;
@@ -224,6 +271,7 @@ export function Editor({ className, style }: EditorProps) {
       quickSuggestions: false,
       suggestOnTriggerCharacters: false,
       accessibilitySupport: 'auto',
+      contextmenu: false,
       unicodeHighlight: EDITOR_UNICODE_HIGHLIGHT_OPTIONS,
     });
     const controller = createController(editor, model, root);
@@ -231,6 +279,23 @@ export function Editor({ className, style }: EditorProps) {
     modelRef.current = model;
     controllerRef.current = controller;
     setEditorView(controller);
+
+    const handleContextMenu = (event: MouseEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const selection = controller.getSelection();
+      setContextMenu({
+        x: Math.max(8, Math.min(event.clientX, window.innerWidth - 190)),
+        y: Math.max(8, Math.min(event.clientY, window.innerHeight - 250)),
+        hasSelection: !selection.empty,
+        canUndo: model.canUndo(),
+        canRedo: model.canRedo(),
+      });
+    };
+    const closeContextMenu = () => setContextMenu(null);
+    root.addEventListener('contextmenu', handleContextMenu, true);
+    window.addEventListener('mousedown', closeContextMenu);
+    window.addEventListener('blur', closeContextMenu);
 
     let currentWrapColumn = 0;
     let viewportSignature = '';
@@ -439,6 +504,9 @@ export function Editor({ className, style }: EditorProps) {
       clearCompanionTimer();
       if (fitFrame !== null) window.cancelAnimationFrame(fitFrame);
       root.removeEventListener('paste', handlePaste, true);
+      root.removeEventListener('contextmenu', handleContextMenu, true);
+      window.removeEventListener('mousedown', closeContextMenu);
+      window.removeEventListener('blur', closeContextMenu);
       window.removeEventListener('markitdown-theme-change', handleTheme);
       contentDisposable.dispose();
       cursorDisposable.dispose();
@@ -498,6 +566,36 @@ export function Editor({ className, style }: EditorProps) {
           onSelectedIndexChange={selectSlashIndex}
           onClose={closeSlashMenu}
         />
+      )}
+      {contextMenu && (
+        <div
+          className="editor-context-menu"
+          role="menu"
+          aria-label={t('编辑器', language)}
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          onMouseDown={(event) => event.stopPropagation()}
+        >
+          <button type="button" role="menuitem" disabled={!contextMenu.canUndo} onClick={() => void runContextMenuAction('undo')}>
+            <span>{t('撤销', language)}</span><kbd>Ctrl+Z</kbd>
+          </button>
+          <button type="button" role="menuitem" disabled={!contextMenu.canRedo} onClick={() => void runContextMenuAction('redo')}>
+            <span>{t('重做', language)}</span><kbd>Ctrl+Y</kbd>
+          </button>
+          <div className="editor-context-menu-divider" role="separator" />
+          <button type="button" role="menuitem" disabled={!contextMenu.hasSelection} onClick={() => void runContextMenuAction('cut')}>
+            <span>{t('剪切', language)}</span><kbd>Ctrl+X</kbd>
+          </button>
+          <button type="button" role="menuitem" disabled={!contextMenu.hasSelection} onClick={() => void runContextMenuAction('copy')}>
+            <span>{t('复制', language)}</span><kbd>Ctrl+C</kbd>
+          </button>
+          <button type="button" role="menuitem" onClick={() => void runContextMenuAction('paste')}>
+            <span>{t('粘贴', language)}</span><kbd>Ctrl+V</kbd>
+          </button>
+          <div className="editor-context-menu-divider" role="separator" />
+          <button type="button" role="menuitem" onClick={() => void runContextMenuAction('selectAll')}>
+            <span>{t('全选', language)}</span><kbd>Ctrl+A</kbd>
+          </button>
+        </div>
       )}
     </div>
   );

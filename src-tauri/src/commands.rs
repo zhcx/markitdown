@@ -70,6 +70,9 @@ pub fn get_local_font_families() -> Result<Vec<String>, String> {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppearanceSettings {
     pub theme: String,
+    /// None means the frontend should choose from the operating-system locale.
+    #[serde(default)]
+    pub language: Option<String>,
     #[serde(default = "default_ui_font_family")]
     pub ui_font_family: String,
     pub font_family: String,
@@ -167,6 +170,7 @@ impl Default for Settings {
         Settings {
             appearance: AppearanceSettings {
                 theme: "vscode-dark".into(),
+                language: None,
                 ui_font_family: default_ui_font_family(),
                 font_family: "Microsoft YaHei".into(),
                 font_size: 14,

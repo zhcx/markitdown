@@ -32,7 +32,7 @@ export function AIProofreadPanel() {
     <div className="ai-proofread-panel">
       <div className="ai-proofread-header">
         <h4>校对结果 ({proofreadResults.length}处问题)</h4>
-        <button className="close-btn" onClick={handleClose}>x</button>
+        <button className="close-btn" onClick={handleClose} aria-label="关闭">×</button>
       </div>
       <div className="ai-proofread-list">
         {proofreadResults.map((result, index) => (

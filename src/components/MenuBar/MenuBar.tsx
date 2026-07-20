@@ -625,42 +625,42 @@ export function MenuBar() {
         {
           label: '主题',
           children: [
-            { label: 'VS Code Dark Theme', action: () => {
+            { label: 'VS Code 深色主题', action: () => {
               setSettings({ ...settings, appearance: { ...settings.appearance, theme: 'vscode-dark' } });
               setActiveMenu(null);
               setMenuOpen(false);
             }},
-            { label: 'VS Code Light Theme', action: () => {
+            { label: 'VS Code 浅色主题', action: () => {
               setSettings({ ...settings, appearance: { ...settings.appearance, theme: 'vscode-light' } });
               setActiveMenu(null);
               setMenuOpen(false);
             }},
-            { label: 'Inkwell Light Theme', action: () => {
+            { label: 'Inkwell 浅色主题', action: () => {
               setSettings({ ...settings, appearance: { ...settings.appearance, theme: 'inkwell-light' } });
               setActiveMenu(null);
               setMenuOpen(false);
             }},
-            { label: 'Inkwell Dark Theme', action: () => {
+            { label: 'Inkwell 深色主题', action: () => {
               setSettings({ ...settings, appearance: { ...settings.appearance, theme: 'inkwell-dark' } });
               setActiveMenu(null);
               setMenuOpen(false);
             }},
-            { label: 'Claude Light Theme', action: () => {
+            { label: 'Claude 浅色主题', action: () => {
               setSettings({ ...settings, appearance: { ...settings.appearance, theme: 'claude-light' } });
               setActiveMenu(null);
               setMenuOpen(false);
             }},
-            { label: 'Claude Dark Theme', action: () => {
+            { label: 'Claude 深色主题', action: () => {
               setSettings({ ...settings, appearance: { ...settings.appearance, theme: 'claude-dark' } });
               setActiveMenu(null);
               setMenuOpen(false);
             }},
-            { label: 'Notion Light Theme', action: () => {
+            { label: 'Notion 浅色主题', action: () => {
               setSettings({ ...settings, appearance: { ...settings.appearance, theme: 'notion-light' } });
               setActiveMenu(null);
               setMenuOpen(false);
             }},
-            { label: 'Notion Dark Theme', action: () => {
+            { label: 'Notion 深色主题', action: () => {
               setSettings({ ...settings, appearance: { ...settings.appearance, theme: 'notion-dark' } });
               setActiveMenu(null);
               setMenuOpen(false);

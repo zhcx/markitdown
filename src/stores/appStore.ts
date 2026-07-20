@@ -4,6 +4,7 @@ import type { EditorController } from '../types/editor';
 import { formatTextStatistics } from '../utils/textStatistics';
 import { DEFAULT_FONT_SIZE, DEFAULT_LINE_HEIGHT } from '../utils/appearanceSettings';
 import { applySavedTab } from '../utils/tabPersistence';
+import { detectSystemLanguage, normalizeLanguage, type AppLanguage } from '../i18n';
 
 const isTauriRuntime = () => typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 const browserSettingsKey = 'markitdown.browser.settings';
@@ -19,6 +20,7 @@ const cacheSettingsForStartup = (settings: Settings) => {
 export interface Settings {
   appearance: {
     theme: string;
+    language: AppLanguage;
     /** UI chrome font. Older saved settings omit this and fall back to YaHei. */
     ui_font_family?: string;
     font_family: string;
@@ -218,6 +220,7 @@ interface AppState {
 const defaultSettings: Settings = {
   appearance: {
     theme: 'vscode-dark',
+    language: detectSystemLanguage(),
     ui_font_family: 'Microsoft YaHei',
     font_family: 'Microsoft YaHei',
     font_size: DEFAULT_FONT_SIZE,
@@ -294,7 +297,11 @@ const defaultSettings: Settings = {
 const normalizeSettings = (saved: Settings): Settings => ({
   ...defaultSettings,
   ...saved,
-  appearance: { ...defaultSettings.appearance, ...saved.appearance },
+  appearance: {
+    ...defaultSettings.appearance,
+    ...saved.appearance,
+    language: normalizeLanguage(saved.appearance?.language),
+  },
   editor: { ...defaultSettings.editor, ...saved.editor },
   image_hosting: { ...defaultSettings.image_hosting, ...saved.image_hosting },
   export: { ...defaultSettings.export, ...saved.export },

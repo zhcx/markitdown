@@ -9,6 +9,7 @@ import {
   FONT_SIZE_RANGE_THUMB,
   getRangeMarkerGeometry,
 } from '../../utils/appearanceSettings';
+import { LANGUAGE_OPTIONS, normalizeLanguage } from '../../i18n';
 
 const isTauriRuntime = () => '__TAURI_INTERNALS__' in window;
 
@@ -259,6 +260,29 @@ export function SettingsPanel() {
           {activeTab === 'appearance' && (
             <div className="settings-section">
               <div className="setting-item">
+                <label>
+                  界面显示语言
+                  <small>根据系统语言自动选择，也可手动更改</small>
+                </label>
+                <select
+                  aria-label="语言"
+                  value={normalizeLanguage(localSettings.appearance.language)}
+                  onChange={(event) => {
+                    const language = normalizeLanguage(event.target.value);
+                    const nextSettings = {
+                      ...localSettings,
+                      appearance: { ...localSettings.appearance, language },
+                    };
+                    setLocalSettings(nextSettings);
+                    void saveSettings(nextSettings);
+                  }}
+                >
+                  {LANGUAGE_OPTIONS.map(option => (
+                    <option key={option.value} value={option.value}>{option.nativeLabel}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="setting-item">
                 <label>主题</label>
                 <select
                   value={localSettings.appearance.theme}
@@ -269,14 +293,14 @@ export function SettingsPanel() {
                     })
                   }
                 >
-                  <option value="vscode-dark">VS Code Dark Theme</option>
-                  <option value="vscode-light">VS Code Light Theme</option>
-                  <option value="inkwell-light">Inkwell Light Theme</option>
-                  <option value="inkwell-dark">Inkwell Dark Theme</option>
-                  <option value="claude-light">Claude Light Theme</option>
-                  <option value="claude-dark">Claude Dark Theme</option>
-                  <option value="notion-light">Notion Light Theme</option>
-                  <option value="notion-dark">Notion Dark Theme</option>
+                  <option value="vscode-dark">VS Code 深色主题</option>
+                  <option value="vscode-light">VS Code 浅色主题</option>
+                  <option value="inkwell-light">Inkwell 浅色主题</option>
+                  <option value="inkwell-dark">Inkwell 深色主题</option>
+                  <option value="claude-light">Claude 浅色主题</option>
+                  <option value="claude-dark">Claude 深色主题</option>
+                  <option value="notion-light">Notion 浅色主题</option>
+                  <option value="notion-dark">Notion 深色主题</option>
                   <option value="system">跟随系统</option>
                 </select>
               </div>
@@ -464,7 +488,7 @@ export function SettingsPanel() {
               {localSettings.image_hosting.active_service === 'cloudinary' && (
                 <>
                   <div className="setting-item">
-                    <label>Cloud Name</label>
+                    <label>云名称</label>
                     <input
                       type="text"
                       value={localSettings.image_hosting.cloudinary.cloud_name}
@@ -496,7 +520,7 @@ export function SettingsPanel() {
                     />
                   </div>
                   <div className="setting-item">
-                    <label>API Secret</label>
+                    <label>API 密钥</label>
                     <input
                       type="password"
                       value={localSettings.image_hosting.cloudinary.api_secret}
@@ -572,7 +596,7 @@ export function SettingsPanel() {
                     </select>
                   </div>
                   <div className="setting-item">
-                    <label>Endpoint</label>
+                    <label>服务端点</label>
                     <input
                       type="text"
                       placeholder="例如: oss-cn-hangzhou.aliyuncs.com"
@@ -589,7 +613,7 @@ export function SettingsPanel() {
                     />
                   </div>
                   <div className="setting-item">
-                    <label>Bucket名称</label>
+                    <label>存储桶名称</label>
                     <input
                       type="text"
                       value={localSettings.image_hosting.s3.bucket}
@@ -605,7 +629,7 @@ export function SettingsPanel() {
                     />
                   </div>
                   <div className="setting-item">
-                    <label>Region</label>
+                    <label>地域</label>
                     <input
                       type="text"
                       placeholder="例如: cn-hangzhou"
@@ -622,7 +646,7 @@ export function SettingsPanel() {
                     />
                   </div>
                   <div className="setting-item">
-                    <label>Access Key ID</label>
+                    <label>访问密钥 ID</label>
                     <input
                       type="password"
                       value={localSettings.image_hosting.s3.access_key}
@@ -638,7 +662,7 @@ export function SettingsPanel() {
                     />
                   </div>
                   <div className="setting-item">
-                    <label>Access Key Secret</label>
+                    <label>访问密钥</label>
                     <input
                       type="password"
                       value={localSettings.image_hosting.s3.secret_key}
@@ -1047,10 +1071,10 @@ export function SettingsPanel() {
                       <div className="setting-item">
                         <label>搜索深度</label>
                         <select value={localSettings.web_search.tavily_search_depth} onChange={(e) => setLocalSettings({ ...localSettings, web_search: { ...localSettings.web_search, tavily_search_depth: e.target.value as 'basic' | 'advanced' | 'fast' | 'ultra-fast' } })}>
-                          <option value="basic">Basic</option>
-                          <option value="fast">Fast</option>
-                          <option value="advanced">Advanced</option>
-                          <option value="ultra-fast">Ultra fast</option>
+                          <option value="basic">基础</option>
+                          <option value="fast">快速</option>
+                          <option value="advanced">高级</option>
+                          <option value="ultra-fast">极速</option>
                         </select>
                       </div>
                       <div className="setting-item">

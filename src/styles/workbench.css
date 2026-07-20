@@ -1883,3 +1883,56 @@ body {
 .workspace-context-body input:not([type="checkbox"]) { width: 100%; box-sizing: border-box; padding: 6px 8px; border: 1px solid var(--border-color, #cbd5e1); border-radius: 5px; background: var(--bg-primary, #fff); color: inherit; }
 .workspace-context-disclosure { margin: 0; padding: 7px 8px; border-left: 3px solid #3b82f6; background: color-mix(in srgb, #3b82f6 7%, transparent); color: var(--text-secondary, #475569); line-height: 1.45; }
 .workspace-ai-scope { padding: 2px 5px; border-radius: 4px; background: color-mix(in srgb, #3b82f6 12%, transparent); color: #2563eb; font-size: 10px; }
+.editor-context-menu {
+  position: fixed;
+  z-index: 10020;
+  width: 184px;
+  padding: 5px;
+  border: 1px solid var(--border-color, #454545);
+  border-radius: 6px;
+  background: var(--menu-background, var(--bg-secondary, #252526));
+  color: var(--text-primary, #f0f0f0);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 28%);
+}
+
+.editor-context-menu button {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 6px 9px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+.editor-context-menu button:hover:not(:disabled),
+.editor-context-menu button:focus-visible {
+  background: var(--accent-color, #0e639c);
+  color: #fff;
+  outline: none;
+}
+
+.editor-context-menu button:disabled {
+  opacity: 0.42;
+}
+
+.editor-context-menu kbd {
+  color: var(--text-secondary, #aaa);
+  font: 11px/1 var(--font-ui, sans-serif);
+}
+
+.editor-context-menu button:hover:not(:disabled) kbd,
+.editor-context-menu button:focus-visible kbd {
+  color: inherit;
+}
+
+.editor-context-menu-divider {
+  height: 1px;
+  margin: 4px 3px;
+  background: var(--border-color, #454545);
+}
