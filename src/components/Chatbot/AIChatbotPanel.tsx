@@ -9,6 +9,7 @@ import MarkdownIt from 'markdown-it';
 import { readStoredStringArray } from '../../utils/storage';
 import { sanitizeRenderedHtml } from '../../utils/safeHtml';
 import { AgentPanel, RuntimeTabs } from './AgentPanel';
+import { ChatSelectMenu } from './ChatSelectMenu';
 import type { AIRuntime } from '../../types/agent';
 
 const md = new MarkdownIt({ html: false, breaks: true, linkify: true });
@@ -303,30 +304,25 @@ function ApiChatPanel({ onRuntimeChange }: { onRuntimeChange: (runtime: AIRuntim
           </button>
         </div>
         <div className="chatbot-ai-selectors">
-          <label className="chatbot-selector-label chatbot-provider-label" htmlFor="chatbot-provider">服务商</label>
-          <label className="chatbot-selector-label chatbot-model-label" htmlFor="chatbot-model">模型</label>
-          <select
-            id="chatbot-provider"
+          <span className="chatbot-selector-label chatbot-provider-label">服务商</span>
+          <span className="chatbot-selector-label chatbot-model-label">模型</span>
+          <ChatSelectMenu
             className="chatbot-provider-select"
             value={chatProvider}
-            onChange={(event) => handleChatProviderChange(event.target.value as AIProviderId)}
-            title="选择 AI 服务商"
-          >
-            {availableProviders.map((provider) => (
-              <option key={provider.id} value={provider.id}>{provider.label}</option>
-            ))}
-          </select>
-          <select
-            id="chatbot-model"
+            label={selectedDefinition?.label || chatProvider}
+            options={availableProviders.map((provider) => ({ value: provider.id, label: provider.label }))}
+            onChange={(value) => handleChatProviderChange(value as AIProviderId)}
+            ariaLabel="选择 AI 服务商"
+          />
+          <ChatSelectMenu
             className="chatbot-model-select"
             value={chatModel}
-            onChange={(event) => setChatModel(event.target.value)}
-            title={selectedDefinition ? `${selectedDefinition.label} 模型` : '选择模型'}
-          >
-            {chatModels.length > 0 ? chatModels.map((model) => (
-              <option key={model} value={model}>{model}</option>
-            )) : <option value="">请先在设置中配置模型</option>}
-          </select>
+            label={chatModel || '请先配置模型'}
+            options={chatModels.map((model) => ({ value: model, label: model }))}
+            onChange={setChatModel}
+            ariaLabel={selectedDefinition ? `${selectedDefinition.label} 模型` : '选择模型'}
+            disabled={chatModels.length === 0}
+          />
         </div>
       </div>
 

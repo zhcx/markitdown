@@ -57,9 +57,8 @@ test('composer adapts model, effort, permissions, and file context by backend', 
   assert.match(panel, /chooseContextFiles/);
   assert.match(panel, /allow_all_session/);
   assert.match(panel, /capabilities\.reasoning_effort/);
-  assert.match(panel, /backend === 'claude_code' \? 'Agent'/);
   assert.match(panel, /modelCatalogs/);
-  assert.match(panel, /ComposerMenu/);
+  assert.match(panel, /ChatSelectMenu/);
   assert.match(panel, /<details className="agent-activity">/);
   assert.match(panel, /buildTimelineBlocks/);
   assert.match(store, /reasoning_effort: input\.reasoningEffort/);
@@ -87,4 +86,16 @@ test('Agent panel exposes an explicit fresh-conversation action', () => {
   assert.match(panel, /const beginNewSession/);
   assert.match(panel, /aria-label="新建 Agent 对话"/);
   assert.match(panel, /setLocalApprovalMode\('tiered'\)/);
+});
+
+test('AI and Agent share themed menus without native header selects or extra runtime controls', () => {
+  const aiPanel = read('src/components/Chatbot/AIChatbotPanel.tsx');
+  const agentPanel = read('src/components/Chatbot/AgentPanel.tsx');
+  const menu = read('src/components/Chatbot/ChatSelectMenu.tsx');
+  assert.match(aiPanel, /ChatSelectMenu/);
+  assert.match(agentPanel, /ChatSelectMenu/);
+  assert.match(menu, /role="listbox"/);
+  assert.doesNotMatch(aiPanel, /<select/);
+  assert.doesNotMatch(agentPanel, /<select/);
+  assert.doesNotMatch(agentPanel, /showRuntimeOptions|agent-runtime-config-button|···/);
 });

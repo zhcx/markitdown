@@ -1,12 +1,14 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { open } from '@tauri-apps/plugin-dialog';
 import MarkdownIt from 'markdown-it';
 import taskLists from 'markdown-it-task-lists';
 import { useAppStore } from '../../stores/appStore';
+import { useAIStore } from '../../stores/aiStore';
 import { useAgentStore } from '../../stores/agentStore';
 import type { AgentApprovalMode, AgentBackendId, AgentEditorContext, AgentTimelineItem } from '../../types/agent';
 import { readStoredStringArray } from '../../utils/storage';
 import { sanitizeRenderedHtml } from '../../utils/safeHtml';
+import { ChatSelectMenu } from './ChatSelectMenu';
 
 const agentMarkdown = new MarkdownIt({ html: false, breaks: true, linkify: true, typographer: true });
 agentMarkdown.use(taskLists);
@@ -33,6 +35,7 @@ interface AgentPanelProps {
 
 export function AgentPanel({ onRuntimeChange }: AgentPanelProps) {
   const { settings, content, currentFile, editorView, setContent } = useAppStore();
+  const { setChatbotVisible } = useAIStore();
   const {
     backends, modelCatalogs, modelsLoading, sessions, activeSessionId, timeline, pendingApproval, changes, loading, diagnostic,
     initialize, detectBackends, loadModels, startTurn, cancelTurn, respondApproval, setApprovalMode,
@@ -46,7 +49,6 @@ export function AgentPanel({ onRuntimeChange }: AgentPanelProps) {
   const [reasoningEffort, setReasoningEffort] = useState(settings.agent.backends[settings.agent.backend].reasoning_effort);
   const [contextPaths, setContextPaths] = useState<string[]>([]);
   const [editorContext, setEditorContext] = useState<AgentEditorContext | null>(null);
-  const [showRuntimeOptions, setShowRuntimeOptions] = useState(false);
   const [selection, setSelection] = useState<{ key: string; excluded: string[] }>({ key: '', excluded: [] });
   const roots = useMemo(() => readStoredStringArray('markitdown.workspace-roots'), []);
   const workspaceRoot = roots[0] || '';
@@ -105,7 +107,6 @@ export function AgentPanel({ onRuntimeChange }: AgentPanelProps) {
     setModel(config.model);
     setProfile(config.profile);
     setReasoningEffort(config.reasoning_effort);
-    setShowRuntimeOptions(false);
     beginNewSession();
   };
 
@@ -117,7 +118,6 @@ export function AgentPanel({ onRuntimeChange }: AgentPanelProps) {
       setModel(config.model);
       setProfile(config.profile);
       setReasoningEffort(config.reasoning_effort);
-      setShowRuntimeOptions(false);
     }
     void selectSession(sessionId);
   };
@@ -194,6 +194,10 @@ export function AgentPanel({ onRuntimeChange }: AgentPanelProps) {
     effortOptions.push({ value: reasoningEffort, label: EFFORT_LABELS[reasoningEffort] || reasoningEffort });
   }
   const modelLabel = selectedModel?.display_name || effectiveModel || (modelsLoading === backend ? '读取模型…' : 'CLI 默认模型');
+  const workspaceSessions = sessions.filter((session) => session.workspace_root === workspaceRoot);
+  const sessionLabel = activeSession
+    ? `${BACKEND_LABELS[activeSession.backend]} · ${new Date(activeSession.updated_at).toLocaleString()}`
+    : '新会话';
 
   if (!settings.agent.enabled) {
     return (
@@ -209,24 +213,55 @@ export function AgentPanel({ onRuntimeChange }: AgentPanelProps) {
 
   return (
     <div className="agent-panel">
-      <div className="agent-header">
+      <div className="chatbot-header agent-header">
         <RuntimeTabs active="agent" onChange={onRuntimeChange} />
-        <div className="agent-controls">
-          <select value={backend} onChange={(event) => changeBackend(event.target.value as AgentBackendId)} aria-label="Agent backend">
-            {(Object.keys(BACKEND_LABELS) as AgentBackendId[]).map((id) => (
-              <option key={id} value={id}>{BACKEND_LABELS[id]}</option>
-            ))}
-          </select>
-          <select
+        <div className="chatbot-header-main">
+          <div className="chatbot-header-identity">
+            <span className="chatbot-header-mark agent-header-mark" aria-hidden="true">AG</span>
+            <div>
+              <div className="chatbot-header-title-row">
+                <h4>Agent</h4>
+                <span className={`agent-header-state ${backendStatus?.compatible ? 'ready' : 'unavailable'}`}>
+                  <span aria-hidden="true" />{backendStatus?.compatible ? '已连接' : '不可用'}
+                </span>
+              </div>
+              <span className="chatbot-header-subtitle">本地编程助手</span>
+            </div>
+          </div>
+          <button className="chatbot-close-btn" onClick={() => setChatbotVisible(false)} title="关闭" aria-label="关闭 Agent 对话">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" /></svg>
+          </button>
+        </div>
+        <div className="chatbot-ai-selectors agent-controls">
+          <span className="chatbot-selector-label agent-backend-label">Agent</span>
+          <span className="chatbot-selector-label agent-session-label">会话</span>
+          <ChatSelectMenu
+            className="agent-backend-select"
+            value={backend}
+            label={BACKEND_LABELS[backend]}
+            options={(Object.keys(BACKEND_LABELS) as AgentBackendId[]).map((id) => ({
+              value: id,
+              label: BACKEND_LABELS[id],
+              description: backends.find((item) => item.id === id)?.compatible ? '已发现并兼容' : '未安装或不可用',
+            }))}
+            onChange={(value) => changeBackend(value as AgentBackendId)}
+            ariaLabel="选择 Agent"
+          />
+          <ChatSelectMenu
+            className="agent-session-select"
             value={activeSessionId || ''}
-            onChange={(event) => event.target.value ? resumeSession(event.target.value) : beginNewSession()}
-            aria-label="Agent 会话"
-          >
-            <option value="">新会话</option>
-            {sessions.filter((session) => session.workspace_root === workspaceRoot).map((session) => (
-              <option key={session.id} value={session.id}>{BACKEND_LABELS[session.backend]} · {new Date(session.updated_at).toLocaleString()}</option>
-            ))}
-          </select>
+            label={sessionLabel}
+            options={[
+              { value: '', label: '新会话', description: '开始独立的 Agent 对话' },
+              ...workspaceSessions.map((session) => ({
+                value: session.id,
+                label: `${BACKEND_LABELS[session.backend]} · ${new Date(session.updated_at).toLocaleString()}`,
+                description: session.status === 'running' ? '正在运行' : session.status === 'completed' ? '已完成' : '可继续',
+              })),
+            ]}
+            onChange={(value) => value ? resumeSession(value) : beginNewSession()}
+            ariaLabel="选择 Agent 会话"
+          />
           <button type="button" className="agent-new-session-button" onClick={beginNewSession} disabled={loading} title="新建 Agent 对话" aria-label="新建 Agent 对话">+</button>
         </div>
         <div className={`agent-health ${backendStatus?.compatible ? 'ready' : 'unavailable'}`}>
@@ -237,7 +272,7 @@ export function AgentPanel({ onRuntimeChange }: AgentPanelProps) {
         </div>
       </div>
 
-      <div className="agent-timeline">
+      <div className="chatbot-messages agent-timeline">
         {!workspaceRoot && <div className="agent-empty-state"><strong>请先打开工作区</strong><span>Agent 将使用打开的当前目录作为会话授权范围。</span></div>}
         {workspaceRoot && timeline.length === 0 && (
           <div className="agent-empty-state"><strong>让 Agent 在当前目录中处理任务</strong><span>Git 根目录使用隔离工作区，其他目录在当前授权范围内直接写入。</span></div>
@@ -245,14 +280,19 @@ export function AgentPanel({ onRuntimeChange }: AgentPanelProps) {
         {buildTimelineBlocks(timeline).map((block) => block.type === 'activity' ? (
           <AgentActivity key={block.id} items={block.items} />
         ) : (
-          <article key={block.item.id} className={`agent-message agent-message-${block.item.kind}`}>
-            {block.item.kind === 'user' && <header>你</header>}
-            {block.item.content && <AgentMarkdown content={block.item.content} />}
-            {block.item.kind === 'message_delta' && block.item.content && (
-              <div className="agent-message-actions">
-                <button type="button" onClick={() => insertIntoEditor(block.item.content)} title="插入当前编辑器">插入编辑器</button>
+          <article key={block.item.id} className={`chatbot-message agent-message ${block.item.kind === 'user' ? 'user' : 'assistant'} agent-message-${block.item.kind}`}>
+            {block.item.kind !== 'user' && <div className="chatbot-avatar assistant-avatar agent-avatar">AG</div>}
+            <div className="chatbot-message-body">
+              <div className={`chatbot-bubble ${block.item.kind === 'user' ? 'user-bubble' : 'assistant-bubble'}`}>
+                {block.item.content && <AgentMarkdown content={block.item.content} />}
+                {block.item.kind === 'message_delta' && block.item.content && (
+                  <div className="agent-message-actions">
+                    <button type="button" onClick={() => insertIntoEditor(block.item.content)} title="插入当前编辑器">插入编辑器</button>
+                  </div>
+                )}
               </div>
-            )}
+            </div>
+            {block.item.kind === 'user' && <div className="chatbot-avatar user-avatar">我</div>}
           </article>
         ))}
         {pendingApproval && (
@@ -303,7 +343,7 @@ export function AgentPanel({ onRuntimeChange }: AgentPanelProps) {
         </section>
       )}
 
-      <div className="agent-composer">
+      <div className="chatbot-input-area agent-composer">
         {editorContext && (
           <div className="agent-editor-reference" title={editorContext.path || editorContext.label}>
             <span aria-hidden="true">@</span>
@@ -320,6 +360,7 @@ export function AgentPanel({ onRuntimeChange }: AgentPanelProps) {
           </div>
         )}
         <textarea
+          className="chatbot-textarea agent-textarea"
           value={prompt}
           onChange={(event) => setPrompt(event.target.value)}
           onKeyDown={(event) => {
@@ -328,19 +369,11 @@ export function AgentPanel({ onRuntimeChange }: AgentPanelProps) {
           placeholder={activeSessionId ? '提出后续变更要求' : '描述需要 Agent 完成的任务'}
           disabled={!workspaceRoot || !backendStatus?.compatible}
         />
-        {showRuntimeOptions && (
-          <div className="agent-runtime-options">
-            <label><span>模型</span><input value={model} onChange={(event) => setModel(event.target.value)} placeholder="使用 CLI 默认模型" /></label>
-            {backendStatus?.capabilities.profile_override && (
-              <label><span>{backend === 'claude_code' ? 'Agent' : backend === 'codex' ? 'Profile' : 'Agent 模式'}</span><input value={profile} onChange={(event) => setProfile(event.target.value)} placeholder="使用 CLI 默认配置" /></label>
-            )}
-          </div>
-        )}
-        <div className="agent-composer-toolbar">
+        <div className="chatbot-input-toolbar agent-composer-toolbar">
           <button className="agent-icon-button" onClick={() => void chooseContextFiles()} disabled={!workspaceRoot || loading} title="添加当前目录中的文件" aria-label="添加文件">+</button>
           <button className="agent-reference-button" onClick={referenceEditor} disabled={!content || loading} title="引用当前选区或文档" aria-label="引用当前选区或文档">@ 引用</button>
-          <ComposerMenu
-            className={effectiveApprovalMode === 'allow_all_session' ? 'unrestricted' : ''}
+          <ChatSelectMenu
+            className={`agent-permission-menu ${effectiveApprovalMode === 'allow_all_session' ? 'unrestricted' : ''}`}
             value={effectiveApprovalMode}
             label={effectiveApprovalMode === 'allow_all_session' ? '完全访问' : '分级审批'}
             options={[
@@ -349,34 +382,31 @@ export function AgentPanel({ onRuntimeChange }: AgentPanelProps) {
             ]}
             onChange={(value) => void changeApprovalMode(value as AgentApprovalMode)}
             disabled={loading}
-            aria-label="审批模式"
-            align="left"
+            ariaLabel="审批模式"
+            placement="top"
           />
           <span className="agent-composer-spacer" />
-          <ComposerMenu
+          <ChatSelectMenu
             className="agent-model-menu"
             value={effectiveModel}
             label={modelLabel}
             options={modelOptions}
             onChange={setModel}
             disabled={loading || modelsLoading === backend || modelOptions.length === 0}
-            aria-label="Agent 模型"
+            ariaLabel="Agent 模型"
+            placement="top"
             footer={modelCatalog?.diagnostic}
           />
-          <button
-            className="agent-runtime-config-button"
-            onClick={() => setShowRuntimeOptions((value) => !value)}
-            title="自定义模型与 Agent 配置"
-            aria-label="自定义模型与 Agent 配置"
-          >···</button>
           {backendStatus?.capabilities.reasoning_effort && (
-            <ComposerMenu
+            <ChatSelectMenu
+              className="agent-effort-menu"
               value={reasoningEffort}
               label={EFFORT_LABELS[reasoningEffort] || reasoningEffort}
               options={effortOptions}
               onChange={setReasoningEffort}
               disabled={loading}
-              aria-label="推理强度"
+              ariaLabel="推理强度"
+              placement="top"
             />
           )}
           <button
@@ -431,81 +461,6 @@ function fileName(path: string) {
 function AgentMarkdown({ content, compact = false }: { content: string; compact?: boolean }) {
   const html = useMemo(() => sanitizeRenderedHtml(agentMarkdown.render(content)), [content]);
   return <div className={`agent-message-content agent-markdown${compact ? ' compact' : ''}`} dangerouslySetInnerHTML={{ __html: html }} />;
-}
-
-interface ComposerMenuOption {
-  value: string;
-  label: string;
-  description?: string;
-  tone?: 'warning';
-}
-
-function ComposerMenu({
-  value, label, options, onChange, disabled, className = '', align = 'right', footer, ...buttonProps
-}: {
-  value: string;
-  label: string;
-  options: ComposerMenuOption[];
-  onChange: (value: string) => void;
-  disabled?: boolean;
-  className?: string;
-  align?: 'left' | 'right';
-  footer?: string;
-  'aria-label': string;
-}) {
-  const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const close = (event: PointerEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
-    };
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setOpen(false);
-    };
-    document.addEventListener('pointerdown', close);
-    document.addEventListener('keydown', closeOnEscape);
-    return () => {
-      document.removeEventListener('pointerdown', close);
-      document.removeEventListener('keydown', closeOnEscape);
-    };
-  }, [open]);
-
-  return (
-    <div ref={rootRef} className={`agent-composer-menu ${className}`}>
-      <button
-        type="button"
-        className="agent-composer-menu-trigger"
-        onClick={() => setOpen((current) => !current)}
-        disabled={disabled}
-        aria-expanded={open}
-        {...buttonProps}
-      >
-        <span>{label}</span><span className="agent-menu-chevron" aria-hidden="true">⌄</span>
-      </button>
-      {open && (
-        <div className={`agent-composer-popover align-${align}`} role="listbox" aria-label={buttonProps['aria-label']}>
-          <div className="agent-composer-popover-options">
-            {options.map((option) => (
-              <button
-                type="button"
-                role="option"
-                aria-selected={option.value === value}
-                className={`${option.value === value ? 'selected' : ''} ${option.tone || ''}`}
-                key={option.value}
-                onClick={() => { onChange(option.value); setOpen(false); }}
-              >
-                <span className="agent-menu-check" aria-hidden="true">{option.value === value ? '✓' : ''}</span>
-                <span className="agent-menu-option-copy"><strong>{option.label}</strong>{option.description && <small>{option.description}</small>}</span>
-              </button>
-            ))}
-          </div>
-          {footer && <div className="agent-composer-popover-footer">{footer}</div>}
-        </div>
-      )}
-    </div>
-  );
 }
 
 const ACTIVITY_KINDS = new Set(['reasoning_delta', 'status', 'tool_started', 'tool_completed', 'command_output', 'usage', 'file_changed']);
