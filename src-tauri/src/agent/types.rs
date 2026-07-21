@@ -101,6 +101,8 @@ pub struct AgentSession {
     pub has_changes: bool,
     #[serde(default)]
     pub read_only: bool,
+    #[serde(default)]
+    pub direct_write: bool,
     pub base_commit: String,
     #[serde(default)]
     pub baseline_hashes: HashMap<String, Option<String>>,

@@ -97,6 +97,10 @@ impl AgentSupervisor {
                 if matches!(session.status, AgentSessionStatus::Running | AgentSessionStatus::WaitingApproval) {
                     session.status = AgentSessionStatus::Interrupted;
                 }
+                if session.read_only && session.worktree_path.as_deref() == Some(&session.workspace_root) {
+                    session.read_only = false;
+                    session.direct_write = true;
+                }
                 // Approval bypass is deliberately never restored across app restarts.
                 session.approval_mode = AgentApprovalMode::Tiered;
                 let permission_dir = storage_root.join("permissions").join(&session.id);
@@ -141,15 +145,7 @@ fn load_events(storage_root: &Path, session_id: &str) -> Result<Vec<AgentEvent>,
 fn now() -> String { chrono::Utc::now().to_rfc3339() }
 
 fn discover_executable(name: &str) -> Option<PathBuf> {
-    let finder = if cfg!(windows) { "where.exe" } else { "which" };
-    let output = process::system_command(finder).arg(name).output().ok()?;
-    if !output.status.success() { return None; }
-    process::select_discovered(
-        String::from_utf8_lossy(&output.stdout)
-            .lines()
-            .filter(|line| !line.trim().is_empty())
-            .map(|line| PathBuf::from(line.trim())),
-    )
+    process::discover_executable(name)
 }
 
 fn executable_version(path: &Path) -> Result<String, String> {
@@ -187,23 +183,16 @@ pub async fn agent_detect_backends(overrides: Option<HashMap<AgentBackendId, Str
             Ok(discover_executable(id.executable_name()))
         };
         let path = path_result.as_ref().ok().and_then(|value| value.clone());
-        let version_result = match path_result {
-            Ok(Some(path)) => Some(executable_version(&path).and_then(|version| {
-                probe_capabilities(&path, id)?;
-                Ok(version)
-            })),
-            Ok(None) => None,
-            Err(error) => Some(Err(error)),
-        };
+        let path_error = path_result.err();
         let installed = path.is_some();
-        let (version, diagnostic) = match version_result {
-            Some(Ok(value)) => (Some(value), None),
-            Some(Err(error)) => (None, Some(format!("无法执行：{error}"))),
-            None => (None, Some(format!("未找到 {}，请先安装或指定路径", id.executable_name()))),
+        let diagnostic = match path_error {
+            Some(error) => Some(error),
+            None if !installed => Some(format!("未找到 {}，请先安装或指定路径", id.executable_name())),
+            None => None,
         };
         AgentBackendStatus {
             id, label: id.label().into(), installed, executable_path: path.map(|item| item.to_string_lossy().into_owned()),
-            compatible: installed && diagnostic.is_none(), diagnostic, version, capabilities: AgentCapabilities::for_backend(id),
+            compatible: installed && diagnostic.is_none(), diagnostic, version: None, capabilities: AgentCapabilities::for_backend(id),
         }
     }).collect()
 }
@@ -226,7 +215,7 @@ pub async fn agent_get_session_events(session_id: String, supervisor: State<'_, 
 pub async fn agent_start_turn(request: StartAgentTurnRequest, app: AppHandle, supervisor: State<'_, AgentSupervisor>) -> Result<AgentSession, String> {
     if request.prompt.trim().is_empty() { return Err("Agent 任务不能为空".into()); }
     let root = fs::canonicalize(&request.workspace_root).map_err(|error| format!("无法访问工作区：{error}"))?;
-    let read_only = git::ensure_git_workspace(&root).is_err();
+    let direct_write = git::ensure_git_workspace(&root).is_err();
 
     // One running turn per workspace, regardless of backend.
     let existing: Vec<_> = supervisor.sessions.lock().await.values().cloned().collect();
@@ -241,8 +230,8 @@ pub async fn agent_start_turn(request: StartAgentTurnRequest, app: AppHandle, su
         supervisor.runtime(session_id).await?
     } else {
         let id = Uuid::new_v4().to_string();
-        let worktree = if read_only { root.clone() } else { git::session_worktree_path(&supervisor.storage_root, &id) };
-        let (base_commit, baseline_hashes) = if read_only {
+        let worktree = if direct_write { root.clone() } else { git::session_worktree_path(&supervisor.storage_root, &id) };
+        let (base_commit, baseline_hashes) = if direct_write {
             (String::new(), HashMap::new())
         } else {
             git::create_isolated_worktree(&root, &worktree)?
@@ -253,7 +242,8 @@ pub async fn agent_start_turn(request: StartAgentTurnRequest, app: AppHandle, su
             worktree_path: Some(worktree.to_string_lossy().into_owned()), backend_session_id: None,
             status: AgentSessionStatus::Idle, approval_mode: AgentApprovalMode::Tiered,
             created_at: timestamp.clone(), updated_at: timestamp, last_error: None, has_changes: false,
-            read_only,
+            read_only: false,
+            direct_write,
             base_commit, baseline_hashes,
         };
         let permission_dir = supervisor.storage_root.join("permissions").join(&id);
@@ -716,7 +706,7 @@ pub async fn agent_cancel_turn(session_id: String, app: AppHandle, supervisor: S
 pub async fn agent_get_changes(session_id: String, supervisor: State<'_, AgentSupervisor>) -> Result<AgentChangeSet, String> {
     let runtime = supervisor.runtime(&session_id).await?;
     let mut session = runtime.session.lock().await;
-    if session.read_only {
+    if session.read_only || session.direct_write {
         return Ok(AgentChangeSet { session_id, files: Vec::new(), base_commit: String::new() });
     }
     let changes = git::get_changes(&session)?;
@@ -728,7 +718,8 @@ pub async fn agent_get_changes(session_id: String, supervisor: State<'_, AgentSu
 pub async fn agent_apply_changes(session_id: String, paths: Option<Vec<String>>, supervisor: State<'_, AgentSupervisor>) -> Result<(), String> {
     let runtime = supervisor.runtime(&session_id).await?;
     let mut session = runtime.session.lock().await;
-    if session.read_only { return Err("非 Git 工作区会话仅支持只读分析".into()); }
+    if session.read_only { return Err("此会话仅支持只读分析".into()); }
+    if session.direct_write { return Err("当前目录授权会话的变更已直接写入，无需再次应用".into()); }
     git::apply_changes(&mut session, paths.as_deref())?;
     let remaining = git::get_changes(&session)?;
     session.has_changes = !remaining.files.is_empty();
@@ -741,7 +732,7 @@ pub async fn agent_discard_session(session_id: String, supervisor: State<'_, Age
     let runtime = supervisor.runtime(&session_id).await?;
     if let Some(mut child) = runtime.child.lock().await.take() { let _ = child.kill().await; }
     let session = runtime.session.lock().await.clone();
-    if !session.read_only { git::remove_worktree(&session)?; }
+    if !session.read_only && !session.direct_write { git::remove_worktree(&session)?; }
     supervisor.sessions.lock().await.remove(&session_id);
     let _ = fs::remove_dir_all(supervisor.storage_root.join("sessions").join(&session_id));
     let _ = fs::remove_dir_all(supervisor.storage_root.join("permissions").join(&session_id));
@@ -766,7 +757,8 @@ async fn finish_session(runtime: &SessionRuntime, app: &AppHandle, status: Agent
         session.status = status;
         session.updated_at = now();
         session.last_error = error.clone();
-        session.has_changes = !session.read_only && git::get_changes(&session).map(|changes| !changes.files.is_empty()).unwrap_or(false);
+        session.has_changes = !session.read_only && !session.direct_write
+            && git::get_changes(&session).map(|changes| !changes.files.is_empty()).unwrap_or(false);
     }
     let kind = if status == AgentSessionStatus::Error { "error" } else { "done" };
     emit_simple(runtime, app, kind, error.unwrap_or_default()).await;
@@ -827,6 +819,7 @@ mod tests {
             worktree_path: Some(std::env::temp_dir().to_string_lossy().into_owned()), backend_session_id: None,
             status: AgentSessionStatus::Idle, approval_mode: AgentApprovalMode::AllowAllSession,
             created_at: now(), updated_at: now(), last_error: None, has_changes: false, read_only: false,
+            direct_write: false,
             base_commit: String::new(), baseline_hashes: HashMap::new(),
         };
         assert!(is_hard_denied(Some("git push origin main"), None, &session));
@@ -859,13 +852,29 @@ mod tests {
     }
 
     #[test]
-    fn non_git_sessions_use_read_only_backend_policies() {
+    fn explicit_read_only_sessions_use_read_only_backend_policies() {
         let permissions = adapters::opencode_permissions(AgentApprovalMode::AllowAllSession, true);
         assert_eq!(permissions.pointer("/permission/edit"), Some(&json!("deny")));
         assert_eq!(permissions.pointer("/permission/bash"), Some(&json!("deny")));
 
         let turn = adapters::codex_turn_start("thread", "inspect", Path::new("C:/notes"), AgentApprovalMode::AllowAllSession, true);
         assert_eq!(turn.pointer("/params/sandboxPolicy/type"), Some(&json!("readOnly")));
+    }
+
+    #[test]
+    fn current_directory_sessions_use_writable_backend_policies() {
+        let permissions = adapters::opencode_permissions(AgentApprovalMode::Tiered, false);
+        assert_eq!(permissions.pointer("/permission/edit"), Some(&json!("allow")));
+
+        let turn = adapters::codex_turn_start(
+            "thread",
+            "edit notes",
+            Path::new("C:/notes"),
+            AgentApprovalMode::Tiered,
+            false,
+        );
+        assert_eq!(turn.pointer("/params/sandboxPolicy/type"), Some(&json!("workspaceWrite")));
+        assert_eq!(turn.pointer("/params/sandboxPolicy/writableRoots/0"), Some(&json!("C:/notes")));
     }
 
     #[tokio::test]
@@ -875,7 +884,8 @@ mod tests {
             id: "session".into(), backend: AgentBackendId::ClaudeCode, workspace_root: "repo".into(),
             worktree_path: None, backend_session_id: None, status: AgentSessionStatus::Completed,
             approval_mode: AgentApprovalMode::AllowAllSession, created_at: now(), updated_at: now(),
-            last_error: None, has_changes: false, read_only: false, base_commit: String::new(), baseline_hashes: HashMap::new(),
+            last_error: None, has_changes: false, read_only: false, direct_write: false,
+            base_commit: String::new(), baseline_hashes: HashMap::new(),
         };
         let runtime = SessionRuntime::new(session, storage.join("permissions"));
         persist_runtime(&storage, &runtime).await.unwrap();

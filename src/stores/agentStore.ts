@@ -138,7 +138,9 @@ export const useAgentStore = create<AgentState>((set, get) => ({
     const approval = get().pendingApproval;
     if (!approval) return;
     if (decision === 'allow_all_session') {
-      const confirmed = window.confirm('本会话后续的命令、网络、MCP 和隔离区编辑将不再逐次询问。隔离工作区和禁止推送等硬边界仍然生效。');
+      const session = get().sessions.find((item) => item.id === approval.session_id);
+      const scope = session?.direct_write ? '当前授权目录' : '隔离工作区';
+      const confirmed = window.confirm(`本会话后续的命令、网络、MCP 和目录内编辑将不再逐次询问。${scope}边界和禁止推送等硬限制仍然生效。`);
       if (!confirmed) return;
     }
     await invoke('agent_respond_approval', { sessionId: approval.session_id, approvalId: approval.id, decision });

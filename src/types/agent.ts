@@ -48,6 +48,7 @@ export interface AgentSession {
   last_error?: string;
   has_changes: boolean;
   read_only: boolean;
+  direct_write: boolean;
 }
 
 export type AgentApprovalDecision = 'allow_once' | 'allow_session_kind' | 'allow_all_session' | 'deny';

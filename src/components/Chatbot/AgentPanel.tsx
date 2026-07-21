@@ -98,14 +98,16 @@ export function AgentPanel({ onRuntimeChange }: AgentPanelProps) {
         </div>
         <div className={`agent-health ${backendStatus?.compatible ? 'ready' : 'unavailable'}`}>
           <span aria-hidden="true" />
-          {backendStatus?.compatible ? `${backendStatus.version || '已就绪'} · 隔离工作区` : backendStatus?.diagnostic || '正在检测运行环境'}
+          {backendStatus?.compatible
+            ? `${backendStatus.version || '已发现'} · ${activeSession ? (activeSession.direct_write ? '当前目录已授权' : '隔离工作区') : '当前目录待授权'}`
+            : backendStatus?.diagnostic || '正在检测运行环境'}
         </div>
       </div>
 
       <div className="agent-timeline">
-        {!workspaceRoot && <div className="agent-empty-state"><strong>请先打开工作区</strong><span>完整 Agent 需要从 Git 仓库根目录启动。</span></div>}
+        {!workspaceRoot && <div className="agent-empty-state"><strong>请先打开工作区</strong><span>Agent 将使用打开的当前目录作为会话授权范围。</span></div>}
         {workspaceRoot && timeline.length === 0 && (
-          <div className="agent-empty-state"><strong>让 Agent 在隔离环境中处理任务</strong><span>变更完成后可逐文件审阅并应用到当前工作区。</span></div>
+          <div className="agent-empty-state"><strong>让 Agent 在当前目录中处理任务</strong><span>Git 根目录使用隔离工作区；其他目录在当前授权范围内直接写入。</span></div>
         )}
         {timeline.map((item) => (
           <article key={item.id} className={`agent-event agent-event-${item.kind}`}>
@@ -130,13 +132,17 @@ export function AgentPanel({ onRuntimeChange }: AgentPanelProps) {
 
       {activeSession?.approval_mode === 'allow_all_session' && (
         <div className="agent-unrestricted-banner">
-          <span>当前会话已完全允许，隔离和禁止推送规则仍然有效。</span>
+          <span>当前会话已完全允许，目录边界和禁止推送规则仍然有效。</span>
           <button onClick={() => void setTieredApproval()}>恢复分级审批</button>
         </div>
       )}
 
       {activeSession?.read_only && (
         <div className="agent-readonly-banner">当前目录不是 Git 仓库，本会话仅允许读取和分析。</div>
+      )}
+
+      {activeSession?.direct_write && (
+        <div className="agent-direct-write-banner">当前目录已授权，Agent 修改会直接写入，不经过隔离审阅。</div>
       )}
 
       {changes && changes.files.length > 0 && (
@@ -185,7 +191,11 @@ export function AgentPanel({ onRuntimeChange }: AgentPanelProps) {
           title={loading ? '停止任务' : '发送任务'}
           aria-label={loading ? '停止任务' : '发送任务'}
         >
-          {loading ? '■' : '↑'}
+          {loading ? (
+            <svg viewBox="0 0 20 20" aria-hidden="true"><rect x="6" y="6" width="8" height="8" rx="1" /></svg>
+          ) : (
+            <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3.4 9.3 16 3.8l-4.9 12.4-1.7-5.4-6-1.5Z" /><path d="m9.4 10.8 3.2-3.2" /></svg>
+          )}
         </button>
       </div>
     </div>

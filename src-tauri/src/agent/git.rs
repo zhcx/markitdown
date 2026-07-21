@@ -218,6 +218,7 @@ mod tests {
             workspace_root: root.to_string_lossy().into_owned(), worktree_path: Some(worktree.to_string_lossy().into_owned()),
             backend_session_id: None, status: AgentSessionStatus::Completed, approval_mode: AgentApprovalMode::Tiered,
             created_at: String::new(), updated_at: String::new(), last_error: None, has_changes: true, read_only: false,
+            direct_write: false,
             base_commit, baseline_hashes,
         };
         let changes = get_changes(&session).unwrap();
@@ -256,6 +257,7 @@ mod tests {
             workspace_root: root.to_string_lossy().into_owned(), worktree_path: Some(worktree.to_string_lossy().into_owned()),
             backend_session_id: None, status: AgentSessionStatus::Completed, approval_mode: AgentApprovalMode::Tiered,
             created_at: String::new(), updated_at: String::new(), last_error: None, has_changes: true, read_only: false,
+            direct_write: false,
             base_commit, baseline_hashes,
         };
         assert!(apply_changes(&mut session, None).unwrap_err().contains("发生变化"));

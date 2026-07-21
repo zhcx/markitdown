@@ -9652,7 +9652,8 @@ html[data-theme] .preview-container,
   font-size: 10px;
 }
 
-.agent-readonly-banner {
+.agent-readonly-banner,
+.agent-direct-write-banner {
   padding: 7px 10px;
   color: var(--text-secondary);
   border-top: 1px solid var(--border-color);
@@ -9660,6 +9661,8 @@ html[data-theme] .preview-container,
   background: var(--bg-elevated);
   font-size: 10px;
 }
+
+.agent-direct-write-banner { color: var(--warning-color); }
 
 .agent-diagnostic { margin-top: 8px; color: var(--danger-color); font-size: 11px; overflow-wrap: anywhere; }
 
@@ -9724,9 +9727,26 @@ html[data-theme] .preview-container,
   color: #fff;
   background: var(--accent-color);
   cursor: pointer;
+  display: grid;
+  place-items: center;
 }
 
-.agent-send-button:disabled { opacity: .45; cursor: default; }
+.agent-send-button svg {
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
+  stroke: currentColor;
+  stroke-width: 1.35;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.agent-send-button:disabled {
+  color: var(--text-muted);
+  border: 1px solid var(--border-color);
+  background: var(--bg-hover);
+  cursor: default;
+}
 
 .settings-subsection-divider { height: 1px; margin: 22px 0; background: var(--border-color); }
 .agent-settings-block { margin-top: 12px; }

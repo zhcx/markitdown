@@ -21,6 +21,54 @@ pub fn system_command(program: impl AsRef<OsStr>) -> Command {
     command
 }
 
+pub fn discover_executable(name: &str) -> Option<PathBuf> {
+    let mut directories: Vec<PathBuf> = std::env::var_os("PATH")
+        .map(|value| std::env::split_paths(&value).collect())
+        .unwrap_or_default();
+
+    #[cfg(windows)]
+    {
+        if let Some(path) = std::env::var_os("APPDATA") {
+            directories.push(PathBuf::from(path).join("npm"));
+        }
+        if let Some(path) = std::env::var_os("LOCALAPPDATA") {
+            directories.push(
+                PathBuf::from(path)
+                    .join("Microsoft")
+                    .join("WinGet")
+                    .join("Links"),
+            );
+        }
+        if let Some(path) = std::env::var_os("USERPROFILE") {
+            let root = PathBuf::from(path);
+            directories.push(root.join(".local").join("bin"));
+            directories.push(root.join(".cargo").join("bin"));
+        }
+    }
+
+    discover_in_directories(name, directories)
+}
+
+fn discover_in_directories(
+    name: &str,
+    directories: impl IntoIterator<Item = PathBuf>,
+) -> Option<PathBuf> {
+    let mut candidates = Vec::new();
+    for directory in directories {
+        #[cfg(windows)]
+        {
+            candidates.extend(
+                ["exe", "com", "cmd", "bat"]
+                    .map(|extension| directory.join(name).with_extension(extension)),
+            );
+            candidates.push(directory.join(name));
+        }
+        #[cfg(not(windows))]
+        candidates.push(directory.join(name));
+    }
+    select_discovered(candidates)
+}
+
 pub fn executable_command(executable: &Path) -> Result<Command, String> {
     #[cfg(windows)]
     let mut command = {
@@ -79,6 +127,9 @@ pub fn resolve_executable(path: PathBuf) -> Result<PathBuf, String> {
             );
         }
     }
+    if !path.is_file() {
+        return Err(format!("Agent 可执行文件不存在：{}", path.display()));
+    }
     Ok(path)
 }
 
@@ -125,6 +176,24 @@ mod tests {
         assert_eq!(
             select_discovered([shell_shim, cmd_shim, native_exe.clone()]),
             Some(native_exe)
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn path_discovery_does_not_need_a_shell_process() {
+        let root = std::env::temp_dir().join(format!(
+            "markitdown-discovery-test-{}",
+            uuid::Uuid::new_v4()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        let shim = root.join("opencode.cmd");
+        fs::write(&shim, "@echo off").unwrap();
+
+        assert_eq!(
+            discover_in_directories("opencode", [root.clone()]),
+            Some(shim)
         );
         fs::remove_dir_all(root).unwrap();
     }

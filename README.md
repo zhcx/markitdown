@@ -101,7 +101,7 @@
 | Codex | App Server JSON-RPC v2 |
 | OpenCode | 本地 Server API + SSE |
 
-Agent 默认关闭，需要先在“设置 → AI 助手”中启用并完成本机 CLI 检测。MarkitDown 复用各 CLI 的登录与默认模型，不保存其账号凭据。完整写入任务要求工作区为 Git 仓库；命令、网络和 MCP 默认逐次审批，也可仅对当前会话启用完全允许。详细说明见 [Agent 使用与安全说明](docs/agent-support.md)。
+Agent 默认关闭，需要先在“设置 → AI 助手”中启用。MarkitDown 复用各 CLI 的登录与默认模型，不保存其账号凭据。Git 根目录中的任务使用隔离 worktree；其他目录在进入 Agent 后授权为当前会话的读写范围，修改会直接写入。命令、网络和 MCP 默认逐次审批，也可仅对当前会话启用完全允许。详细说明见 [Agent 使用与安全说明](docs/agent-support.md)。
 
 ### 🔄 自动更新
 

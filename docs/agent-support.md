@@ -17,7 +17,7 @@ Each new Agent session creates a detached temporary Git worktree. Current tracke
 
 At the end of a turn, MarkitDown compares the worktree with that baseline. Changes can be applied by file. Before applying, MarkitDown checks that the corresponding original files have not changed since the session started. A conflict stops the operation without overwriting the newer content.
 
-Applied files are removed from the pending change set. Discarding a session removes its temporary worktree and local event history. Non-Git workspaces remain read-only in the first Beta release.
+Applied files are removed from the pending change set. Discarding a session removes its temporary worktree and local event history. Git repository roots use this isolated review flow. Other opened directories are authorized as the session root and edited directly, while external paths and Git push remain blocked.
 
 ## Approval modes
 
