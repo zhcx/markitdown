@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useAppStore, type Settings } from '../../stores/appStore';
-import { useAIStore } from '../../stores/aiStore';
+import { useAIStore, type AIEditMode } from '../../stores/aiStore';
 
 type WritingStyle = Settings['ai']['writing_style'];
 
@@ -12,51 +12,166 @@ const WRITING_STYLES: Array<{ value: WritingStyle; label: string }> = [
   { value: 'custom', label: '自定义' },
 ];
 
-const styleNames: Record<WritingStyle, string> = Object.fromEntries(
-  WRITING_STYLES.map(({ value, label }) => [value, label]),
-) as Record<WritingStyle, string>;
+const EDIT_MODES: Array<{ value: AIEditMode; label: string }> = [
+  { value: 'ask', label: '询问' },
+  { value: 'suggest', label: '建议' },
+  { value: 'agent', label: '代理' },
+];
 
-function StatusGlyph({ name }: { name: 'ai' | 'success' | 'error' }) {
+function StatusGlyph({ name }: { name: 'ai' | 'proofread' | 'success' | 'error' }) {
   if (name === 'ai') return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m8 1.8.9 3.3 3.3.9-3.3.9L8 9.2l-.9-3.3L3.8 5l3.3-.9zM12.2 10l.5 1.7 1.7.5-1.7.5-.5 1.7-.5-1.7-1.7-.5 1.7-.5z" /></svg>;
+  if (name === 'proofread') return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 8.2 6 11.5 13.5 4" /><path d="M3 3.5h5" /></svg>;
   if (name === 'success') return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3 8.2 3 3L13 4.5" /></svg>;
   return <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.5" /><path d="m6 6 4 4m0-4-4 4" /></svg>;
 }
 
 export function StatusBar() {
-  const { wordCount, mode, currentFile, isSaving, uploadStatus, uploadProgress, uploadMessage, conversionStatus, conversionMessage, settings, saveSettings } = useAppStore();
-  const { status: aiStatus, statusMessage: aiStatusMessage, errorCount, setProofreadPanelVisible } = useAIStore();
-  const [styleMenuOpen, setStyleMenuOpen] = useState(false);
-  const styleMenuRef = useRef<HTMLDivElement>(null);
-  const currentStyle = settings.ai.writing_style;
+  const {
+    wordCount, mode, currentFile, isSaving, uploadStatus, uploadProgress, uploadMessage,
+    conversionStatus, conversionMessage, settings, saveSettings, content, editorView,
+    setSettingsOpen, setSettingsTab,
+  } = useAppStore();
+  const {
+    status: aiStatus,
+    statusMessage: aiStatusMessage,
+    errorCount,
+    editMode,
+    setEditMode,
+    setProofreadPanelVisible,
+    checkProofread,
+    rewriteSelection,
+    translateText,
+    summarizeText,
+    generateOutline,
+    proposeEdit,
+  } = useAIStore();
+  const [aiMenuOpen, setAiMenuOpen] = useState(false);
+  const [companionMenuOpen, setCompanionMenuOpen] = useState(false);
+  const aiMenuRef = useRef<HTMLDivElement>(null);
+  const companionMenuRef = useRef<HTMLDivElement>(null);
+  const selection = editorView?.getSelection();
+  const hasSelection = Boolean(selection && !selection.empty);
   const companionEnabled = settings.ai.enabled && settings.ai.auto_suggest;
+  const companionStyleLabel = WRITING_STYLES.find(({ value }) => value === settings.ai.writing_style)?.label || '正式';
 
   useEffect(() => {
-    if (!styleMenuOpen) return;
-
+    if (!aiMenuOpen && !companionMenuOpen) return;
     const handlePointerDown = (event: PointerEvent) => {
-      if (!styleMenuRef.current?.contains(event.target as Node)) {
-        setStyleMenuOpen(false);
-      }
+      const target = event.target as Node;
+      if (aiMenuOpen && !aiMenuRef.current?.contains(target)) setAiMenuOpen(false);
+      if (companionMenuOpen && !companionMenuRef.current?.contains(target)) setCompanionMenuOpen(false);
     };
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setStyleMenuOpen(false);
+      if (event.key === 'Escape') {
+        setAiMenuOpen(false);
+        setCompanionMenuOpen(false);
+      }
     };
-
     document.addEventListener('pointerdown', handlePointerDown);
     document.addEventListener('keydown', handleKeyDown);
     return () => {
       document.removeEventListener('pointerdown', handlePointerDown);
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [styleMenuOpen]);
+  }, [aiMenuOpen, companionMenuOpen]);
 
-  const handleStyleSelect = (style: WritingStyle) => {
-    const latestSettings = useAppStore.getState().settings;
-    setStyleMenuOpen(false);
-    void saveSettings({
-      ...latestSettings,
-      ai: { ...latestSettings.ai, writing_style: style },
+  const updateAISettings = (nextAI: Settings['ai']) => {
+    const latest = useAppStore.getState().settings;
+    return saveSettings({ ...latest, ai: nextAI });
+  };
+
+  const openAIControl = async () => {
+    setCompanionMenuOpen(false);
+    if (!settings.ai.enabled) {
+      await updateAISettings({ ...useAppStore.getState().settings.ai, enabled: true });
+      useAIStore.getState().setStatus('success', 'AI 助手已开启');
+    }
+    setAiMenuOpen((open) => !open || !settings.ai.enabled);
+  };
+
+  const setAIEnabled = async (enabled: boolean) => {
+    await updateAISettings({ ...useAppStore.getState().settings.ai, enabled });
+    if (!enabled) setAiMenuOpen(false);
+  };
+
+  const setCompanionEnabled = async (enabled: boolean) => {
+    const latestAI = useAppStore.getState().settings.ai;
+    await updateAISettings({
+      ...latestAI,
+      enabled: enabled ? true : latestAI.enabled,
+      auto_suggest: enabled,
     });
+    useAIStore.getState().setStatus('success', enabled ? 'AI 伴写已开启' : 'AI 伴写已关闭');
+  };
+
+  const setCompanionStyle = async (writingStyle: WritingStyle) => {
+    await updateAISettings({ ...useAppStore.getState().settings.ai, writing_style: writingStyle });
+  };
+
+  const handleProofread = async () => {
+    const currentSelection = editorView?.getSelection();
+    const selectedText = currentSelection && !currentSelection.empty
+      ? editorView?.getText(currentSelection.from, currentSelection.to) || ''
+      : '';
+    setAiMenuOpen(false);
+    setCompanionMenuOpen(false);
+    if (!useAppStore.getState().settings.ai.enabled) {
+      await updateAISettings({ ...useAppStore.getState().settings.ai, enabled: true });
+    }
+    await checkProofread(selectedText || content, selectedText && currentSelection ? currentSelection.from : 0);
+  };
+
+  const handleRewrite = async () => {
+    const currentSelection = editorView?.getSelection();
+    if (!editorView || !currentSelection || currentSelection.empty) return;
+    const selectedText = editorView.getText(currentSelection.from, currentSelection.to);
+    setAiMenuOpen(false);
+    const rewritten = await rewriteSelection(selectedText);
+    if (rewritten && rewritten !== selectedText) {
+      proposeEdit({
+        kind: 'polish',
+        reason: 'AI 重写：用于语言润色与表达优化，不应将其视为事实修改。',
+        before: selectedText,
+        after: rewritten,
+        from: currentSelection.from,
+        to: currentSelection.to,
+      });
+    }
+  };
+
+  const handleTranslate = async () => {
+    const currentSelection = editorView?.getSelection();
+    if (!editorView || !currentSelection || currentSelection.empty) return;
+    const selectedText = editorView.getText(currentSelection.from, currentSelection.to);
+    const coords = editorView.coordsAtPos(currentSelection.from);
+    setAiMenuOpen(false);
+    const result = await translateText(selectedText);
+    if (result?.includes('|||')) {
+      const [original, translated] = result.split('|||');
+      if (translated && translated !== selectedText) {
+        useAIStore.getState().setTranslationVisible(true, coords ? { x: coords.left, y: coords.bottom } : null, original, translated);
+      }
+    }
+  };
+
+  const handleSummarize = async () => {
+    setAiMenuOpen(false);
+    const summary = await summarizeText(content);
+    if (summary) proposeEdit({ kind: 'structure', reason: 'AI 摘要：自动提炼原文，关键结论与数字请人工复核。', before: '', after: `## 摘要\n\n${summary}\n\n---\n\n`, from: 0, to: 0 });
+  };
+
+  const handleOutline = async () => {
+    const currentSelection = editorView?.getSelection();
+    const position = currentSelection?.from ?? content.length;
+    setAiMenuOpen(false);
+    const outline = await generateOutline(content);
+    if (outline) proposeEdit({ kind: 'structure', reason: 'AI 大纲：根据现有文档组织结构，内容准确性仍需人工确认。', before: currentSelection ? content.slice(currentSelection.from, currentSelection.to) : '', after: outline, from: position, to: currentSelection?.to ?? position });
+  };
+
+  const openAISettings = () => {
+    setAiMenuOpen(false);
+    setSettingsTab('ai');
+    setSettingsOpen(true);
   };
 
   return (
@@ -65,118 +180,120 @@ export function StatusBar() {
         <span className="status-item">{mode === 'split' ? '分屏模式' : mode === 'zen' ? '沉浸写作' : '沉浸阅读'}</span>
         <span className="status-divider" aria-hidden="true" />
         <span className="status-item">{isSaving ? '保存中...' : '已就绪'}</span>
-        {settings.ai.enabled && (
-          <>
-            <span className="status-divider" aria-hidden="true" />
-            <span className="status-item ai-enabled" title="AI 助手已启用"><StatusGlyph name="ai" />AI 已启用</span>
-            {companionEnabled && (
-              <>
-                <span className="status-divider" aria-hidden="true" />
-                <div className="status-style-control" ref={styleMenuRef}>
-                  <button
-                    type="button"
-                    className={`status-item status-button ai-style${styleMenuOpen ? ' active' : ''}`}
-                    title="调整 AI 伴写风格"
-                    aria-haspopup="menu"
-                    aria-expanded={styleMenuOpen}
-                    onClick={() => setStyleMenuOpen((open) => !open)}
-                  >
-                    <span>风格: {styleNames[currentStyle]}</span>
-                    <svg className="status-style-chevron" viewBox="0 0 16 16" aria-hidden="true">
-                      <path d="m4 10 4-4 4 4" />
-                    </svg>
-                  </button>
-                  {styleMenuOpen && (
-                    <div className="status-style-menu" role="menu" aria-label="选择 AI 伴写风格">
-                      <div className="status-style-menu-title">AI 伴写风格</div>
-                      {WRITING_STYLES.map(({ value, label }) => (
-                        <button
-                          key={value}
-                          type="button"
-                          className={`status-style-option${currentStyle === value ? ' selected' : ''}`}
-                          role="menuitemradio"
-                          aria-checked={currentStyle === value}
-                          title={value === 'custom' ? '自定义提示可在 AI 设置中编辑' : undefined}
-                          onClick={() => handleStyleSelect(value)}
-                        >
-                          <span className="status-style-check" aria-hidden="true">
-                            {currentStyle === value ? '✓' : ''}
-                          </span>
-                          <span>{label}</span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </>
-            )}
-          </>
-        )}
+        <span className="status-divider" aria-hidden="true" />
+        <div className="status-ai-control" ref={aiMenuRef}>
+          <button
+            type="button"
+            className={`status-item status-button status-ai-trigger${settings.ai.enabled ? ' is-enabled' : ''}${aiMenuOpen ? ' active' : ''}`}
+            aria-haspopup="menu"
+            aria-expanded={aiMenuOpen}
+            title={settings.ai.enabled ? '打开 AI 功能菜单' : '开启并使用 AI 助手'}
+            onClick={() => void openAIControl()}
+          >
+            <StatusGlyph name="ai" />
+            <span>{settings.ai.enabled ? 'AI' : '开启 AI'}</span>
+            <span className="status-ai-chevron" aria-hidden="true">⌃</span>
+          </button>
+          {aiMenuOpen && (
+            <div className="status-ai-menu" role="menu" aria-label="AI 功能">
+              <div className="status-ai-menu-header">
+                <div><strong>AI 写作助手</strong><small>{settings.ai.model || '尚未配置模型'}</small></div>
+                <button type="button" className="status-ai-power" onClick={() => void setAIEnabled(false)}>关闭</button>
+              </div>
+              <div className="status-ai-actions">
+                <button type="button" role="menuitem" disabled={!hasSelection} title={!hasSelection ? '请先选择文字' : undefined} onClick={() => void handleRewrite()}><span>改</span><strong>重写选中</strong><small>{hasSelection ? '润色当前选区' : '请先选择文字'}</small></button>
+                <button type="button" role="menuitem" disabled={!hasSelection} title={!hasSelection ? '请先选择文字' : undefined} onClick={() => void handleTranslate()}><span>译</span><strong>翻译选中</strong><small>{hasSelection ? '翻译当前选区' : '请先选择文字'}</small></button>
+                <button type="button" role="menuitem" onClick={() => void handleSummarize()}><span>摘</span><strong>生成摘要</strong><small>提炼当前文档</small></button>
+                <button type="button" role="menuitem" onClick={() => void handleOutline()}><span>纲</span><strong>生成大纲</strong><small>整理文档结构</small></button>
+              </div>
+              <div className="status-ai-options">
+                <div className="status-ai-option-row"><span>操作模式</span><span className="status-ai-segments">{EDIT_MODES.map(({ value, label }) => <button key={value} type="button" className={editMode === value ? 'selected' : ''} onClick={() => setEditMode(value)}>{label}</button>)}</span></div>
+              </div>
+              <button type="button" className="status-ai-settings" onClick={openAISettings}>打开 AI 设置</button>
+            </div>
+          )}
+        </div>
+        <span className="status-divider" aria-hidden="true" />
+        <button
+          type="button"
+          className={`status-item status-button status-proofread-trigger${aiStatus === 'proofreading' ? ' is-running' : ''}`}
+          title={hasSelection ? '校对选中文字' : '校对全文'}
+          onClick={() => void handleProofread()}
+        >
+          <StatusGlyph name="proofread" />
+          <span>{aiStatus === 'proofreading' ? '校对中' : '校对文字'}</span>
+        </button>
+        <span className="status-divider" aria-hidden="true" />
+        <div className="status-companion-control" ref={companionMenuRef}>
+          <button
+            type="button"
+            className={`status-item status-button status-companion-trigger${companionEnabled ? ' is-enabled' : ''}${companionMenuOpen ? ' active' : ''}`}
+            aria-haspopup="menu"
+            aria-expanded={companionMenuOpen}
+            title={companionEnabled ? `AI 伴写已开启，当前风格：${companionStyleLabel}` : 'AI 伴写已关闭'}
+            onClick={() => {
+              setAiMenuOpen(false);
+              setCompanionMenuOpen((open) => !open);
+            }}
+          >
+            <span className="status-companion-dot" aria-hidden="true" />
+            <span>伴写</span>
+            <span className="status-companion-value">{companionEnabled ? companionStyleLabel : '关闭'}</span>
+            <span className="status-companion-chevron" aria-hidden="true">⌃</span>
+          </button>
+          {companionMenuOpen && (
+            <div className="status-style-menu status-companion-menu" role="menu" aria-label="AI 伴写设置">
+              <div className="status-companion-menu-header">
+                <div><strong>AI 伴写</strong><small>{companionEnabled ? '已开启' : '已关闭'}</small></div>
+                <button
+                  type="button"
+                  className={`status-companion-toggle${companionEnabled ? ' is-enabled' : ''}`}
+                  onClick={() => void setCompanionEnabled(!companionEnabled)}
+                >
+                  {companionEnabled ? '关闭' : '开启'}
+                </button>
+              </div>
+              <div className="status-style-menu-title">伴写风格</div>
+              {WRITING_STYLES.map(({ value, label }) => (
+                <button
+                  key={value}
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={settings.ai.writing_style === value}
+                  className={`status-style-option${settings.ai.writing_style === value ? ' selected' : ''}`}
+                  onClick={() => void setCompanionStyle(value)}
+                >
+                  <span className="status-style-check" aria-hidden="true">{settings.ai.writing_style === value ? '✓' : ''}</span>
+                  <span>{label}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
       <div className="statusbar-center">
         {aiStatus !== 'idle' ? (
           <div className="ai-status">
-            {(aiStatus === 'loading' || aiStatus === 'proofreading' || aiStatus === 'companion') && (
-              <span className="status-item ai-checking">
-                <span className="ai-spinner"></span>
-                {aiStatusMessage || '处理中...'}
-              </span>
-            )}
-            {aiStatus === 'error' && (
-              <span className="status-item ai-error"><StatusGlyph name="error" />{aiStatusMessage || 'AI服务异常'}</span>
-            )}
-            {aiStatus === 'success' && errorCount > 0 && (
-              <button
-                type="button"
-                className="status-item status-button ai-result clickable"
-                onClick={() => setProofreadPanelVisible(true)}
-              >
-                <StatusGlyph name="success" />发现 {errorCount} 处问题，点击查看
-              </button>
-            )}
-            {aiStatus === 'success' && errorCount === 0 && aiStatusMessage && (
-              <span className="status-item ai-success"><StatusGlyph name="success" />{aiStatusMessage}</span>
-            )}
+            {(aiStatus === 'loading' || aiStatus === 'proofreading' || aiStatus === 'companion') && <span className="status-item ai-checking"><span className="ai-spinner" />{aiStatusMessage || '处理中...'}</span>}
+            {aiStatus === 'error' && <span className="status-item ai-error"><StatusGlyph name="error" />{aiStatusMessage || 'AI服务异常'}</span>}
+            {aiStatus === 'success' && errorCount > 0 && <button type="button" className="status-item status-button ai-result clickable" onClick={() => setProofreadPanelVisible(true)}><StatusGlyph name="success" />发现 {errorCount} 处问题，点击查看</button>}
+            {aiStatus === 'success' && errorCount === 0 && aiStatusMessage && <span className="status-item ai-success"><StatusGlyph name="success" />{aiStatusMessage}</span>}
           </div>
         ) : conversionStatus !== 'idle' ? (
           <div className="conversion-status">
-            {conversionStatus === 'converting' && (
-              <span className="status-item conversion-working"><span className="ai-spinner"></span>{conversionMessage}</span>
-            )}
-            {conversionStatus === 'success' && (
-              <span className="status-item conversion-success"><StatusGlyph name="success" />{conversionMessage}</span>
-            )}
-            {conversionStatus === 'error' && (
-              <span className="status-item conversion-error"><StatusGlyph name="error" />{conversionMessage}</span>
-            )}
+            {conversionStatus === 'converting' && <span className="status-item conversion-working"><span className="ai-spinner" />{conversionMessage}</span>}
+            {conversionStatus === 'success' && <span className="status-item conversion-success"><StatusGlyph name="success" />{conversionMessage}</span>}
+            {conversionStatus === 'error' && <span className="status-item conversion-error"><StatusGlyph name="error" />{conversionMessage}</span>}
           </div>
         ) : uploadStatus !== 'idle' ? (
           <div className="upload-status">
-            {uploadStatus === 'uploading' && (
-              <>
-                <span className="status-item">上传中...</span>
-                <div className="progress-bar">
-                  <div className="progress-fill" style={{ width: `${uploadProgress}%` }}></div>
-                </div>
-                <span className="status-item">{uploadProgress}%</span>
-              </>
-            )}
-            {uploadStatus === 'success' && (
-              <span className="status-item upload-success"><StatusGlyph name="success" />上传成功</span>
-            )}
-            {uploadStatus === 'error' && (
-              <span className="status-item upload-error"><StatusGlyph name="error" />上传失败: {uploadMessage}</span>
-            )}
+            {uploadStatus === 'uploading' && <><span className="status-item">上传中...</span><div className="progress-bar"><div className="progress-fill" style={{ width: `${uploadProgress}%` }} /></div><span className="status-item">{uploadProgress}%</span></>}
+            {uploadStatus === 'success' && <span className="status-item upload-success"><StatusGlyph name="success" />上传成功</span>}
+            {uploadStatus === 'error' && <span className="status-item upload-error"><StatusGlyph name="error" />上传失败: {uploadMessage}</span>}
           </div>
-        ) : (
-          <span className="status-item">{currentFile ? currentFile.split(/[\\/]/).pop() : '未保存'}</span>
-        )}
+        ) : <span className="status-item">{currentFile ? currentFile.split(/[\\/]/).pop() : '未保存'}</span>}
       </div>
-      <div className="statusbar-right">
-        <span className="status-item">{wordCount}</span>
-        <span className="status-divider" aria-hidden="true" />
-        <span className="status-item">UTF-8</span>
-      </div>
+      <div className="statusbar-right"><span className="status-item">{wordCount}</span><span className="status-divider" aria-hidden="true" /><span className="status-item">UTF-8</span></div>
     </div>
   );
 }

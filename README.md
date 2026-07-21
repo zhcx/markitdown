@@ -105,41 +105,36 @@
 
 ## 🚀 快速开始
 
-## v0.3.2 更新
+## v0.3.3 更新
 
 ### 更新日志
 
-- 新增简体中文、繁体中文和英文界面，首次启动时根据系统语言自动选择。
-- “设置 → 外观”新增界面语言选项，手动选择后持久保存。
-- 编辑器右键菜单统一为应用多语言菜单，中文系统不再显示 Monaco 默认英文菜单。
-- 新增行首 `/` Markdown 快捷命令面板，可搜索并插入标题、引用、列表、任务、代码块、表格、图片、链接、公式、脚注、分割线和 Mermaid 图表。
-- 支持中文/英文筛选、鼠标选择、方向键导航、`Enter` / `Tab` 插入和 `Esc` 关闭。
-- 命令面板会根据光标位置自动定位，在窗口边缘自动调整高度并提供滚动。
-- 修复 Windows 自定义标题栏偶发无法拖动、异常最小化以及从任务栏恢复失败的问题。
-- 新增快捷命令与标题栏窗口交互回归测试。
-- 重新设计 Windows Markdown 关联文件图标，提升资源管理器中 16px 至 256px 各尺寸的辨识度。
-- 重新生成 v0.3.2 各平台安装包，确保安装包包含最新图标与文档。
-- 本表链接的 v0.3.2 安装包已再次覆盖构建，包含多语言界面和中文编辑器右键菜单。
+- 编辑器快捷按钮栏改为主题自适应的紧凑工具带，按编辑区宽度自动折叠，超出功能进入“更多”菜单。
+- 选中文字后显示浮动编辑栏，跟随主题明暗切换，并修复重复选择后不再出现的问题。
+- `/` 快捷命令面板补充常用编辑、插入、AI 写作和文档结构命令，弥补常驻按钮减少后的操作入口。
+- Monaco 搜索栏保留原生查找能力，统一汉化为简体中文并调整为当前主题风格。
+- 优化编辑区与预览区高度联动、行距对齐、同步滚动和底部内容定位，长文滚动更顺畅。
+- 底部菜单栏重整 AI 入口：AI 对话保留在左侧栏，校对文字独立为一键按钮，伴写状态独立显示并可切换写作风格。
 
-### v0.3.2 平台安装包对照
+### v0.3.3 平台安装包对照
 
-> 以下链接均指向本次由 GitHub Actions 覆盖构建的 v0.3.2 安装包。
+> 以下链接指向 v0.3.3 Release 资产；安装包由 GitHub Actions 根据本版本源码构建。
 
 | 操作系统 | 架构 | 推荐安装包 | 适用场景 |
 | --- | --- | --- | --- |
-| Windows 10/11 | x86_64 | [NSIS `.exe`](https://github.com/zhcx/markitdown/releases/download/v0.3.2/MarkitDown_0.3.2_x64-setup.exe) | 推荐大多数用户使用，按向导安装 |
-| Windows 10/11 | x86_64 | [MSI](https://github.com/zhcx/markitdown/releases/download/v0.3.2/MarkitDown_0.3.2_x64_en-US.msi) | 企业部署、系统管理或静默安装 |
-| macOS Apple Silicon | arm64 | [DMG](https://github.com/zhcx/markitdown/releases/download/v0.3.2/MarkitDown_0.3.2_aarch64.dmg) | M1、M2、M3、M4 等 Apple 芯片 |
-| macOS Apple Silicon | arm64 | [APP 压缩包](https://github.com/zhcx/markitdown/releases/download/v0.3.2/MarkitDown_aarch64.app.tar.gz) | 手动解压或更新 |
-| macOS Intel | x86_64 | [DMG](https://github.com/zhcx/markitdown/releases/download/v0.3.2/MarkitDown_0.3.2_x64.dmg) | Intel 芯片 Mac |
-| macOS Intel | x86_64 | [APP 压缩包](https://github.com/zhcx/markitdown/releases/download/v0.3.2/MarkitDown_x64.app.tar.gz) | 手动解压或更新 |
-| Ubuntu / Debian | x86_64 | [DEB](https://github.com/zhcx/markitdown/releases/download/v0.3.2/MarkitDown_0.3.2_amd64.deb) | Ubuntu、Debian、Linux Mint 等 |
-| Fedora / RHEL / openSUSE | x86_64 | [RPM](https://github.com/zhcx/markitdown/releases/download/v0.3.2/MarkitDown-0.3.2-1.x86_64.rpm) | RPM 系发行版 |
-| 通用 Linux | x86_64 | [AppImage](https://github.com/zhcx/markitdown/releases/download/v0.3.2/MarkitDown_0.3.2_amd64.AppImage) | 无需安装，赋予执行权限后运行 |
+| Windows 10/11 | x86_64 | [NSIS `.exe`](https://github.com/zhcx/markitdown/releases/download/v0.3.3/MarkitDown_0.3.3_x64-setup.exe) | 推荐大多数用户使用，按向导安装 |
+| Windows 10/11 | x86_64 | [MSI](https://github.com/zhcx/markitdown/releases/download/v0.3.3/MarkitDown_0.3.3_x64_en-US.msi) | 企业部署、系统管理或静默安装 |
+| macOS Apple Silicon | arm64 | [DMG](https://github.com/zhcx/markitdown/releases/download/v0.3.3/MarkitDown_0.3.3_aarch64.dmg) | M1、M2、M3、M4 等 Apple 芯片 |
+| macOS Apple Silicon | arm64 | [APP 压缩包](https://github.com/zhcx/markitdown/releases/download/v0.3.3/MarkitDown_aarch64.app.tar.gz) | 手动解压或更新 |
+| macOS Intel | x86_64 | [DMG](https://github.com/zhcx/markitdown/releases/download/v0.3.3/MarkitDown_0.3.3_x64.dmg) | Intel 芯片 Mac |
+| macOS Intel | x86_64 | [APP 压缩包](https://github.com/zhcx/markitdown/releases/download/v0.3.3/MarkitDown_x64.app.tar.gz) | 手动解压或更新 |
+| Ubuntu / Debian | x86_64 | [DEB](https://github.com/zhcx/markitdown/releases/download/v0.3.3/MarkitDown_0.3.3_amd64.deb) | Ubuntu、Debian、Linux Mint 等 |
+| Fedora / RHEL / openSUSE | x86_64 | [RPM](https://github.com/zhcx/markitdown/releases/download/v0.3.3/MarkitDown-0.3.3-1.x86_64.rpm) | RPM 系发行版 |
+| 通用 Linux | x86_64 | [AppImage](https://github.com/zhcx/markitdown/releases/download/v0.3.3/MarkitDown_0.3.3_amd64.AppImage) | 无需安装，赋予执行权限后运行 |
 
 > 不确定如何选择？Windows 下载 `.exe`，Apple 芯片 Mac 下载 `aarch64.dmg`，Intel Mac 下载 `x64.dmg`，Ubuntu/Debian 下载 `.deb`。
 
-完整更新说明与安装提示见 [`docs/releases/v0.3.2.md`](docs/releases/v0.3.2.md)。
+完整更新说明与安装提示见 [`docs/releases/v0.3.3.md`](docs/releases/v0.3.3.md)。
 
 ## Contributors
 

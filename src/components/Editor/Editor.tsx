@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import 'monaco-editor/esm/nls.messages.zh-cn.js';
 import * as monaco from 'monaco-editor/esm/vs/editor/editor.api.js';
 import 'monaco-editor/esm/vs/basic-languages/markdown/markdown.contribution';
 import EditorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker';
@@ -9,6 +10,7 @@ import type { EditorController, EditorDispatchSpec, EditorLine } from '../../typ
 import { EDITOR_OVERFLOW_OPTIONS, EDITOR_UNICODE_HIGHLIGHT_OPTIONS } from '../../utils/editorLayout';
 import { filterSlashCommands, findSlashCommandTrigger, type SlashCommand } from '../../utils/slashCommands';
 import { SlashCommandMenu, type SlashMenuAnchor } from './SlashCommandMenu';
+import { Toolbar } from '../Toolbar/Toolbar';
 import { normalizeLanguage, t } from '../../i18n';
 
 (self as typeof self & { MonacoEnvironment: { getWorker: () => Worker } }).MonacoEnvironment = {
@@ -37,6 +39,13 @@ interface EditorContextMenuState {
   hasSelection: boolean;
   canUndo: boolean;
   canRedo: boolean;
+}
+
+interface SelectionToolbarState {
+  left: number;
+  top: number;
+  width: number;
+  placement: 'above' | 'below';
 }
 
 const isTauriRuntime = () => '__TAURI_INTERNALS__' in window;
@@ -176,11 +185,27 @@ export function Editor({ className, style }: EditorProps) {
   const [slashMenu, setSlashMenu] = useState<SlashMenuState | null>(null);
   const [slashSelectedIndex, setSlashSelectedIndex] = useState(0);
   const [contextMenu, setContextMenu] = useState<EditorContextMenuState | null>(null);
+  const [selectionToolbar, setSelectionToolbar] = useState<SelectionToolbarState | null>(null);
   const { content, setContent, settings, setEditorView } = useAppStore();
   const { proofreadResults } = useAIStore();
   const initialContentRef = useRef(content);
   const slashCommands = useMemo(() => filterSlashCommands(slashMenu?.query || ''), [slashMenu?.query]);
   const language = normalizeLanguage(settings.appearance.language);
+
+  useEffect(() => {
+    const handleFindRequest = (event: Event) => {
+      const replace = Boolean((event as CustomEvent<{ replace?: boolean }>).detail?.replace);
+      slashMenuRef.current = null;
+      setSlashMenu(null);
+      monacoRef.current?.trigger(
+        'markitdown-editor-find',
+        replace ? 'editor.action.startFindReplaceAction' : 'actions.find',
+        null,
+      );
+    };
+    window.addEventListener('markitdown-editor-find', handleFindRequest);
+    return () => window.removeEventListener('markitdown-editor-find', handleFindRequest);
+  }, []);
 
   const runContextMenuAction = useCallback(async (action: 'undo' | 'redo' | 'cut' | 'copy' | 'paste' | 'selectAll') => {
     const editor = monacoRef.current;
@@ -383,6 +408,52 @@ export function Editor({ className, style }: EditorProps) {
       setSlashMenu(nextMenu);
     };
 
+    let selectionPointerActive = false;
+    const refreshSelectionToolbar = () => {
+      if (selectionPointerActive) {
+        setSelectionToolbar(null);
+        return;
+      }
+      const selection = editor.getSelection();
+      if (!selection || selection.isEmpty()) {
+        setSelectionToolbar(null);
+        return;
+      }
+      const visible = editor.getScrolledVisiblePosition(selection.getStartPosition());
+      const editorNode = editor.getDomNode();
+      if (!visible || !editorNode) {
+        setSelectionToolbar(null);
+        return;
+      }
+      const rect = editorNode.getBoundingClientRect();
+      const width = Math.min(1120, Math.max(220, rect.width - 16), window.innerWidth - 16);
+      const desiredLeft = rect.left + visible.left - width * 0.28;
+      const left = Math.max(rect.left + 8, Math.min(desiredLeft, rect.right - width - 8));
+      const toolbarHeight = 44;
+      const placeAbove = rect.top + visible.top >= toolbarHeight + 12;
+      setSelectionToolbar({
+        left,
+        top: placeAbove ? rect.top + visible.top - 8 : rect.top + visible.top + visible.height + 8,
+        width,
+        placement: placeAbove ? 'above' : 'below',
+      });
+    };
+    const editorNode = editor.getDomNode();
+    const handleSelectionPointerDown = () => {
+      selectionPointerActive = true;
+      setSelectionToolbar(null);
+    };
+    const handleSelectionPointerEnd = () => {
+      if (!selectionPointerActive) return;
+      selectionPointerActive = false;
+      window.requestAnimationFrame(refreshSelectionToolbar);
+    };
+    editorNode?.addEventListener('pointerdown', handleSelectionPointerDown, true);
+    window.addEventListener('pointerup', handleSelectionPointerEnd, true);
+    window.addEventListener('pointercancel', handleSelectionPointerEnd, true);
+    const selectionToolbarResizeObserver = new ResizeObserver(refreshSelectionToolbar);
+    selectionToolbarResizeObserver.observe(root);
+
     const scheduleCompanion = () => {
       const currentSettings = useAppStore.getState().settings;
       const selection = controller.getSelection();
@@ -414,10 +485,12 @@ export function Editor({ className, style }: EditorProps) {
     const cursorDisposable = editor.onDidChangeCursorSelection(() => {
       scheduleCompanion();
       refreshSlashMenu();
+      refreshSelectionToolbar();
     });
     const scrollDisposable = editor.onDidScrollChange(() => {
       scheduleTextFit();
       refreshSlashMenu();
+      refreshSelectionToolbar();
     });
     const slashKeyDisposable = editor.onKeyDown((event) => {
       const menu = slashMenuRef.current;
@@ -507,12 +580,16 @@ export function Editor({ className, style }: EditorProps) {
       root.removeEventListener('contextmenu', handleContextMenu, true);
       window.removeEventListener('mousedown', closeContextMenu);
       window.removeEventListener('blur', closeContextMenu);
+      editorNode?.removeEventListener('pointerdown', handleSelectionPointerDown, true);
+      window.removeEventListener('pointerup', handleSelectionPointerEnd, true);
+      window.removeEventListener('pointercancel', handleSelectionPointerEnd, true);
       window.removeEventListener('markitdown-theme-change', handleTheme);
       contentDisposable.dispose();
       cursorDisposable.dispose();
       scrollDisposable.dispose();
       slashKeyDisposable.dispose();
       layoutDisposable.dispose();
+      selectionToolbarResizeObserver.disconnect();
       editor.dispose();
       model.dispose();
       monacoRef.current = null;
@@ -556,6 +633,16 @@ export function Editor({ className, style }: EditorProps) {
       <div className="editor-document-card monaco-document-card">
         <div ref={editorRef} className="editor-content monaco-host" />
       </div>
+      {selectionToolbar && !settings.editor.pin_toolbar && (
+        <div
+          className="selection-toolbar"
+          data-placement={selectionToolbar.placement}
+          style={{ left: selectionToolbar.left, top: selectionToolbar.top, width: selectionToolbar.width }}
+          onMouseDown={(event) => event.preventDefault()}
+        >
+          <Toolbar variant="floating" />
+        </div>
+      )}
       {slashMenu && (
         <SlashCommandMenu
           anchor={slashMenu.anchor}

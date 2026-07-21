@@ -441,6 +441,15 @@ export function SettingsPanel() {
                   editor: { ...localSettings.editor, auto_complete: checked },
                 })}
               />
+              <SettingToggle
+                label="固定显示编辑快捷栏"
+                description="关闭后，选中文本时会在选区附近显示快捷编辑栏；输入 / 可打开完整命令菜单"
+                checked={Boolean(localSettings.editor.pin_toolbar)}
+                onChange={(checked) => setLocalSettings({
+                  ...localSettings,
+                  editor: { ...localSettings.editor, pin_toolbar: checked },
+                })}
+              />
               <div className="setting-item emoji-favorites-setting">
                 <label>
                   常用表情

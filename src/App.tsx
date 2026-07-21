@@ -22,7 +22,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { message, save as chooseSaveFile } from '@tauri-apps/plugin-dialog';
-import { createElementScrollViewport, getSyncedScrollTop, type ObservableScrollViewport, type ScrollAnchor } from './utils/scrollSync';
+import { createElementScrollViewport, getSyncedScrollTop, type ObservableScrollViewport, type ScrollAnchor, type ScrollRange } from './utils/scrollSync';
 import { getImmersiveWorkspacePolicy } from './utils/immersiveWorkspace';
 import { guardWindowClose, type CloseGuardTab, type UnsavedChangesAction } from './utils/windowCloseGuard';
 import './styles/main.css';
@@ -113,6 +113,7 @@ function App() {
     source: ObservableScrollViewport;
     target: ObservableScrollViewport;
     anchors: ScrollAnchor[];
+    range: ScrollRange;
   } | null>(null);
   const programmaticScrollRef = useRef<{ viewport: ObservableScrollViewport; top: number } | null>(null);
   const closeGuardInProgress = useRef(false);
@@ -560,43 +561,59 @@ function App() {
     const editorViewport: ObservableScrollViewport = editorView;
     const previewViewport = createElementScrollViewport(previewScrollElement);
 
-    const editorMax = Math.max(0, editorViewport.getScrollHeight() - editorViewport.getClientHeight());
-    const previewMax = Math.max(0, previewViewport.getScrollHeight() - previewViewport.getClientHeight());
-    const previewBounds = previewScrollElement.getBoundingClientRect();
-    const headingAnchors: ScrollAnchor[] = Array.from(
-      previewScrollElement.querySelectorAll<HTMLElement>('[data-source-line]'),
-    ).flatMap((heading) => {
-      const lineNumber = Number(heading.dataset.sourceLine);
-      if (!Number.isFinite(lineNumber)) return [];
-      const targetTop = heading.getBoundingClientRect().top
-        - previewBounds.top
-        + previewScrollElement.scrollTop;
-      return [{
-        sourceTop: Math.max(0, Math.min(editorView.getTopForLineNumber(lineNumber), editorMax)),
-        targetTop: Math.max(0, Math.min(targetTop, previewMax)),
-      }];
-    });
-    const editorToPreviewAnchors = [
-      { sourceTop: 0, targetTop: 0 },
-      ...headingAnchors,
-      { sourceTop: editorMax, targetTop: previewMax },
-    ];
-    const previewToEditorAnchors = editorToPreviewAnchors.map((anchor) => ({
-      sourceTop: anchor.targetTop,
-      targetTop: anchor.sourceTop,
-    }));
+    let editorToPreviewAnchors: ScrollAnchor[] = [];
+    let previewToEditorAnchors: ScrollAnchor[] = [];
+    let editorMax = 0;
+    let previewMax = 0;
+    const editorToPreviewRange: ScrollRange = { sourceMax: 0, targetMax: 0 };
+    const previewToEditorRange: ScrollRange = { sourceMax: 0, targetMax: 0 };
+    const rebuildScrollAnchors = () => {
+      editorMax = Math.max(0, editorViewport.getScrollHeight() - editorViewport.getClientHeight());
+      previewMax = Math.max(0, previewViewport.getScrollHeight() - previewViewport.getClientHeight());
+      editorToPreviewRange.sourceMax = editorMax;
+      editorToPreviewRange.targetMax = previewMax;
+      previewToEditorRange.sourceMax = previewMax;
+      previewToEditorRange.targetMax = editorMax;
+      const previewBounds = previewScrollElement.getBoundingClientRect();
+      const anchorsByLine = new Map<number, ScrollAnchor>();
+
+      previewScrollElement.querySelectorAll<HTMLElement>('[data-source-line]').forEach((element) => {
+        const lineNumber = Number(element.dataset.sourceLine);
+        if (!Number.isFinite(lineNumber) || anchorsByLine.has(lineNumber)) return;
+        const targetTop = element.getBoundingClientRect().top
+          - previewBounds.top
+          + previewScrollElement.scrollTop;
+        anchorsByLine.set(lineNumber, {
+          sourceTop: Math.max(0, Math.min(editorView.getTopForLineNumber(lineNumber), editorMax)),
+          targetTop: Math.max(0, Math.min(targetTop, previewMax)),
+        });
+      });
+
+      const nextEditorAnchors = [
+        { sourceTop: 0, targetTop: 0 },
+        ...anchorsByLine.values(),
+        { sourceTop: editorMax, targetTop: previewMax },
+      ];
+      editorToPreviewAnchors = nextEditorAnchors;
+      previewToEditorAnchors = nextEditorAnchors.map((anchor) => ({
+        sourceTop: anchor.targetTop,
+        targetTop: anchor.sourceTop,
+      }));
+    };
+    rebuildScrollAnchors();
 
     const syncScroll = (
       source: ObservableScrollViewport,
       target: ObservableScrollViewport,
       anchors: ScrollAnchor[],
+      range: ScrollRange,
     ) => {
       const ignored = programmaticScrollRef.current;
-      if (ignored?.viewport === source && Math.abs(source.getScrollTop() - ignored.top) < 2) {
+      if (ignored?.viewport === source && Math.abs(source.getScrollTop() - ignored.top) < 0.5) {
         return;
       }
 
-      pendingScrollSync.current = { source, target, anchors };
+      pendingScrollSync.current = { source, target, anchors, range };
       if (scrollSyncFrame.current !== null) return;
 
       scrollSyncFrame.current = window.requestAnimationFrame(() => {
@@ -605,28 +622,58 @@ function App() {
         pendingScrollSync.current = null;
         if (!request) return;
 
-        const { source: latestSource, target: latestTarget, anchors: latestAnchors } = request;
-        const nextTop = getSyncedScrollTop(latestSource, latestTarget, latestAnchors);
+        const { source: latestSource, target: latestTarget, anchors: latestAnchors, range: latestRange } = request;
+        const nextTop = getSyncedScrollTop(latestSource, latestTarget, latestAnchors, latestRange);
 
         // A tiny threshold avoids expensive layout work from sub-pixel scroll events
         // while preserving the feel of one-to-one scrolling for long documents.
-        if (Math.abs(latestTarget.getScrollTop() - nextTop) < 2) return;
+        if (Math.abs(latestTarget.getScrollTop() - nextTop) < 0.5) return;
 
         programmaticScrollRef.current = { viewport: latestTarget, top: nextTop };
         latestTarget.setScrollTop(nextTop);
       });
     };
 
-    const stopEditorScroll = editorViewport.onScroll(() => syncScroll(editorViewport, previewViewport, editorToPreviewAnchors));
-    const stopPreviewScroll = previewViewport.onScroll(() => syncScroll(previewViewport, editorViewport, previewToEditorAnchors));
+    const syncEditorToPreview = () => syncScroll(
+      editorViewport,
+      previewViewport,
+      editorToPreviewAnchors,
+      editorToPreviewRange,
+    );
+    const syncPreviewToEditor = () => syncScroll(
+      previewViewport,
+      editorViewport,
+      previewToEditorAnchors,
+      previewToEditorRange,
+    );
+    const stopEditorScroll = editorViewport.onScroll(syncEditorToPreview);
+    const stopPreviewScroll = previewViewport.onScroll(syncPreviewToEditor);
+
+    let anchorRebuildTimer: number | null = null;
+    const scheduleAnchorRebuild = () => {
+      if (anchorRebuildTimer !== null) window.clearTimeout(anchorRebuildTimer);
+      anchorRebuildTimer = window.setTimeout(() => {
+        anchorRebuildTimer = null;
+        rebuildScrollAnchors();
+        syncEditorToPreview();
+      }, 80);
+    };
+    const geometryObserver = new ResizeObserver(scheduleAnchorRebuild);
+    geometryObserver.observe(previewScrollElement);
+    const previewDocument = previewScrollElement.querySelector<HTMLElement>('.preview-document');
+    if (previewDocument) geometryObserver.observe(previewDocument);
+    const editorContent = editorView.scrollDOM.querySelector<HTMLElement>('.lines-content');
+    if (editorContent) geometryObserver.observe(editorContent);
 
     // Rendering Markdown, images or diagrams changes preview geometry. Keep
     // the editor as the source of truth and realign once the new layout exists.
-    syncScroll(editorViewport, previewViewport, editorToPreviewAnchors);
+    syncEditorToPreview();
 
     return () => {
       stopEditorScroll();
       stopPreviewScroll();
+      geometryObserver.disconnect();
+      if (anchorRebuildTimer !== null) window.clearTimeout(anchorRebuildTimer);
 
       if (scrollSyncFrame.current !== null) {
         window.cancelAnimationFrame(scrollSyncFrame.current);
@@ -678,9 +725,11 @@ function App() {
                 <div className="document-pane-tabs">
                   <TabsBar />
                 </div>
-                <div className="editor-pane-toolbar">
-                  <Toolbar />
-                </div>
+                {settings.editor.pin_toolbar && (
+                  <div className="editor-pane-toolbar">
+                    <Toolbar />
+                  </div>
+                )}
                 <Editor className="editor-pane" />
               </section>
               <div
@@ -692,6 +741,7 @@ function App() {
                 <div className="document-pane-tabs">
                   <TabsBar />
                 </div>
+                {settings.editor.pin_toolbar && <div className="preview-toolbar-offset" aria-hidden="true" />}
                 <div className="preview-with-panel">
                   <Preview
                     className="preview-pane"
@@ -771,7 +821,7 @@ function App() {
               )}
               <div className="immersive-document-area">
                 <header className="immersive-command-strip">
-                  {immersivePolicy.showEditorToolbar ? (
+                  {immersivePolicy.showEditorToolbar && settings.editor.pin_toolbar ? (
                     <div className="immersive-writing-toolbar" aria-label="编辑器快捷工具栏">
                       <Toolbar />
                     </div>

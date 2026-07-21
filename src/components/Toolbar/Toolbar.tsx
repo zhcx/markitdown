@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useAppStore } from '../../stores/appStore';
 import { useAIStore } from '../../stores/aiStore';
 import { open } from '@tauri-apps/plugin-dialog';
@@ -13,6 +14,10 @@ interface ToolbarButton {
   icon?: ToolbarIconName;
   title: string;
   action: () => void | Promise<void>;
+}
+
+interface ToolbarProps {
+  variant?: 'pinned' | 'floating';
 }
 
 interface ToolbarGroup {
@@ -207,7 +212,7 @@ function MarkdownFormatModal({ result, onClose, onApply }: { result: MarkdownFor
   );
 }
 
-export function Toolbar() {
+export function Toolbar({ variant = 'pinned' }: ToolbarProps) {
   const { editorView, setContent, content, settings } = useAppStore();
   const [showImageModal, setShowImageModal] = useState(false);
   const [showVideoModal, setShowVideoModal] = useState(false);
@@ -217,125 +222,13 @@ export function Toolbar() {
   const tablePickerButtonRef = useRef<HTMLButtonElement>(null);
   const toolbarWheelDeltaRef = useRef(0);
   const toolbarWheelFrameRef = useRef<number | null>(null);
-  const {
-    checkProofread,
-    getCompanionSuggestion,
-    rewriteSelection,
-    translateText,
-    summarizeText,
-    generateOutline,
-    proposeEdit,
-    editMode,
-    setEditMode,
-    setChatbotVisible,
-  } = useAIStore();
-  const currentStyle = settings.ai.writing_style;
-
-  const getSelectedText = () => {
-    if (!editorView) return '';
-    const selection = editorView.state.selection.main;
-    return editorView.state.sliceDoc(selection.from, selection.to);
-  };
-
-  const handleProofread = () => {
-    if (!editorView) {
-      checkProofread(content);
-      return;
-    }
-
-    const selection = editorView.state.selection.main;
-    const selectedText = editorView.state.sliceDoc(selection.from, selection.to);
-    checkProofread(selectedText || content, selectedText ? selection.from : 0);
-  };
-
-  const handleCompanion = () => {
-    // 获取光标位置前的内容作为上下文
-    if (!editorView) return;
-    const selection = editorView.state.selection.main;
-    const textBefore = editorView.state.sliceDoc(Math.max(0, selection.to - 500), selection.to);
-
-    // 获取光标在视口中的位置
-    const coords = editorView.coordsAtPos(selection.to);
-    if (coords) {
-      useAIStore.getState().setCompanionVisible(true, {
-        x: coords.left,
-        y: coords.bottom
-      });
-    }
-    getCompanionSuggestion(textBefore);
-  };
-
-  const handleRewrite = async () => {
-    const selectedText = getSelectedText();
-    if (!selectedText) return;
-    const rewritten = await rewriteSelection(selectedText);
-    if (rewritten && rewritten !== selectedText) {
-      const selection = editorView!.state.selection.main;
-      proposeEdit({
-        kind: 'polish',
-        reason: 'AI 重写：用于语言润色与表达优化，不应将其视为事实修改。',
-        before: selectedText,
-        after: rewritten,
-        from: selection.from,
-        to: selection.to,
-      });
-    }
-  };
-
-  const handleTranslate = async () => {
-    const selectedText = getSelectedText();
-    if (!selectedText) return;
-
-    // 获取光标位置
-    if (!editorView) return;
-    const selection = editorView.state.selection.main;
-    const coords = editorView.coordsAtPos(selection.from);
-
-    const result = await translateText(selectedText);
-    if (result && result.includes('|||')) {
-      const [original, translated] = result.split('|||');
-      if (translated && translated !== selectedText) {
-        // 显示翻译弹窗
-        useAIStore.getState().setTranslationVisible(
-          true,
-          coords ? { x: coords.left, y: coords.bottom } : null,
-          original,
-          translated
-        );
-      }
-    }
-  };
-
-  const handleSummarize = async () => {
-    const summary = await summarizeText(content);
-    if (summary) {
-      proposeEdit({
-        kind: 'structure',
-        reason: 'AI 摘要：自动提炼原文，关键结论与数字请人工复核。',
-        before: '',
-        after: `## 摘要\n\n${summary}\n\n---\n\n`,
-        from: 0,
-        to: 0,
-      });
-    }
-  };
-
-  const handleOutline = async () => {
-    const outline = await generateOutline(content);
-    if (outline) {
-      const selection = editorView?.state.selection.main;
-      const position = selection?.from ?? content.length;
-      proposeEdit({
-        kind: 'structure',
-        reason: 'AI 大纲：根据现有文档组织结构，内容准确性仍需人工确认。',
-        before: selection ? content.slice(selection.from, selection.to) : '',
-        after: outline,
-        from: position,
-        to: selection?.to ?? position,
-      });
-    }
-  };
-
+  const toolbarRef = useRef<HTMLDivElement>(null);
+  const toolbarScrollAreaRef = useRef<HTMLDivElement>(null);
+  const moreButtonRef = useRef<HTMLButtonElement>(null);
+  const overflowMenuRef = useRef<HTMLDivElement>(null);
+  const [directButtonCount, setDirectButtonCount] = useState(8);
+  const [overflowOpen, setOverflowOpen] = useState(false);
+  const [overflowPosition, setOverflowPosition] = useState({ left: 0, top: 0, above: false });
   const wrapSelection = (before: string, after: string) => {
     if (!editorView) {
       setContent(content + before + after);
@@ -542,63 +435,65 @@ export function Toolbar() {
 
   toolbarGroups[3].buttons.unshift({ icon: 'table', title: '插入表格（拖动选择行列）', action: () => setShowTablePicker((visible) => !visible) });
 
-  const styleNames: Record<string, string> = {
-    formal: '正式',
-    casual: '活泼',
-    academic: '学术',
-    creative: '创意',
-    custom: '自定义'
-  };
+  const toolbarButtons = toolbarGroups.flatMap((group) => group.buttons.map((button) => ({ ...button, group: group.title })));
+  const toolbarStructureKey = toolbarButtons.map((button) => `${button.group}:${button.title}`).join('|');
+  const visibleButtons = toolbarButtons.slice(0, directButtonCount);
+  const overflowButtons = toolbarButtons.slice(directButtonCount);
 
-  const handleStyleChange = () => {
-    const styles = ['formal', 'casual', 'academic', 'creative', 'custom'] as const;
-    const latestSettings = useAppStore.getState().settings;
-    const currentIndex = styles.indexOf(latestSettings.ai.writing_style);
-    const nextIndex = (currentIndex + 1) % styles.length;
-    const newStyle = styles[nextIndex];
-    void useAppStore.getState().saveSettings({
-      ...latestSettings,
-      ai: { ...latestSettings.ai, writing_style: newStyle },
-    });
-    // 显示风格切换提示
-    const { setStatus } = useAIStore.getState();
-    const message = `风格切换为: ${styleNames[newStyle]}`;
-    setStatus('success', message);
-    setTimeout(() => {
-      const aiState = useAIStore.getState();
-      if (aiState.status === 'success' && aiState.statusMessage === message) {
-        aiState.setStatus('idle');
-      }
-    }, 2000);
-  };
+  useLayoutEffect(() => {
+    const element = toolbarScrollAreaRef.current;
+    if (!element) return;
+    const updateVisibleButtons = () => {
+      const available = element.clientWidth;
+      const buttonWidth = 34;
+      const separatorWidth = 15;
+      let used = 0;
+      let nextCount = 0;
+      toolbarButtons.forEach((button, index) => {
+        const separator = index > 0 && button.group !== toolbarButtons[index - 1].group ? separatorWidth : 0;
+        if (used + buttonWidth + separator <= available) {
+          used += buttonWidth + separator;
+          nextCount += 1;
+        }
+      });
+      setDirectButtonCount(Math.max(1, Math.min(toolbarButtons.length, nextCount)));
+    };
+    updateVisibleButtons();
+    const observer = new ResizeObserver(updateVisibleButtons);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [toolbarStructureKey, variant]);
 
-  const handleEditModeChange = () => {
-    const modes = ['ask', 'suggest', 'agent'] as const;
-    const nextMode = modes[(modes.indexOf(editMode) + 1) % modes.length];
-    setEditMode(nextMode);
-    const labels = { ask: '询问模式：只回答', suggest: '建议模式：先审 Diff', agent: '代理模式：关键写入仍需确认' };
-    useAIStore.getState().setStatus('success', labels[nextMode]);
-  };
-
-  // AI按钮组 - 仅在启用时显示
-  const aiGroup: ToolbarGroup | null = settings.ai.enabled ? {
-    title: 'AI',
-    buttons: [
-      { label: editMode === 'ask' ? '问' : editMode === 'suggest' ? '建' : '代', title: `AI 操作模式：${editMode === 'ask' ? '询问（只回答）' : editMode === 'suggest' ? '建议（先审 Diff）' : '代理（关键写入确认）'}`, action: handleEditModeChange },
-      { icon: 'chat', title: '显示 AI 对话', action: () => setChatbotVisible(true) },
-      { icon: 'proofread', title: '校对文字', action: handleProofread },
-      { icon: 'sparkle', title: '伴写建议', action: handleCompanion },
-      { icon: 'palette', title: `风格: ${styleNames[currentStyle] || currentStyle}`, action: handleStyleChange },
-      { icon: 'rewrite', title: '重写选中', action: handleRewrite },
-      { icon: 'translate', title: '翻译选中', action: handleTranslate },
-      { icon: 'summary', title: '生成摘要', action: handleSummarize },
-      { icon: 'outline', title: '生成大纲', action: handleOutline },
-    ],
-  } : null;
-
-  if (aiGroup) {
-    toolbarGroups.push(aiGroup);
-  }
+  useEffect(() => {
+    if (!overflowOpen) return;
+    const updateOverflowPosition = () => {
+      const rect = moreButtonRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const menuWidth = 240;
+      const estimatedHeight = Math.min(420, Math.max(160, overflowButtons.length * 34 + 10));
+      const roomAbove = rect.top - 10;
+      const roomBelow = window.innerHeight - rect.bottom - 10;
+      const above = variant === 'floating' && (roomAbove >= Math.min(estimatedHeight, 240) || roomAbove > roomBelow);
+      setOverflowPosition({
+        left: Math.max(8, Math.min(rect.right - menuWidth, window.innerWidth - menuWidth - 8)),
+        top: above ? Math.max(8, rect.top - estimatedHeight - 6) : rect.bottom + 6,
+        above,
+      });
+    };
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (!toolbarRef.current?.contains(target) && !overflowMenuRef.current?.contains(target)) setOverflowOpen(false);
+    };
+    updateOverflowPosition();
+    window.addEventListener('resize', updateOverflowPosition);
+    window.addEventListener('scroll', updateOverflowPosition, true);
+    window.addEventListener('pointerdown', closeOnOutsidePointer, true);
+    return () => {
+      window.removeEventListener('resize', updateOverflowPosition);
+      window.removeEventListener('scroll', updateOverflowPosition, true);
+      window.removeEventListener('pointerdown', closeOnOutsidePointer, true);
+    };
+  }, [overflowButtons.length, overflowOpen, variant]);
 
   useEffect(() => {
     return () => {
@@ -635,31 +530,62 @@ export function Toolbar() {
     });
   };
 
+  const renderButton = (btn: ToolbarButton) => (
+    <button
+      key={btn.title}
+      ref={btn.title.includes('插入表格') ? tablePickerButtonRef : undefined}
+      className="toolbar-btn"
+      title={btn.title}
+      aria-label={btn.title}
+      onMouseDown={(event) => event.preventDefault()}
+      onClick={btn.action}
+    >
+      {btn.icon ? <ToolbarGlyph name={btn.icon} /> : btn.label}
+    </button>
+  );
+
   return (
-    <div className="toolbar">
-      <div className="toolbar-scroll-area" onWheel={handleToolbarWheel}>
+    <div ref={toolbarRef} className={`toolbar toolbar-${variant}`}>
+      <div ref={toolbarScrollAreaRef} className="toolbar-scroll-area" onWheel={handleToolbarWheel}>
         <div className="toolbar-left">
-          {toolbarGroups.map((group) => (
-            <div className="toolbar-group" key={group.title}>
-              <span className="toolbar-group-title">{group.title}</span>
-              <div className="toolbar-buttons">
-                {group.buttons.map((btn) => (
-                  <button
-                    key={btn.title}
-                    ref={btn.title.includes('插入表格') ? tablePickerButtonRef : undefined}
-                    className="toolbar-btn"
-                    title={btn.title}
-                    aria-label={btn.title}
-                    onClick={btn.action}
-                  >
-                    {btn.icon ? <ToolbarGlyph name={btn.icon} /> : btn.label}
-                  </button>
-                ))}
-              </div>
-            </div>
+          {visibleButtons.map((btn, index) => (
+            <span className="toolbar-item" key={btn.title}>
+              {index > 0 && btn.group !== visibleButtons[index - 1].group && <span className="toolbar-separator" aria-hidden="true">|</span>}
+              {renderButton(btn)}
+            </span>
           ))}
         </div>
       </div>
+      {overflowButtons.length > 0 && (
+        <div className="toolbar-overflow">
+          <button
+            ref={moreButtonRef}
+            type="button"
+            className="toolbar-btn toolbar-more-btn"
+            aria-label="更多编辑命令"
+            title="更多编辑命令"
+            aria-expanded={overflowOpen}
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => setOverflowOpen((open) => !open)}
+          >•••</button>
+        </div>
+      )}
+      {overflowOpen && createPortal(
+        <div
+          ref={overflowMenuRef}
+          className={`toolbar-overflow-menu is-${variant} ${overflowPosition.above ? 'opens-above' : ''}`}
+          style={{ left: overflowPosition.left, top: overflowPosition.top }}
+          role="menu"
+          onMouseDown={(event) => event.preventDefault()}
+        >
+          {overflowButtons.map((btn) => (
+            <button key={btn.title} type="button" role="menuitem" onMouseDown={(event) => event.preventDefault()} onClick={() => { btn.action(); setOverflowOpen(false); }}>
+              <span>{btn.icon ? <ToolbarGlyph name={btn.icon} /> : btn.label}</span>{btn.title}
+            </button>
+          ))}
+        </div>,
+        document.body,
+      )}
       {showImageModal && (
         <ImageOptionsModal
           onClose={() => setShowImageModal(false)}

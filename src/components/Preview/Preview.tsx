@@ -34,6 +34,23 @@ const md = new MarkdownIt({
   },
 });
 md.use(taskLists);
+const sourceAnchorTokenTypes = new Set([
+  'heading_open',
+  'paragraph_open',
+  'list_item_open',
+  'blockquote_open',
+  'fence',
+  'code_block',
+  'table_open',
+  'hr',
+]);
+md.core.ruler.after('block', 'source_line_anchors', (state) => {
+  state.tokens.forEach((token) => {
+    if (token.map && !token.hidden && sourceAnchorTokenTypes.has(token.type)) {
+      token.attrSet('data-source-line', String(token.map[0] + 1));
+    }
+  });
+});
 md.renderer.rules.heading_open = (tokens, index, options, _env, self) => {
   const token = tokens[index];
   if (token.map) token.attrSet('data-source-line', String(token.map[0] + 1));
