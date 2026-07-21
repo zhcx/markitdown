@@ -1,5 +1,6 @@
 mod adapters;
 mod git;
+mod process;
 mod types;
 
 pub use types::*;
@@ -12,7 +13,6 @@ use std::{
     fs,
     io::{Read as _, Write as _},
     path::{Path, PathBuf},
-    process::Command as StdCommand,
     process::Stdio,
     sync::{atomic::{AtomicU64, Ordering}, Arc},
     time::Duration,
@@ -141,14 +141,19 @@ fn load_events(storage_root: &Path, session_id: &str) -> Result<Vec<AgentEvent>,
 fn now() -> String { chrono::Utc::now().to_rfc3339() }
 
 fn discover_executable(name: &str) -> Option<PathBuf> {
-    let finder = if cfg!(windows) { "where" } else { "which" };
-    let output = StdCommand::new(finder).arg(name).output().ok()?;
+    let finder = if cfg!(windows) { "where.exe" } else { "which" };
+    let output = process::system_command(finder).arg(name).output().ok()?;
     if !output.status.success() { return None; }
-    String::from_utf8_lossy(&output.stdout).lines().find(|line| !line.trim().is_empty()).map(|line| PathBuf::from(line.trim()))
+    process::select_discovered(
+        String::from_utf8_lossy(&output.stdout)
+            .lines()
+            .filter(|line| !line.trim().is_empty())
+            .map(|line| PathBuf::from(line.trim())),
+    )
 }
 
 fn executable_version(path: &Path) -> Result<String, String> {
-    let output = StdCommand::new(path).arg("--version").output().map_err(|error| error.to_string())?;
+    let output = process::executable_command(path)?.arg("--version").output().map_err(|error| error.to_string())?;
     if !output.status.success() { return Err(String::from_utf8_lossy(&output.stderr).trim().into()); }
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
@@ -159,7 +164,7 @@ fn probe_capabilities(path: &Path, backend: AgentBackendId) -> Result<(), String
         AgentBackendId::Codex => &["app-server", "--help"],
         AgentBackendId::Opencode => &["serve", "--help"],
     };
-    let output = StdCommand::new(path).args(args).output().map_err(|error| error.to_string())?;
+    let output = process::executable_command(path)?.args(args).output().map_err(|error| error.to_string())?;
     let help = format!("{}\n{}", String::from_utf8_lossy(&output.stdout), String::from_utf8_lossy(&output.stderr));
     let required: &[&str] = match backend {
         AgentBackendId::ClaudeCode => &["stream-json", "--settings"],
@@ -176,11 +181,20 @@ fn probe_capabilities(path: &Path, backend: AgentBackendId) -> Result<(), String
 pub async fn agent_detect_backends(overrides: Option<HashMap<AgentBackendId, String>>) -> Vec<AgentBackendStatus> {
     let overrides = adapters::backend_overrides(overrides);
     [AgentBackendId::ClaudeCode, AgentBackendId::Codex, AgentBackendId::Opencode].into_iter().map(|id| {
-        let path = overrides.get(&id).cloned().or_else(|| discover_executable(id.executable_name()));
-        let version_result = path.as_deref().map(|path| executable_version(path).and_then(|version| {
-            probe_capabilities(path, id)?;
-            Ok(version)
-        }));
+        let path_result = if let Some(path) = overrides.get(&id) {
+            process::resolve_executable(PathBuf::from(path)).map(Some)
+        } else {
+            Ok(discover_executable(id.executable_name()))
+        };
+        let path = path_result.as_ref().ok().and_then(|value| value.clone());
+        let version_result = match path_result {
+            Ok(Some(path)) => Some(executable_version(&path).and_then(|version| {
+                probe_capabilities(&path, id)?;
+                Ok(version)
+            })),
+            Ok(None) => None,
+            Err(error) => Some(Err(error)),
+        };
         let installed = path.is_some();
         let (version, diagnostic) = match version_result {
             Some(Ok(value)) => (Some(value), None),
@@ -265,6 +279,7 @@ pub async fn agent_start_turn(request: StartAgentTurnRequest, app: AppHandle, su
     let executable = request.executable_path.filter(|value| !value.trim().is_empty()).map(PathBuf::from)
         .or_else(|| discover_executable(request.backend.executable_name()))
         .ok_or_else(|| format!("未找到 {}", request.backend.label()))?;
+    let executable = process::resolve_executable(executable)?;
     executable_version(&executable).map_err(|error| format!("{} 不可用：{error}", request.backend.label()))?;
     probe_capabilities(&executable, request.backend)?;
     *runtime.executable.lock().await = Some(executable.clone());
@@ -405,7 +420,7 @@ async fn spawn_opencode_turn(
         let session = runtime.session.lock().await;
         (session.approval_mode, session.read_only)
     };
-    let mut command = tokio::process::Command::new(executable);
+    let mut command = process::tokio_executable_command(&executable)?;
     command.args(["serve", "--hostname", "127.0.0.1", "--port", &port.to_string()])
         .current_dir(&worktree)
         .env("OPENCODE_CONFIG_CONTENT", adapters::opencode_permissions(mode, read_only).to_string())

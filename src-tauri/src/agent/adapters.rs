@@ -1,4 +1,7 @@
-use super::types::{AgentApprovalMode, AgentBackendId};
+use super::{
+    process,
+    types::{AgentApprovalMode, AgentBackendId},
+};
 use serde_json::{json, Value};
 use std::{collections::HashMap, path::{Path, PathBuf}, process::Stdio};
 use tokio::process::Command;
@@ -27,7 +30,7 @@ pub fn build_launch(
     backend_session_id: Option<&str>,
     permission_bridge: Option<(&Path, &Path)>,
 ) -> Result<AdapterLaunch, String> {
-    let mut command = Command::new(executable);
+    let mut command = process::tokio_executable_command(executable)?;
     command.current_dir(cwd).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
     let protocol = match backend {
         AgentBackendId::ClaudeCode => {

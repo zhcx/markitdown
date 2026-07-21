@@ -1,9 +1,12 @@
-use super::types::{AgentChangeSet, AgentFileChange, AgentSession};
+use super::{
+    process,
+    types::{AgentChangeSet, AgentFileChange, AgentSession},
+};
 use sha2::{Digest, Sha256};
-use std::{collections::HashMap, fs, path::{Path, PathBuf}, process::Command};
+use std::{collections::HashMap, fs, path::{Path, PathBuf}};
 
 fn git(workdir: &Path, args: &[&str]) -> Result<String, String> {
-    let output = Command::new("git")
+    let output = process::system_command("git")
         .args(args)
         .current_dir(workdir)
         .output()
@@ -187,7 +190,7 @@ mod tests {
     use crate::agent::{AgentApprovalMode, AgentBackendId, AgentSessionStatus};
 
     fn run(root: &Path, args: &[&str]) {
-        let output = Command::new("git").args(args).current_dir(root).output().unwrap();
+        let output = process::system_command("git").args(args).current_dir(root).output().unwrap();
         assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
     }
 
