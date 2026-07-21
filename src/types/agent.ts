@@ -38,6 +38,30 @@ export interface AgentBackendStatus {
   capabilities: AgentCapabilities;
 }
 
+export interface AgentModelOption {
+  id: string;
+  display_name: string;
+  description: string;
+  is_default: boolean;
+  default_reasoning_effort?: string;
+  supported_reasoning_efforts: string[];
+}
+
+export interface AgentModelCatalog {
+  backend: AgentBackendId;
+  current_model?: string;
+  models: AgentModelOption[];
+  source: string;
+  diagnostic?: string;
+}
+
+export interface AgentEditorContext {
+  label: string;
+  path?: string;
+  content: string;
+  selection: boolean;
+}
+
 export interface AgentSession {
   id: string;
   backend: AgentBackendId;

@@ -9,6 +9,8 @@ import type {
   AgentBackendStatus,
   AgentChangeSet,
   AgentEvent,
+  AgentEditorContext,
+  AgentModelCatalog,
   AgentSession,
   AgentTimelineItem,
 } from '../types/agent';
@@ -25,12 +27,15 @@ interface StartAgentTurnInput {
   profile?: string;
   reasoningEffort?: string;
   contextPaths?: string[];
+  editorContext?: AgentEditorContext;
   approvalMode: AgentApprovalMode;
   sessionId?: string;
 }
 
 interface AgentState {
   backends: AgentBackendStatus[];
+  modelCatalogs: Partial<Record<AgentBackendId, AgentModelCatalog>>;
+  modelsLoading: AgentBackendId | null;
   sessions: AgentSession[];
   activeSessionId: string | null;
   timeline: AgentTimelineItem[];
@@ -40,6 +45,7 @@ interface AgentState {
   diagnostic: string;
   initialize: () => Promise<void>;
   detectBackends: (overrides?: Partial<Record<AgentBackendId, string>>) => Promise<void>;
+  loadModels: (backend: AgentBackendId, executablePath: string, profile: string, workspaceRoot: string) => Promise<void>;
   startTurn: (input: StartAgentTurnInput) => Promise<void>;
   cancelTurn: () => Promise<void>;
   respondApproval: (decision: AgentApprovalDecision) => Promise<void>;
@@ -74,6 +80,8 @@ const errorText = (error: unknown) => String(error).replace(/^Error:\s*/, '');
 
 export const useAgentStore = create<AgentState>((set, get) => ({
   backends: [],
+  modelCatalogs: {},
+  modelsLoading: null,
   sessions: [],
   activeSessionId: null,
   timeline: [],
@@ -118,6 +126,36 @@ export const useAgentStore = create<AgentState>((set, get) => ({
     set({ backends });
   },
 
+  loadModels: async (backend, executablePath, profile, workspaceRoot) => {
+    if (!isTauriRuntime()) return;
+    set({ modelsLoading: backend });
+    try {
+      const catalog = await invoke<AgentModelCatalog>('agent_list_models', {
+        backend,
+        executablePath: executablePath || null,
+        profile: profile || null,
+        workspaceRoot: workspaceRoot || null,
+      });
+      set((state) => ({
+        modelCatalogs: { ...state.modelCatalogs, [backend]: catalog },
+        modelsLoading: state.modelsLoading === backend ? null : state.modelsLoading,
+      }));
+    } catch (error) {
+      set((state) => ({
+        modelCatalogs: {
+          ...state.modelCatalogs,
+          [backend]: {
+            backend,
+            models: [],
+            source: 'CLI',
+            diagnostic: errorText(error),
+          },
+        },
+        modelsLoading: state.modelsLoading === backend ? null : state.modelsLoading,
+      }));
+    }
+  },
+
   startTurn: async (input) => {
     const userItem: AgentTimelineItem = {
       id: `user-${Date.now()}`,
@@ -144,6 +182,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
         profile: input.profile || null,
         reasoning_effort: input.reasoningEffort || null,
         context_paths: input.contextPaths || [],
+        editor_context: input.editorContext || null,
         approval_mode: input.approvalMode,
         session_id: input.sessionId || null,
       } });

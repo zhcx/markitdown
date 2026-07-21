@@ -1,9 +1,15 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { open } from '@tauri-apps/plugin-dialog';
+import MarkdownIt from 'markdown-it';
+import taskLists from 'markdown-it-task-lists';
 import { useAppStore } from '../../stores/appStore';
 import { useAgentStore } from '../../stores/agentStore';
-import type { AgentApprovalMode, AgentBackendId, AgentTimelineItem } from '../../types/agent';
+import type { AgentApprovalMode, AgentBackendId, AgentEditorContext, AgentTimelineItem } from '../../types/agent';
 import { readStoredStringArray } from '../../utils/storage';
+import { sanitizeRenderedHtml } from '../../utils/safeHtml';
+
+const agentMarkdown = new MarkdownIt({ html: false, breaks: true, linkify: true, typographer: true });
+agentMarkdown.use(taskLists);
 
 const BACKEND_LABELS: Record<AgentBackendId, string> = {
   claude_code: 'Claude Code',
@@ -11,15 +17,25 @@ const BACKEND_LABELS: Record<AgentBackendId, string> = {
   opencode: 'OpenCode',
 };
 
+const EFFORT_LABELS: Record<string, string> = {
+  '': '自动',
+  low: '低',
+  medium: '中',
+  high: '高',
+  xhigh: '超高',
+  max: '最大',
+  ultra: 'Ultra',
+};
+
 interface AgentPanelProps {
   onRuntimeChange: (runtime: 'api' | 'agent') => void;
 }
 
 export function AgentPanel({ onRuntimeChange }: AgentPanelProps) {
-  const { settings } = useAppStore();
+  const { settings, content, currentFile, editorView, setContent } = useAppStore();
   const {
-    backends, sessions, activeSessionId, timeline, pendingApproval, changes, loading, diagnostic,
-    initialize, detectBackends, startTurn, cancelTurn, respondApproval, setApprovalMode,
+    backends, modelCatalogs, modelsLoading, sessions, activeSessionId, timeline, pendingApproval, changes, loading, diagnostic,
+    initialize, detectBackends, loadModels, startTurn, cancelTurn, respondApproval, setApprovalMode,
     refreshChanges, applyChanges, discardSession, selectSession, newSession,
   } = useAgentStore();
   const [backend, setBackend] = useState<AgentBackendId>(settings.agent.backend);
@@ -29,6 +45,7 @@ export function AgentPanel({ onRuntimeChange }: AgentPanelProps) {
   const [profile, setProfile] = useState(settings.agent.backends[settings.agent.backend].profile);
   const [reasoningEffort, setReasoningEffort] = useState(settings.agent.backends[settings.agent.backend].reasoning_effort);
   const [contextPaths, setContextPaths] = useState<string[]>([]);
+  const [editorContext, setEditorContext] = useState<AgentEditorContext | null>(null);
   const [showRuntimeOptions, setShowRuntimeOptions] = useState(false);
   const [selection, setSelection] = useState<{ key: string; excluded: string[] }>({ key: '', excluded: [] });
   const roots = useMemo(() => readStoredStringArray('markitdown.workspace-roots'), []);
@@ -36,6 +53,10 @@ export function AgentPanel({ onRuntimeChange }: AgentPanelProps) {
   const activeSession = sessions.find((session) => session.id === activeSessionId);
   const backendConfig = settings.agent.backends[backend];
   const backendStatus = backends.find((item) => item.id === backend);
+  const modelCatalog = modelCatalogs[backend];
+  const effectiveModel = model || modelCatalog?.current_model || '';
+  const effectiveApprovalMode = activeSession?.approval_mode || approvalMode;
+  const selectedModel = modelCatalog?.models.find((item) => item.id === effectiveModel);
   const changeKey = changes?.files.map((file) => `${file.status}:${file.path}`).join('|') || '';
   const excludedPaths = selection.key === changeKey ? selection.excluded : [];
   const selectedPaths = changes?.files
@@ -51,16 +72,9 @@ export function AgentPanel({ onRuntimeChange }: AgentPanelProps) {
   }, [detectBackends, initialize, settings.agent.backends]);
 
   useEffect(() => {
-    setModel(backendConfig.model);
-    setProfile(backendConfig.profile);
-    setReasoningEffort(backendConfig.reasoning_effort);
-    setContextPaths([]);
-    setShowRuntimeOptions(false);
-  }, [backend, backendConfig.model, backendConfig.profile, backendConfig.reasoning_effort]);
-
-  useEffect(() => {
-    if (activeSession) setLocalApprovalMode(activeSession.approval_mode);
-  }, [activeSession]);
+    if (!backendStatus?.compatible || modelCatalog || !workspaceRoot) return;
+    void loadModels(backend, backendConfig.executable_path, profile, workspaceRoot);
+  }, [backend, backendConfig.executable_path, backendStatus?.compatible, loadModels, modelCatalog, profile, workspaceRoot]);
 
   const chooseContextFiles = async () => {
     if (!workspaceRoot || loading) return;
@@ -78,6 +92,61 @@ export function AgentPanel({ onRuntimeChange }: AgentPanelProps) {
     if (activeSession) await setApprovalMode(mode);
   };
 
+  const beginNewSession = () => {
+    newSession();
+    setLocalApprovalMode('tiered');
+    setEditorContext(null);
+    setContextPaths([]);
+  };
+
+  const changeBackend = (nextBackend: AgentBackendId) => {
+    const config = settings.agent.backends[nextBackend];
+    setBackend(nextBackend);
+    setModel(config.model);
+    setProfile(config.profile);
+    setReasoningEffort(config.reasoning_effort);
+    setShowRuntimeOptions(false);
+    beginNewSession();
+  };
+
+  const resumeSession = (sessionId: string) => {
+    const session = sessions.find((item) => item.id === sessionId);
+    if (session && session.backend !== backend) {
+      const config = settings.agent.backends[session.backend];
+      setBackend(session.backend);
+      setModel(config.model);
+      setProfile(config.profile);
+      setReasoningEffort(config.reasoning_effort);
+      setShowRuntimeOptions(false);
+    }
+    void selectSession(sessionId);
+  };
+
+  const referenceEditor = () => {
+    const range = editorView?.getSelection();
+    const selectedText = range && !range.empty ? editorView?.getText(range.from, range.to) || '' : '';
+    const referencedContent = selectedText || content;
+    if (!referencedContent) return;
+    setEditorContext({
+      label: selectedText ? '当前选区' : (currentFile ? fileName(currentFile) : '当前文档'),
+      path: currentFile || undefined,
+      content: referencedContent,
+      selection: Boolean(selectedText),
+    });
+  };
+
+  const insertIntoEditor = (text: string) => {
+    if (!text) return;
+    if (editorView) {
+      const range = editorView.getSelection();
+      editorView.replaceRange(range.from, range.to, text, { from: range.from + text.length, to: range.from + text.length });
+      editorView.focus();
+      return;
+    }
+    const separator = content && !content.endsWith('\n') ? '\n\n' : '';
+    setContent(`${content}${separator}${text}`);
+  };
+
   const submit = async () => {
     const text = prompt.trim();
     if (!text || !workspaceRoot || loading || !backendStatus?.compatible) return;
@@ -87,19 +156,44 @@ export function AgentPanel({ onRuntimeChange }: AgentPanelProps) {
         workspaceRoot,
         prompt: text,
         executablePath: backendConfig.executable_path,
-        model,
+        model: effectiveModel,
         profile,
         reasoningEffort,
         contextPaths,
-        approvalMode,
+        editorContext: editorContext || undefined,
+        approvalMode: effectiveApprovalMode,
         sessionId: activeSession?.backend === backend ? activeSession.id : undefined,
       });
       setPrompt('');
       setContextPaths([]);
+      setEditorContext(null);
     } catch {
       // The store exposes a stable diagnostic in the panel.
     }
   };
+
+  const modelOptions = [
+    ...(!modelCatalog?.current_model ? [{ value: '', label: 'CLI 默认模型', description: modelCatalog?.diagnostic }] : []),
+    ...(modelCatalog?.models.map((item) => ({
+      value: item.id,
+      label: item.display_name,
+      description: `${item.description}${item.is_default ? ' · CLI 默认' : ''}`,
+    })) || []),
+  ];
+  if (model && !modelOptions.some((item) => item.value === model)) {
+    modelOptions.unshift({ value: model, label: model, description: '自定义模型' });
+  }
+  const supportedEfforts = selectedModel?.supported_reasoning_efforts.length
+    ? selectedModel.supported_reasoning_efforts
+    : backend === 'claude_code' ? ['low', 'medium', 'high', 'xhigh', 'max'] : ['low', 'medium', 'high', 'xhigh'];
+  const effortOptions = [
+    { value: '', label: '自动', description: selectedModel?.default_reasoning_effort ? `模型默认：${EFFORT_LABELS[selectedModel.default_reasoning_effort] || selectedModel.default_reasoning_effort}` : '使用 CLI 或模型默认值' },
+    ...supportedEfforts.map((effort) => ({ value: effort, label: EFFORT_LABELS[effort] || effort })),
+  ];
+  if (reasoningEffort && !effortOptions.some((item) => item.value === reasoningEffort)) {
+    effortOptions.push({ value: reasoningEffort, label: EFFORT_LABELS[reasoningEffort] || reasoningEffort });
+  }
+  const modelLabel = selectedModel?.display_name || effectiveModel || (modelsLoading === backend ? '读取模型…' : 'CLI 默认模型');
 
   if (!settings.agent.enabled) {
     return (
@@ -118,14 +212,14 @@ export function AgentPanel({ onRuntimeChange }: AgentPanelProps) {
       <div className="agent-header">
         <RuntimeTabs active="agent" onChange={onRuntimeChange} />
         <div className="agent-controls">
-          <select value={backend} onChange={(event) => { setBackend(event.target.value as AgentBackendId); newSession(); }} aria-label="Agent backend">
+          <select value={backend} onChange={(event) => changeBackend(event.target.value as AgentBackendId)} aria-label="Agent backend">
             {(Object.keys(BACKEND_LABELS) as AgentBackendId[]).map((id) => (
               <option key={id} value={id}>{BACKEND_LABELS[id]}</option>
             ))}
           </select>
           <select
             value={activeSessionId || ''}
-            onChange={(event) => event.target.value ? void selectSession(event.target.value) : newSession()}
+            onChange={(event) => event.target.value ? resumeSession(event.target.value) : beginNewSession()}
             aria-label="Agent 会话"
           >
             <option value="">新会话</option>
@@ -133,6 +227,7 @@ export function AgentPanel({ onRuntimeChange }: AgentPanelProps) {
               <option key={session.id} value={session.id}>{BACKEND_LABELS[session.backend]} · {new Date(session.updated_at).toLocaleString()}</option>
             ))}
           </select>
+          <button type="button" className="agent-new-session-button" onClick={beginNewSession} disabled={loading} title="新建 Agent 对话" aria-label="新建 Agent 对话">+</button>
         </div>
         <div className={`agent-health ${backendStatus?.compatible ? 'ready' : 'unavailable'}`}>
           <span aria-hidden="true" />
@@ -152,7 +247,12 @@ export function AgentPanel({ onRuntimeChange }: AgentPanelProps) {
         ) : (
           <article key={block.item.id} className={`agent-message agent-message-${block.item.kind}`}>
             {block.item.kind === 'user' && <header>你</header>}
-            {block.item.content && <div className="agent-message-content">{block.item.content}</div>}
+            {block.item.content && <AgentMarkdown content={block.item.content} />}
+            {block.item.kind === 'message_delta' && block.item.content && (
+              <div className="agent-message-actions">
+                <button type="button" onClick={() => insertIntoEditor(block.item.content)} title="插入当前编辑器">插入编辑器</button>
+              </div>
+            )}
           </article>
         ))}
         {pendingApproval && (
@@ -204,6 +304,14 @@ export function AgentPanel({ onRuntimeChange }: AgentPanelProps) {
       )}
 
       <div className="agent-composer">
+        {editorContext && (
+          <div className="agent-editor-reference" title={editorContext.path || editorContext.label}>
+            <span aria-hidden="true">@</span>
+            <strong>{editorContext.label}</strong>
+            <small>{editorContext.selection ? '选区' : '文档'} · {editorContext.content.length.toLocaleString()} 字符</small>
+            <button type="button" onClick={() => setEditorContext(null)} aria-label="移除编辑器引用">×</button>
+          </div>
+        )}
         {contextPaths.length > 0 && (
           <div className="agent-context-files">
             {contextPaths.map((path) => (
@@ -230,27 +338,46 @@ export function AgentPanel({ onRuntimeChange }: AgentPanelProps) {
         )}
         <div className="agent-composer-toolbar">
           <button className="agent-icon-button" onClick={() => void chooseContextFiles()} disabled={!workspaceRoot || loading} title="添加当前目录中的文件" aria-label="添加文件">+</button>
-          <select
-            className={`agent-permission-select ${approvalMode === 'allow_all_session' ? 'unrestricted' : ''}`}
-            value={approvalMode}
-            onChange={(event) => void changeApprovalMode(event.target.value as AgentApprovalMode)}
+          <button className="agent-reference-button" onClick={referenceEditor} disabled={!content || loading} title="引用当前选区或文档" aria-label="引用当前选区或文档">@ 引用</button>
+          <ComposerMenu
+            className={effectiveApprovalMode === 'allow_all_session' ? 'unrestricted' : ''}
+            value={effectiveApprovalMode}
+            label={effectiveApprovalMode === 'allow_all_session' ? '完全访问' : '分级审批'}
+            options={[
+              { value: 'tiered', label: '分级审批', description: '敏感操作需要确认' },
+              { value: 'allow_all_session', label: '完全访问', description: '仅当前会话，硬性边界仍生效', tone: 'warning' },
+            ]}
+            onChange={(value) => void changeApprovalMode(value as AgentApprovalMode)}
             disabled={loading}
             aria-label="审批模式"
-          >
-            <option value="tiered">分级审批</option>
-            <option value="allow_all_session">完全访问</option>
-          </select>
+            align="left"
+          />
           <span className="agent-composer-spacer" />
-          <button className="agent-runtime-button" onClick={() => setShowRuntimeOptions((value) => !value)} title="模型和 Agent 配置">{model || '默认模型'}</button>
+          <ComposerMenu
+            className="agent-model-menu"
+            value={effectiveModel}
+            label={modelLabel}
+            options={modelOptions}
+            onChange={setModel}
+            disabled={loading || modelsLoading === backend || modelOptions.length === 0}
+            aria-label="Agent 模型"
+            footer={modelCatalog?.diagnostic}
+          />
+          <button
+            className="agent-runtime-config-button"
+            onClick={() => setShowRuntimeOptions((value) => !value)}
+            title="自定义模型与 Agent 配置"
+            aria-label="自定义模型与 Agent 配置"
+          >···</button>
           {backendStatus?.capabilities.reasoning_effort && (
-            <select className="agent-effort-select" value={reasoningEffort} onChange={(event) => setReasoningEffort(event.target.value)} disabled={loading} aria-label="推理强度">
-              <option value="">自动</option>
-              <option value="low">低</option>
-              <option value="medium">中</option>
-              <option value="high">高</option>
-              <option value="xhigh">超高</option>
-              {backend === 'claude_code' && <option value="max">最大</option>}
-            </select>
+            <ComposerMenu
+              value={reasoningEffort}
+              label={EFFORT_LABELS[reasoningEffort] || reasoningEffort}
+              options={effortOptions}
+              onChange={setReasoningEffort}
+              disabled={loading}
+              aria-label="推理强度"
+            />
           )}
           <button
             className="agent-send-button"
@@ -299,6 +426,86 @@ function toolLabel(tool: string) {
 
 function fileName(path: string) {
   return path.split(/[\\/]/).pop() || path;
+}
+
+function AgentMarkdown({ content, compact = false }: { content: string; compact?: boolean }) {
+  const html = useMemo(() => sanitizeRenderedHtml(agentMarkdown.render(content)), [content]);
+  return <div className={`agent-message-content agent-markdown${compact ? ' compact' : ''}`} dangerouslySetInnerHTML={{ __html: html }} />;
+}
+
+interface ComposerMenuOption {
+  value: string;
+  label: string;
+  description?: string;
+  tone?: 'warning';
+}
+
+function ComposerMenu({
+  value, label, options, onChange, disabled, className = '', align = 'right', footer, ...buttonProps
+}: {
+  value: string;
+  label: string;
+  options: ComposerMenuOption[];
+  onChange: (value: string) => void;
+  disabled?: boolean;
+  className?: string;
+  align?: 'left' | 'right';
+  footer?: string;
+  'aria-label': string;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (event: PointerEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('pointerdown', close);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', close);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [open]);
+
+  return (
+    <div ref={rootRef} className={`agent-composer-menu ${className}`}>
+      <button
+        type="button"
+        className="agent-composer-menu-trigger"
+        onClick={() => setOpen((current) => !current)}
+        disabled={disabled}
+        aria-expanded={open}
+        {...buttonProps}
+      >
+        <span>{label}</span><span className="agent-menu-chevron" aria-hidden="true">⌄</span>
+      </button>
+      {open && (
+        <div className={`agent-composer-popover align-${align}`} role="listbox" aria-label={buttonProps['aria-label']}>
+          <div className="agent-composer-popover-options">
+            {options.map((option) => (
+              <button
+                type="button"
+                role="option"
+                aria-selected={option.value === value}
+                className={`${option.value === value ? 'selected' : ''} ${option.tone || ''}`}
+                key={option.value}
+                onClick={() => { onChange(option.value); setOpen(false); }}
+              >
+                <span className="agent-menu-check" aria-hidden="true">{option.value === value ? '✓' : ''}</span>
+                <span className="agent-menu-option-copy"><strong>{option.label}</strong>{option.description && <small>{option.description}</small>}</span>
+              </button>
+            ))}
+          </div>
+          {footer && <div className="agent-composer-popover-footer">{footer}</div>}
+        </div>
+      )}
+    </div>
+  );
 }
 
 const ACTIVITY_KINDS = new Set(['reasoning_delta', 'status', 'tool_started', 'tool_completed', 'command_output', 'usage', 'file_changed']);
@@ -352,7 +559,9 @@ function AgentActivity({ items }: { items: AgentTimelineItem[] }) {
         {visibleItems.map((item) => (
           <section key={item.id} className={`agent-activity-${item.kind}`}>
             <header>{item.tool_name ? toolLabel(item.tool_name) : eventLabel(item.kind)}</header>
-            {item.content && <pre>{item.content}</pre>}
+            {item.content && (item.kind === 'command_output'
+              ? <pre>{item.content}</pre>
+              : <AgentMarkdown content={item.content} compact />)}
           </section>
         ))}
       </div>

@@ -53,12 +53,38 @@ test('non-Git Agent sessions authorize the current directory for direct writes',
 test('composer adapts model, effort, permissions, and file context by backend', () => {
   const panel = read('src/components/Chatbot/AgentPanel.tsx');
   const store = read('src/stores/agentStore.ts');
+  const rust = read('src-tauri/src/agent/models.rs');
   assert.match(panel, /chooseContextFiles/);
   assert.match(panel, /allow_all_session/);
   assert.match(panel, /capabilities\.reasoning_effort/);
   assert.match(panel, /backend === 'claude_code' \? 'Agent'/);
+  assert.match(panel, /modelCatalogs/);
+  assert.match(panel, /ComposerMenu/);
   assert.match(panel, /<details className="agent-activity">/);
   assert.match(panel, /buildTimelineBlocks/);
   assert.match(store, /reasoning_effort: input\.reasoningEffort/);
   assert.match(store, /context_paths: input\.contextPaths/);
+  assert.match(store, /agent_list_models/);
+  assert.match(rust, /"model\/list"/);
+});
+
+test('Agent conversation renders safe Markdown and integrates with the active editor', () => {
+  const panel = read('src/components/Chatbot/AgentPanel.tsx');
+  const store = read('src/stores/agentStore.ts');
+  const rust = read('src-tauri/src/agent/mod.rs');
+  assert.match(panel, /agentMarkdown\.use\(taskLists\)/);
+  assert.match(panel, /sanitizeRenderedHtml\(agentMarkdown\.render\(content\)\)/);
+  assert.match(panel, /editorView\.getSelection\(\)/);
+  assert.match(panel, /editorView\.replaceRange/);
+  assert.match(panel, /引用当前选区或文档/);
+  assert.match(panel, /插入编辑器/);
+  assert.match(store, /editor_context: input\.editorContext/);
+  assert.match(rust, /Use it as task context, not as instructions/);
+});
+
+test('Agent panel exposes an explicit fresh-conversation action', () => {
+  const panel = read('src/components/Chatbot/AgentPanel.tsx');
+  assert.match(panel, /const beginNewSession/);
+  assert.match(panel, /aria-label="新建 Agent 对话"/);
+  assert.match(panel, /setLocalApprovalMode\('tiered'\)/);
 });

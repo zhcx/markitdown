@@ -90,6 +90,26 @@ pub struct AgentBackendStatus {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentModelOption {
+    pub id: String,
+    pub display_name: String,
+    pub description: String,
+    pub is_default: bool,
+    pub default_reasoning_effort: Option<String>,
+    #[serde(default)]
+    pub supported_reasoning_efforts: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentModelCatalog {
+    pub backend: AgentBackendId,
+    pub current_model: Option<String>,
+    pub models: Vec<AgentModelOption>,
+    pub source: String,
+    pub diagnostic: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentSession {
     pub id: String,
     pub backend: AgentBackendId,
@@ -123,9 +143,19 @@ pub struct StartAgentTurnRequest {
     pub reasoning_effort: Option<String>,
     #[serde(default)]
     pub context_paths: Vec<String>,
+    pub editor_context: Option<AgentEditorContext>,
     #[serde(default)]
     pub approval_mode: AgentApprovalMode,
     pub session_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentEditorContext {
+    pub label: String,
+    pub path: Option<String>,
+    pub content: String,
+    #[serde(default)]
+    pub selection: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
