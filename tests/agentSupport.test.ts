@@ -99,3 +99,13 @@ test('AI and Agent share themed menus without native header selects or extra run
   assert.doesNotMatch(agentPanel, /<select/);
   assert.doesNotMatch(agentPanel, /showRuntimeOptions|agent-runtime-config-button|···/);
 });
+
+test('runtime mode tabs use distinct icons and a standalone Beta badge', () => {
+  const panel = read('src/components/Chatbot/AgentPanel.tsx');
+  const styles = read('src/styles/main.css');
+  assert.match(panel, /ai-runtime-tab api/);
+  assert.match(panel, /ai-runtime-tab agent/);
+  assert.match(panel, /ai-runtime-tab-icon/);
+  assert.match(styles, /\.ai-runtime-tabs button\.active::after/);
+  assert.match(styles, /\.ai-runtime-tabs small/);
+});

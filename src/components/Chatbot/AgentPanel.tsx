@@ -427,8 +427,19 @@ export function AgentPanel({ onRuntimeChange }: AgentPanelProps) {
 export function RuntimeTabs({ active, onChange }: { active: 'api' | 'agent'; onChange: (runtime: 'api' | 'agent') => void }) {
   return (
     <div className="ai-runtime-tabs" role="tablist" aria-label="AI 运行模式">
-      <button className={active === 'api' ? 'active' : ''} onClick={() => onChange('api')} role="tab" aria-selected={active === 'api'}>AI 对话</button>
-      <button className={active === 'agent' ? 'active' : ''} onClick={() => onChange('agent')} role="tab" aria-selected={active === 'agent'}>Agent <small>Beta</small></button>
+      <button className={`ai-runtime-tab api ${active === 'api' ? 'active' : ''}`} onClick={() => onChange('api')} role="tab" aria-selected={active === 'api'}>
+        <span className="ai-runtime-tab-icon" aria-hidden="true">
+          <svg viewBox="0 0 16 16"><path d="M3 3.2h10v7.5H8l-3.2 2.4v-2.4H3z" /><path d="M5.4 6.9h5.2" /></svg>
+        </span>
+        <span className="ai-runtime-tab-label">AI 对话</span>
+      </button>
+      <button className={`ai-runtime-tab agent ${active === 'agent' ? 'active' : ''}`} onClick={() => onChange('agent')} role="tab" aria-selected={active === 'agent'}>
+        <span className="ai-runtime-tab-icon" aria-hidden="true">
+          <svg viewBox="0 0 16 16"><rect x="2.4" y="3" width="11.2" height="10" rx="1.5" /><path d="m4.7 6 2 1.6-2 1.6M8.5 9.4h2.8" /></svg>
+        </span>
+        <span className="ai-runtime-tab-label">Agent</span>
+        <small>Beta</small>
+      </button>
     </div>
   );
 }

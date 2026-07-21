@@ -9562,34 +9562,95 @@ html[data-theme] .preview-container,
 .ai-runtime-tabs {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 2px;
-  padding: 3px;
+  gap: 4px;
+  padding: 4px;
   margin: 0 0 10px;
-  background: var(--bg-hover);
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
+  background: color-mix(in srgb, var(--surface-muted) 82%, transparent);
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
 }
 
 .ai-runtime-tabs button {
-  min-height: 28px;
-  border: 0;
-  border-radius: 4px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-width: 0;
+  min-height: 36px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: 6px;
   color: var(--text-muted);
   background: transparent;
-  font-size: 12px;
+  font: 500 12px/1 var(--font-sans);
   cursor: pointer;
+  transition: color .15s ease, border-color .15s ease, background-color .15s ease, box-shadow .15s ease;
 }
 
+.ai-runtime-tabs button:hover:not(.active) { color: var(--text-secondary); background: var(--bg-hover); }
+
 .ai-runtime-tabs button.active {
-  color: var(--text-color);
-  background: var(--bg-elevated);
-  box-shadow: 0 1px 2px color-mix(in srgb, var(--text-color) 10%, transparent);
+  border-color: color-mix(in srgb, var(--accent-color) 30%, var(--border-soft));
+  color: var(--text-primary);
+  background: var(--surface-raised);
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--text-color) 12%, transparent), inset 0 1px rgba(255, 255, 255, .04);
+}
+
+.ai-runtime-tabs button.active::after {
+  content: '';
+  position: absolute;
+  right: 22%;
+  bottom: -1px;
+  left: 22%;
+  height: 2px;
+  border-radius: 2px 2px 0 0;
+  background: var(--accent-color);
+}
+
+.ai-runtime-tab-icon {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  border-radius: 5px;
+  color: var(--text-muted);
+  background: color-mix(in srgb, var(--text-muted) 9%, transparent);
+}
+
+.ai-runtime-tab-icon svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.35;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.ai-runtime-tab.active .ai-runtime-tab-icon {
+  color: var(--accent-color);
+  background: color-mix(in srgb, var(--accent-color) 14%, transparent);
+}
+
+.ai-runtime-tab-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .ai-runtime-tabs small {
-  margin-left: 4px;
+  flex: 0 0 auto;
+  padding: 2px 5px;
+  border: 1px solid color-mix(in srgb, var(--accent-color) 25%, transparent);
+  border-radius: 999px;
   color: var(--accent-color);
-  font-size: 9px;
+  background: color-mix(in srgb, var(--accent-color) 8%, transparent);
+  font-size: 8px;
+  font-weight: 650;
+  line-height: 1;
 }
 
 .agent-panel {
