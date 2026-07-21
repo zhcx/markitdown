@@ -74,6 +74,8 @@
 - **思考模式** — 关闭/快速/均衡/深度，灵活控制 AI 推理强度
 - **关联文档** — 一键将当前编辑文档作为对话上下文
 - **附件上传** — 图片和文本文件上传，与对话一起发送
+- **本地 Agent（Beta）** — 在同一面板调用 Claude Code、Codex 或 OpenCode，支持流式任务、命令审批和会话恢复
+- **隔离变更审阅** — Agent 在临时 Git worktree 中工作，完成后可按文件应用，不覆盖当前未提交修改
 
 ### 🤖 AI 服务商支持
 
@@ -90,6 +92,16 @@
 | MiniMax | 支持 |
 | Kimi | 支持 |
 | 自定义 OpenAI 兼容 | 支持 |
+
+### 🧩 本地 Agent 支持（桌面端 Beta）
+
+| Agent | 接入方式 |
+| --- | --- |
+| Claude Code | Stream JSON + PreToolUse 审批 Hook |
+| Codex | App Server JSON-RPC v2 |
+| OpenCode | 本地 Server API + SSE |
+
+Agent 默认关闭，需要先在“设置 → AI 助手”中启用并完成本机 CLI 检测。MarkitDown 复用各 CLI 的登录与默认模型，不保存其账号凭据。完整写入任务要求工作区为 Git 仓库；命令、网络和 MCP 默认逐次审批，也可仅对当前会话启用完全允许。详细说明见 [Agent 使用与安全说明](docs/agent-support.md)。
 
 ### 🔄 自动更新
 

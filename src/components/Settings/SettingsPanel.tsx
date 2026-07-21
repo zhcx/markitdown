@@ -10,6 +10,7 @@ import {
   getRangeMarkerGeometry,
 } from '../../utils/appearanceSettings';
 import { LANGUAGE_OPTIONS, normalizeLanguage } from '../../i18n';
+import type { AgentBackendId, AgentBackendStatus } from '../../types/agent';
 
 const isTauriRuntime = () => '__TAURI_INTERNALS__' in window;
 
@@ -114,6 +115,8 @@ export function SettingsPanel() {
   const [fontFamilies, setFontFamilies] = useState(DEFAULT_FONT_FAMILIES);
   const [loadingFonts, setLoadingFonts] = useState(false);
   const [fontNotice, setFontNotice] = useState('可直接输入任意已安装字体名称。');
+  const [agentStatuses, setAgentStatuses] = useState<AgentBackendStatus[]>([]);
+  const [detectingAgents, setDetectingAgents] = useState(false);
   const fontSizeGeometry = getRangeMarkerGeometry(
     localSettings.appearance.font_size,
     FONT_SIZE_MIN,
@@ -1038,6 +1041,78 @@ export function SettingsPanel() {
                     </div>
                   )}
                 </>
+              )}
+              <div className="settings-subsection-divider" />
+              <SettingToggle
+                label="启用本地 Agent（Beta）"
+                description="调用本机 Claude Code、Codex 或 OpenCode，在隔离 Git worktree 中执行任务"
+                checked={localSettings.agent.enabled}
+                onChange={(checked) => setLocalSettings({
+                  ...localSettings,
+                  agent: { ...localSettings.agent, enabled: checked },
+                })}
+              />
+              {localSettings.agent.enabled && (
+                <div className="agent-settings-block">
+                  <div className="setting-item">
+                    <label>默认 Agent</label>
+                    <select
+                      value={localSettings.agent.backend}
+                      onChange={(event) => setLocalSettings({
+                        ...localSettings,
+                        agent: { ...localSettings.agent, backend: event.target.value as AgentBackendId },
+                      })}
+                    >
+                      <option value="claude_code">Claude Code</option>
+                      <option value="codex">Codex</option>
+                      <option value="opencode">OpenCode</option>
+                    </select>
+                  </div>
+                  {(Object.keys(localSettings.agent.backends) as AgentBackendId[]).map((backendId) => {
+                    const config = localSettings.agent.backends[backendId];
+                    const status = agentStatuses.find((item) => item.id === backendId);
+                    const label = backendId === 'claude_code' ? 'Claude Code' : backendId === 'codex' ? 'Codex' : 'OpenCode';
+                    return (
+                      <section className="agent-backend-settings" key={backendId}>
+                        <header><strong>{label}</strong><span className={status?.compatible ? 'ready' : ''}>{status ? (status.compatible ? status.version || '可用' : status.diagnostic) : '尚未检测'}</span></header>
+                        <div className="setting-item">
+                          <label>可执行文件</label>
+                          <input
+                            type="text"
+                            value={config.executable_path}
+                            onChange={(event) => setLocalSettings({
+                              ...localSettings,
+                              agent: {
+                                ...localSettings.agent,
+                                backends: { ...localSettings.agent.backends, [backendId]: { ...config, executable_path: event.target.value } },
+                              },
+                            })}
+                            placeholder={`留空则从 PATH 自动查找 ${backendId === 'claude_code' ? 'claude' : backendId}`}
+                          />
+                        </div>
+                        <div className="agent-backend-options">
+                          <div className="setting-item"><label>模型覆盖</label><input type="text" value={config.model} onChange={(event) => setLocalSettings({ ...localSettings, agent: { ...localSettings.agent, backends: { ...localSettings.agent.backends, [backendId]: { ...config, model: event.target.value } } } })} placeholder="使用 CLI 默认模型" /></div>
+                          <div className="setting-item"><label>Profile / Agent</label><input type="text" value={config.profile} onChange={(event) => setLocalSettings({ ...localSettings, agent: { ...localSettings.agent, backends: { ...localSettings.agent.backends, [backendId]: { ...config, profile: event.target.value } } } })} placeholder="使用 CLI 默认配置" /></div>
+                        </div>
+                      </section>
+                    );
+                  })}
+                  <button
+                    className="secondary-btn agent-detect-button"
+                    disabled={detectingAgents || !isTauriRuntime()}
+                    onClick={async () => {
+                      setDetectingAgents(true);
+                      try {
+                        const overrides = Object.fromEntries(Object.entries(localSettings.agent.backends).map(([id, config]) => [id, config.executable_path]));
+                        setAgentStatuses(await invoke<AgentBackendStatus[]>('agent_detect_backends', { overrides }));
+                      } finally {
+                        setDetectingAgents(false);
+                      }
+                    }}
+                  >
+                    {detectingAgents ? '检测中…' : '检测本机 Agent'}
+                  </button>
+                </div>
               )}
             </div>
           )}

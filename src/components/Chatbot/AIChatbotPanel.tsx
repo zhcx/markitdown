@@ -8,6 +8,8 @@ import { invoke } from '@tauri-apps/api/core';
 import MarkdownIt from 'markdown-it';
 import { readStoredStringArray } from '../../utils/storage';
 import { sanitizeRenderedHtml } from '../../utils/safeHtml';
+import { AgentPanel, RuntimeTabs } from './AgentPanel';
+import type { AIRuntime } from '../../types/agent';
 
 const md = new MarkdownIt({ html: false, breaks: true, linkify: true });
 
@@ -67,6 +69,20 @@ function ReasoningOptionIcon({ effort }: { effort: ReasoningEffort }) {
 }
 
 export function AIChatbotPanel() {
+  const [runtime, setRuntime] = useState<AIRuntime>(() => {
+    try { return localStorage.getItem('markitdown.ai-runtime') === 'agent' ? 'agent' : 'api'; }
+    catch { return 'api'; }
+  });
+  const handleRuntimeChange = (next: AIRuntime) => {
+    setRuntime(next);
+    try { localStorage.setItem('markitdown.ai-runtime', next); } catch { /* ignored */ }
+  };
+  return runtime === 'agent'
+    ? <AgentPanel onRuntimeChange={handleRuntimeChange} />
+    : <ApiChatPanel onRuntimeChange={handleRuntimeChange} />;
+}
+
+function ApiChatPanel({ onRuntimeChange }: { onRuntimeChange: (runtime: AIRuntime) => void }) {
   const {
     chatbotMessages,
     chatbotLoading,
@@ -263,6 +279,7 @@ export function AIChatbotPanel() {
   return (
     <div className="chatbot-panel">
       <div className="chatbot-header">
+        <RuntimeTabs active="api" onChange={onRuntimeChange} />
         <div className="chatbot-header-main">
           <div className="chatbot-header-identity">
             <span className="chatbot-header-mark" aria-hidden="true">AI</span>

@@ -94,7 +94,7 @@ export interface ChatMessageAttachment {
 export type ReasoningEffort = 'off' | 'fast' | 'balanced' | 'deep';
 
 export type AIStatus = 'idle' | 'loading' | 'proofreading' | 'companion' | 'success' | 'error';
-export type AIEditMode = 'ask' | 'suggest' | 'agent';
+export type AIEditMode = 'ask' | 'suggest';
 export type AIChangeKind = 'polish' | 'translation' | 'fact' | 'structure' | 'continuation' | 'proofread';
 
 export interface AIEditProposal {
@@ -287,7 +287,7 @@ export const useAIStore = create<AIState>((set, get) => ({
     set({
       pendingEdit: { ...proposal, id: `ai-edit-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, createdAt: Date.now() },
       status: 'success',
-      statusMessage: get().editMode === 'agent' ? '代理任务到达写入点，等待确认。' : 'AI 修改建议等待确认。',
+      statusMessage: 'AI 修改建议等待确认。',
     });
   },
 
