@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
+import { open } from '@tauri-apps/plugin-dialog';
 import { useAppStore } from '../../stores/appStore';
 import { useAgentStore } from '../../stores/agentStore';
-import type { AgentBackendId } from '../../types/agent';
+import type { AgentApprovalMode, AgentBackendId, AgentTimelineItem } from '../../types/agent';
 import { readStoredStringArray } from '../../utils/storage';
 
 const BACKEND_LABELS: Record<AgentBackendId, string> = {
@@ -18,11 +19,17 @@ export function AgentPanel({ onRuntimeChange }: AgentPanelProps) {
   const { settings } = useAppStore();
   const {
     backends, sessions, activeSessionId, timeline, pendingApproval, changes, loading, diagnostic,
-    initialize, detectBackends, startTurn, cancelTurn, respondApproval, setTieredApproval,
+    initialize, detectBackends, startTurn, cancelTurn, respondApproval, setApprovalMode,
     refreshChanges, applyChanges, discardSession, selectSession, newSession,
   } = useAgentStore();
   const [backend, setBackend] = useState<AgentBackendId>(settings.agent.backend);
   const [prompt, setPrompt] = useState('');
+  const [approvalMode, setLocalApprovalMode] = useState<AgentApprovalMode>('tiered');
+  const [model, setModel] = useState(settings.agent.backends[settings.agent.backend].model);
+  const [profile, setProfile] = useState(settings.agent.backends[settings.agent.backend].profile);
+  const [reasoningEffort, setReasoningEffort] = useState(settings.agent.backends[settings.agent.backend].reasoning_effort);
+  const [contextPaths, setContextPaths] = useState<string[]>([]);
+  const [showRuntimeOptions, setShowRuntimeOptions] = useState(false);
   const [selection, setSelection] = useState<{ key: string; excluded: string[] }>({ key: '', excluded: [] });
   const roots = useMemo(() => readStoredStringArray('markitdown.workspace-roots'), []);
   const workspaceRoot = roots[0] || '';
@@ -43,23 +50,54 @@ export function AgentPanel({ onRuntimeChange }: AgentPanelProps) {
     void detectBackends(overrides);
   }, [detectBackends, initialize, settings.agent.backends]);
 
+  useEffect(() => {
+    setModel(backendConfig.model);
+    setProfile(backendConfig.profile);
+    setReasoningEffort(backendConfig.reasoning_effort);
+    setContextPaths([]);
+    setShowRuntimeOptions(false);
+  }, [backend, backendConfig.model, backendConfig.profile, backendConfig.reasoning_effort]);
+
+  useEffect(() => {
+    if (activeSession) setLocalApprovalMode(activeSession.approval_mode);
+  }, [activeSession]);
+
+  const chooseContextFiles = async () => {
+    if (!workspaceRoot || loading) return;
+    const selected = await open({ multiple: true, directory: false, defaultPath: workspaceRoot });
+    const paths = typeof selected === 'string' ? [selected] : selected || [];
+    setContextPaths((current) => [...new Set([...current, ...paths])]);
+  };
+
+  const changeApprovalMode = async (mode: AgentApprovalMode) => {
+    if (mode === 'allow_all_session') {
+      const confirmed = window.confirm('本会话后续的命令、网络、MCP 和目录内编辑将不再逐次询问。当前目录边界和禁止 Git push 等硬性限制仍然生效。');
+      if (!confirmed) return;
+    }
+    setLocalApprovalMode(mode);
+    if (activeSession) await setApprovalMode(mode);
+  };
+
   const submit = async () => {
     const text = prompt.trim();
     if (!text || !workspaceRoot || loading || !backendStatus?.compatible) return;
-    setPrompt('');
     try {
       await startTurn({
         backend,
         workspaceRoot,
         prompt: text,
         executablePath: backendConfig.executable_path,
-        model: backendConfig.model,
-        profile: backendConfig.profile,
+        model,
+        profile,
+        reasoningEffort,
+        contextPaths,
+        approvalMode,
         sessionId: activeSession?.backend === backend ? activeSession.id : undefined,
       });
-    } catch (error) {
-      setPrompt(text);
-      window.alert(String(error));
+      setPrompt('');
+      setContextPaths([]);
+    } catch {
+      // The store exposes a stable diagnostic in the panel.
     }
   };
 
@@ -107,12 +145,14 @@ export function AgentPanel({ onRuntimeChange }: AgentPanelProps) {
       <div className="agent-timeline">
         {!workspaceRoot && <div className="agent-empty-state"><strong>请先打开工作区</strong><span>Agent 将使用打开的当前目录作为会话授权范围。</span></div>}
         {workspaceRoot && timeline.length === 0 && (
-          <div className="agent-empty-state"><strong>让 Agent 在当前目录中处理任务</strong><span>Git 根目录使用隔离工作区；其他目录在当前授权范围内直接写入。</span></div>
+          <div className="agent-empty-state"><strong>让 Agent 在当前目录中处理任务</strong><span>Git 根目录使用隔离工作区，其他目录在当前授权范围内直接写入。</span></div>
         )}
-        {timeline.map((item) => (
-          <article key={item.id} className={`agent-event agent-event-${item.kind}`}>
-            <header>{item.kind === 'user' ? '你' : item.tool_name || eventLabel(item.kind)}</header>
-            {item.content && <pre>{item.content}</pre>}
+        {buildTimelineBlocks(timeline).map((block) => block.type === 'activity' ? (
+          <AgentActivity key={block.id} items={block.items} />
+        ) : (
+          <article key={block.item.id} className={`agent-message agent-message-${block.item.kind}`}>
+            {block.item.kind === 'user' && <header>你</header>}
+            {block.item.content && <div className="agent-message-content">{block.item.content}</div>}
           </article>
         ))}
         {pendingApproval && (
@@ -129,17 +169,6 @@ export function AgentPanel({ onRuntimeChange }: AgentPanelProps) {
         )}
         {diagnostic && <div className="agent-diagnostic">{diagnostic}</div>}
       </div>
-
-      {activeSession?.approval_mode === 'allow_all_session' && (
-        <div className="agent-unrestricted-banner">
-          <span>当前会话已完全允许，目录边界和禁止推送规则仍然有效。</span>
-          <button onClick={() => void setTieredApproval()}>恢复分级审批</button>
-        </div>
-      )}
-
-      {activeSession?.read_only && (
-        <div className="agent-readonly-banner">当前目录不是 Git 仓库，本会话仅允许读取和分析。</div>
-      )}
 
       {activeSession?.direct_write && (
         <div className="agent-direct-write-banner">当前目录已授权，Agent 修改会直接写入，不经过隔离审阅。</div>
@@ -175,28 +204,64 @@ export function AgentPanel({ onRuntimeChange }: AgentPanelProps) {
       )}
 
       <div className="agent-composer">
+        {contextPaths.length > 0 && (
+          <div className="agent-context-files">
+            {contextPaths.map((path) => (
+              <span key={path} title={path}>{fileName(path)}<button onClick={() => setContextPaths((items) => items.filter((item) => item !== path))} aria-label={`移除 ${fileName(path)}`}>×</button></span>
+            ))}
+          </div>
+        )}
         <textarea
           value={prompt}
           onChange={(event) => setPrompt(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void submit(); }
           }}
-          placeholder="描述需要 Agent 完成的任务…"
+          placeholder={activeSessionId ? '提出后续变更要求' : '描述需要 Agent 完成的任务'}
           disabled={!workspaceRoot || !backendStatus?.compatible}
         />
-        <button
-          className="agent-send-button"
-          onClick={loading ? () => void cancelTurn() : () => void submit()}
-          disabled={!loading && (!prompt.trim() || !workspaceRoot || !backendStatus?.compatible)}
-          title={loading ? '停止任务' : '发送任务'}
-          aria-label={loading ? '停止任务' : '发送任务'}
-        >
-          {loading ? (
-            <svg viewBox="0 0 20 20" aria-hidden="true"><rect x="6" y="6" width="8" height="8" rx="1" /></svg>
-          ) : (
-            <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3.4 9.3 16 3.8l-4.9 12.4-1.7-5.4-6-1.5Z" /><path d="m9.4 10.8 3.2-3.2" /></svg>
+        {showRuntimeOptions && (
+          <div className="agent-runtime-options">
+            <label><span>模型</span><input value={model} onChange={(event) => setModel(event.target.value)} placeholder="使用 CLI 默认模型" /></label>
+            {backendStatus?.capabilities.profile_override && (
+              <label><span>{backend === 'claude_code' ? 'Agent' : backend === 'codex' ? 'Profile' : 'Agent 模式'}</span><input value={profile} onChange={(event) => setProfile(event.target.value)} placeholder="使用 CLI 默认配置" /></label>
+            )}
+          </div>
+        )}
+        <div className="agent-composer-toolbar">
+          <button className="agent-icon-button" onClick={() => void chooseContextFiles()} disabled={!workspaceRoot || loading} title="添加当前目录中的文件" aria-label="添加文件">+</button>
+          <select
+            className={`agent-permission-select ${approvalMode === 'allow_all_session' ? 'unrestricted' : ''}`}
+            value={approvalMode}
+            onChange={(event) => void changeApprovalMode(event.target.value as AgentApprovalMode)}
+            disabled={loading}
+            aria-label="审批模式"
+          >
+            <option value="tiered">分级审批</option>
+            <option value="allow_all_session">完全访问</option>
+          </select>
+          <span className="agent-composer-spacer" />
+          <button className="agent-runtime-button" onClick={() => setShowRuntimeOptions((value) => !value)} title="模型和 Agent 配置">{model || '默认模型'}</button>
+          {backendStatus?.capabilities.reasoning_effort && (
+            <select className="agent-effort-select" value={reasoningEffort} onChange={(event) => setReasoningEffort(event.target.value)} disabled={loading} aria-label="推理强度">
+              <option value="">自动</option>
+              <option value="low">低</option>
+              <option value="medium">中</option>
+              <option value="high">高</option>
+              <option value="xhigh">超高</option>
+              {backend === 'claude_code' && <option value="max">最大</option>}
+            </select>
           )}
-        </button>
+          <button
+            className="agent-send-button"
+            onClick={loading ? () => void cancelTurn() : () => void submit()}
+            disabled={!loading && (!prompt.trim() || !workspaceRoot || !backendStatus?.compatible)}
+            title={loading ? '停止任务' : '发送任务'}
+            aria-label={loading ? '停止任务' : '发送任务'}
+          >
+            {loading ? '■' : '↑'}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -216,7 +281,81 @@ function eventLabel(kind: string) {
   if (kind === 'command_output') return '终端';
   if (kind === 'tool_started') return '工具';
   if (kind === 'tool_completed') return '工具完成';
+  if (kind === 'status') return '状态';
   if (kind === 'error') return '错误';
   if (kind === 'done') return '完成';
   return 'Agent';
+}
+
+function toolLabel(tool: string) {
+  const labels: Record<string, string> = {
+    commandExecution: '终端',
+    fileChange: '文件修改',
+    webSearch: '网页搜索',
+    mcpToolCall: 'MCP 工具',
+  };
+  return labels[tool] || tool;
+}
+
+function fileName(path: string) {
+  return path.split(/[\\/]/).pop() || path;
+}
+
+const ACTIVITY_KINDS = new Set(['reasoning_delta', 'status', 'tool_started', 'tool_completed', 'command_output', 'usage', 'file_changed']);
+
+type TimelineBlock =
+  | { type: 'message'; item: AgentTimelineItem }
+  | { type: 'activity'; id: string; items: AgentTimelineItem[] };
+
+function buildTimelineBlocks(items: AgentTimelineItem[]): TimelineBlock[] {
+  const blocks: TimelineBlock[] = [];
+  for (const item of items) {
+    if (!ACTIVITY_KINDS.has(item.kind)) {
+      if (item.kind !== 'done' || item.content) blocks.push({ type: 'message', item });
+      continue;
+    }
+    const last = blocks[blocks.length - 1];
+    if (last?.type === 'activity') {
+      last.items.push(item);
+    } else {
+      blocks.push({ type: 'activity', id: `activity-${item.id}`, items: [item] });
+    }
+  }
+  return blocks;
+}
+
+function AgentActivity({ items }: { items: AgentTimelineItem[] }) {
+  const visibleItems = items.filter((item) => item.kind !== 'tool_completed' || item.content);
+  const toolStarts = items.filter((item) => item.kind === 'tool_started');
+  const commandCount = toolStarts.filter((item) => item.tool_name === 'commandExecution' || item.tool_name === 'command').length;
+  const hasCommands = commandCount > 0 || items.some((item) => item.kind === 'command_output');
+  const hasReasoning = items.some((item) => item.kind === 'reasoning_delta');
+  const hasTools = toolStarts.length > 0;
+  const statusOnly = items.every((item) => item.kind === 'status');
+
+  if (statusOnly && items.length === 1) {
+    return <div className="agent-activity-status"><span aria-hidden="true">·</span>{items[0].content}</div>;
+  }
+
+  let summary = '活动详情';
+  if (hasCommands || hasTools) {
+    const count = Math.max(toolStarts.length, commandCount, 1);
+    summary = count > 1 ? `运行了 ${count} 个操作` : hasCommands ? '运行命令' : '使用工具';
+  } else if (hasReasoning) {
+    summary = '思考过程';
+  }
+
+  return (
+    <details className="agent-activity">
+      <summary><span className="agent-activity-icon" aria-hidden="true">›</span>{summary}</summary>
+      <div className="agent-activity-content">
+        {visibleItems.map((item) => (
+          <section key={item.id} className={`agent-activity-${item.kind}`}>
+            <header>{item.tool_name ? toolLabel(item.tool_name) : eventLabel(item.kind)}</header>
+            {item.content && <pre>{item.content}</pre>}
+          </section>
+        ))}
+      </div>
+    </details>
+  );
 }

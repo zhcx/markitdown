@@ -1087,12 +1087,25 @@ export function SettingsPanel() {
                                 backends: { ...localSettings.agent.backends, [backendId]: { ...config, executable_path: event.target.value } },
                               },
                             })}
-                            placeholder={`留空则从 PATH 自动查找 ${backendId === 'claude_code' ? 'claude' : backendId}`}
+                            placeholder={backendId === 'codex' ? '留空则优先使用官方编辑器扩展或 PATH 中的 codex' : `留空则从 PATH 自动查找 ${backendId === 'claude_code' ? 'claude' : backendId}`}
                           />
                         </div>
                         <div className="agent-backend-options">
                           <div className="setting-item"><label>模型覆盖</label><input type="text" value={config.model} onChange={(event) => setLocalSettings({ ...localSettings, agent: { ...localSettings.agent, backends: { ...localSettings.agent.backends, [backendId]: { ...config, model: event.target.value } } } })} placeholder="使用 CLI 默认模型" /></div>
-                          <div className="setting-item"><label>Profile / Agent</label><input type="text" value={config.profile} onChange={(event) => setLocalSettings({ ...localSettings, agent: { ...localSettings.agent, backends: { ...localSettings.agent.backends, [backendId]: { ...config, profile: event.target.value } } } })} placeholder="使用 CLI 默认配置" /></div>
+                          <div className="setting-item"><label>{backendId === 'claude_code' ? 'Agent' : backendId === 'codex' ? 'Profile' : 'Agent 模式'}</label><input type="text" value={config.profile} onChange={(event) => setLocalSettings({ ...localSettings, agent: { ...localSettings.agent, backends: { ...localSettings.agent.backends, [backendId]: { ...config, profile: event.target.value } } } })} placeholder="使用 CLI 默认配置" /></div>
+                          {backendId !== 'opencode' && (
+                            <div className="setting-item">
+                              <label>推理强度</label>
+                              <select value={config.reasoning_effort} onChange={(event) => setLocalSettings({ ...localSettings, agent: { ...localSettings.agent, backends: { ...localSettings.agent.backends, [backendId]: { ...config, reasoning_effort: event.target.value } } } })}>
+                                <option value="">自动</option>
+                                <option value="low">低</option>
+                                <option value="medium">中</option>
+                                <option value="high">高</option>
+                                <option value="xhigh">超高</option>
+                                {backendId === 'claude_code' && <option value="max">最大</option>}
+                              </select>
+                            </div>
+                          )}
                         </div>
                       </section>
                     );

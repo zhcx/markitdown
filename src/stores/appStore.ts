@@ -301,9 +301,9 @@ const defaultSettings: Settings = {
     enabled: false,
     backend: 'claude_code',
     backends: {
-      claude_code: { executable_path: '', model: '', profile: '' },
-      codex: { executable_path: '', model: '', profile: '' },
-      opencode: { executable_path: '', model: '', profile: '' },
+      claude_code: { executable_path: '', model: '', profile: '', reasoning_effort: '' },
+      codex: { executable_path: '', model: '', profile: '', reasoning_effort: '' },
+      opencode: { executable_path: '', model: '', profile: '', reasoning_effort: '' },
     },
   },
 };
@@ -325,8 +325,9 @@ const normalizeSettings = (saved: Settings): Settings => ({
     ...defaultSettings.agent,
     ...saved.agent,
     backends: {
-      ...defaultSettings.agent.backends,
-      ...saved.agent?.backends,
+      claude_code: { ...defaultSettings.agent.backends.claude_code, ...saved.agent?.backends?.claude_code },
+      codex: { ...defaultSettings.agent.backends.codex, ...saved.agent?.backends?.codex },
+      opencode: { ...defaultSettings.agent.backends.opencode, ...saved.agent?.backends?.opencode },
     },
   },
 });

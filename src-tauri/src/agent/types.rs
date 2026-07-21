@@ -59,6 +59,8 @@ pub struct AgentCapabilities {
     pub session_resume: bool,
     pub model_override: bool,
     pub profile_override: bool,
+    pub reasoning_effort: bool,
+    pub file_context: bool,
 }
 
 impl AgentCapabilities {
@@ -68,7 +70,9 @@ impl AgentCapabilities {
             approvals: true,
             session_resume: true,
             model_override: true,
-            profile_override: !matches!(backend, AgentBackendId::Opencode),
+            profile_override: true,
+            reasoning_effort: !matches!(backend, AgentBackendId::Opencode),
+            file_context: true,
         }
     }
 }
@@ -116,6 +120,11 @@ pub struct StartAgentTurnRequest {
     pub executable_path: Option<String>,
     pub model: Option<String>,
     pub profile: Option<String>,
+    pub reasoning_effort: Option<String>,
+    #[serde(default)]
+    pub context_paths: Vec<String>,
+    #[serde(default)]
+    pub approval_mode: AgentApprovalMode,
     pub session_id: Option<String>,
 }
 
@@ -163,7 +172,13 @@ pub struct AgentEvent {
 }
 
 impl AgentEvent {
-    pub fn simple(session_id: &str, turn_id: &str, sequence: u64, kind: &str, content: impl Into<String>) -> Self {
+    pub fn simple(
+        session_id: &str,
+        turn_id: &str,
+        sequence: u64,
+        kind: &str,
+        content: impl Into<String>,
+    ) -> Self {
         Self {
             session_id: session_id.into(),
             turn_id: turn_id.into(),

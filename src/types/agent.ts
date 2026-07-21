@@ -8,6 +8,7 @@ export interface AgentBackendConfig {
   executable_path: string;
   model: string;
   profile: string;
+  reasoning_effort: string;
 }
 
 export interface AgentSettings {
@@ -22,6 +23,8 @@ export interface AgentCapabilities {
   session_resume: boolean;
   model_override: boolean;
   profile_override: boolean;
+  reasoning_effort: boolean;
+  file_context: boolean;
 }
 
 export interface AgentBackendStatus {

@@ -22,6 +22,12 @@ pub fn system_command(program: impl AsRef<OsStr>) -> Command {
 }
 
 pub fn discover_executable(name: &str) -> Option<PathBuf> {
+    let mut preferred = Vec::new();
+    #[cfg(windows)]
+    if name.eq_ignore_ascii_case("codex") {
+        preferred.extend(official_codex_extension_candidates());
+    }
+
     let mut directories: Vec<PathBuf> = std::env::var_os("PATH")
         .map(|value| std::env::split_paths(&value).collect())
         .unwrap_or_default();
@@ -46,13 +52,19 @@ pub fn discover_executable(name: &str) -> Option<PathBuf> {
         }
     }
 
-    discover_in_directories(name, directories)
+    preferred.extend(candidate_paths(name, directories));
+    select_discovered(preferred)
 }
 
+#[cfg(test)]
 fn discover_in_directories(
     name: &str,
     directories: impl IntoIterator<Item = PathBuf>,
 ) -> Option<PathBuf> {
+    select_discovered(candidate_paths(name, directories))
+}
+
+fn candidate_paths(name: &str, directories: impl IntoIterator<Item = PathBuf>) -> Vec<PathBuf> {
     let mut candidates = Vec::new();
     for directory in directories {
         #[cfg(windows)]
@@ -66,7 +78,45 @@ fn discover_in_directories(
         #[cfg(not(windows))]
         candidates.push(directory.join(name));
     }
-    select_discovered(candidates)
+    candidates
+}
+
+#[cfg(windows)]
+fn official_codex_extension_candidates() -> Vec<PathBuf> {
+    let Some(profile) = std::env::var_os("USERPROFILE") else {
+        return Vec::new();
+    };
+    let profile = PathBuf::from(profile);
+    official_codex_candidates_from_roots([
+        profile.join(".vscode").join("extensions"),
+        profile.join(".vscode-insiders").join("extensions"),
+        profile.join(".cursor").join("extensions"),
+        profile.join(".windsurf").join("extensions"),
+    ])
+}
+
+#[cfg(windows)]
+fn official_codex_candidates_from_roots(roots: impl IntoIterator<Item = PathBuf>) -> Vec<PathBuf> {
+    let architecture = match std::env::consts::ARCH {
+        "aarch64" => "windows-aarch64",
+        _ => "windows-x86_64",
+    };
+    let mut extension_dirs = roots
+        .into_iter()
+        .flat_map(|root| std::fs::read_dir(root).into_iter().flatten().flatten())
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.file_name()
+                .and_then(OsStr::to_str)
+                .is_some_and(|name| name.starts_with("openai.chatgpt-"))
+        })
+        .collect::<Vec<_>>();
+    extension_dirs.sort_by(|left, right| right.file_name().cmp(&left.file_name()));
+    extension_dirs
+        .into_iter()
+        .map(|root| root.join("bin").join(architecture).join("codex.exe"))
+        .filter(|path| path.is_file())
+        .collect()
 }
 
 pub fn executable_command(executable: &Path) -> Result<Command, String> {
@@ -194,6 +244,35 @@ mod tests {
         assert_eq!(
             discover_in_directories("opencode", [root.clone()]),
             Some(shim)
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn official_extension_discovery_prefers_the_newest_codex_binary() {
+        let root = std::env::temp_dir().join(format!(
+            "markitdown-codex-extension-test-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let older = root
+            .join("openai.chatgpt-1.0.0-win32-x64")
+            .join("bin")
+            .join("windows-x86_64")
+            .join("codex.exe");
+        let newer = root
+            .join("openai.chatgpt-2.0.0-win32-x64")
+            .join("bin")
+            .join("windows-x86_64")
+            .join("codex.exe");
+        fs::create_dir_all(older.parent().unwrap()).unwrap();
+        fs::create_dir_all(newer.parent().unwrap()).unwrap();
+        fs::write(&older, []).unwrap();
+        fs::write(&newer, []).unwrap();
+
+        assert_eq!(
+            official_codex_candidates_from_roots([root.clone()]),
+            vec![newer, older]
         );
         fs::remove_dir_all(root).unwrap();
     }

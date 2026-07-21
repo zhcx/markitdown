@@ -58,11 +58,18 @@ pub struct AgentBackendConfig {
     pub model: String,
     #[serde(default)]
     pub profile: String,
+    #[serde(default)]
+    pub reasoning_effort: String,
 }
 
 impl Default for AgentBackendConfig {
     fn default() -> Self {
-        Self { executable_path: String::new(), model: String::new(), profile: String::new() }
+        Self {
+            executable_path: String::new(),
+            model: String::new(),
+            profile: String::new(),
+            reasoning_effort: String::new(),
+        }
     }
 }
 
@@ -79,7 +86,11 @@ impl Default for AgentSettings {
             .into_iter()
             .map(|id| (id.to_string(), AgentBackendConfig::default()))
             .collect();
-        Self { enabled: false, backend: "claude_code".into(), backends }
+        Self {
+            enabled: false,
+            backend: "claude_code".into(),
+            backends,
+        }
     }
 }
 

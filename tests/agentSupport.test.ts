@@ -17,7 +17,7 @@ test('exposes session-scoped full approval without persisting it in settings', (
   const agentStore = read('src/stores/agentStore.ts');
   const rust = read('src-tauri/src/agent/mod.rs');
   assert.match(types, /AgentApprovalMode = 'tiered' \| 'allow_all_session'/);
-  assert.match(agentStore, /window\.confirm\(`本会话后续/);
+  assert.match(agentStore, /window\.confirm\('本会话后续/);
   assert.match(rust, /persisted_session\.approval_mode = AgentApprovalMode::Tiered/);
   assert.match(rust, /git push/);
 });
@@ -37,6 +37,7 @@ test('discovers Agent CLIs without spawning probes when the panel opens', () => 
   const process = read('src-tauri/src/agent/process.rs');
   assert.match(rust, /fn discover_executable\(name: &str\)[\s\S]*process::discover_executable\(name\)/);
   assert.match(process, /std::env::split_paths/);
+  assert.match(process, /openai\.chatgpt-/);
   assert.doesNotMatch(rust.match(/pub async fn agent_detect_backends[\s\S]*?\n\}/)?.[0] || '', /executable_version|probe_capabilities/);
 });
 
@@ -47,4 +48,17 @@ test('non-Git Agent sessions authorize the current directory for direct writes',
   assert.match(types, /direct_write: boolean/);
   assert.match(panel, /当前目录已授权，Agent 修改会直接写入/);
   assert.match(rust, /read_only: false,[\s\S]*direct_write/);
+});
+
+test('composer adapts model, effort, permissions, and file context by backend', () => {
+  const panel = read('src/components/Chatbot/AgentPanel.tsx');
+  const store = read('src/stores/agentStore.ts');
+  assert.match(panel, /chooseContextFiles/);
+  assert.match(panel, /allow_all_session/);
+  assert.match(panel, /capabilities\.reasoning_effort/);
+  assert.match(panel, /backend === 'claude_code' \? 'Agent'/);
+  assert.match(panel, /<details className="agent-activity">/);
+  assert.match(panel, /buildTimelineBlocks/);
+  assert.match(store, /reasoning_effort: input\.reasoningEffort/);
+  assert.match(store, /context_paths: input\.contextPaths/);
 });
