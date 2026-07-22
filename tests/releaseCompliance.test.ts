@@ -74,6 +74,7 @@ test('release builds wait for the locked quality gate', () => {
   assert.match(workflow, /npm ci/)
   assert.match(workflow, /npm run lint/)
   assert.match(workflow, /npm audit --audit-level=high/)
+  assert.match(workflow, /Create converter placeholder for Rust checks[\s\S]*New-Item -ItemType File -Force src-tauri\/resources\/document_converter\.exe/)
   assert.match(workflow, /cargo fmt --check/)
   assert.match(workflow, /cargo clippy --locked --all-targets -- -D warnings/)
   assert.match(workflow, /cargo test --locked/)

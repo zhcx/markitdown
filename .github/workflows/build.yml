@@ -57,6 +57,11 @@ jobs:
           npm run build
           npm audit --audit-level=high
 
+      - name: Create converter placeholder for Rust checks
+        shell: pwsh
+        run: |
+          New-Item -ItemType File -Force src-tauri/resources/document_converter.exe | Out-Null
+
       - name: Check Rust quality
         working-directory: src-tauri
         run: |
