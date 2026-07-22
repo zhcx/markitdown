@@ -11,7 +11,7 @@
         try {
           const saved = JSON.parse(localStorage.getItem('markitdown.browser.settings') || 'null');
           const preference = saved?.appearance?.theme;
-          const validThemes = ['vscode-light', 'vscode-dark', 'inkwell-light', 'inkwell-dark', 'claude-light', 'claude-dark', 'notion-light', 'notion-dark'];
+          const validThemes = ['vscode-light', 'vscode-dark', 'claude-light', 'claude-dark', 'notion-light', 'notion-dark'];
           const theme = preference === 'system'
             ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'vscode-dark' : 'vscode-light')
             : (validThemes.includes(preference) ? preference : 'vscode-dark');

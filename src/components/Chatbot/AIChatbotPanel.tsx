@@ -28,7 +28,7 @@ interface PendingAttachment {
   content?: string;
 }
 
-function ComposerIcon({ type }: { type: 'attach' | 'document' | 'image' | 'chat' | 'send' | 'stop' | 'search' | 'reasoning' | 'chevronDown' }) {
+function ComposerIcon({ type }: { type: 'attach' | 'document' | 'image' | 'chat' | 'send' | 'stop' | 'search' | 'reasoning' | 'chevronDown' | 'newChat' | 'history' }) {
   if (type === 'attach') {
     return <svg className={`composer-icon composer-icon-${type}`} viewBox="0 0 16 16" aria-hidden="true"><path d="M5.2 8.8 9.7 4.3a2.35 2.35 0 1 1 3.3 3.3l-5.4 5.4a3.6 3.6 0 0 1-5.1-5.1l5-5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>;
   }
@@ -52,6 +52,12 @@ function ComposerIcon({ type }: { type: 'attach' | 'document' | 'image' | 'chat'
   }
   if (type === 'reasoning') {
     return <svg className={`composer-icon composer-icon-${type}`} viewBox="0 0 16 16" aria-hidden="true"><path d="M2.3 10.9a5.7 5.7 0 1 1 11.4 0" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" /><path d="M8 10.8 10.65 7.9M4.4 11.05h.01M11.6 11.05h.01" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round" /><path d="M3.5 13.1h9" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" /></svg>;
+  }
+  if (type === 'newChat') {
+    return <svg className={`composer-icon composer-icon-${type}`} viewBox="0 0 16 16" aria-hidden="true"><path d="M2.4 2.8h8.7v7H6.4l-2.7 2.3V9.8H2.4zM12.2 5.2v5.6M9.4 8h5.6" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" /></svg>;
+  }
+  if (type === 'history') {
+    return <svg className={`composer-icon composer-icon-${type}`} viewBox="0 0 16 16" aria-hidden="true"><path d="M3.1 4.5A5.5 5.5 0 1 1 2.5 8M3.1 4.5V1.8M3.1 4.5h2.7M8 4.7v3.6l2.4 1.4" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" /></svg>;
   }
   return <svg className={`composer-icon composer-icon-${type}`} viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.45" strokeLinecap="round" strokeLinejoin="round" /></svg>;
 }
@@ -86,11 +92,15 @@ export function AIChatbotPanel() {
 function ApiChatPanel({ onRuntimeChange }: { onRuntimeChange: (runtime: AIRuntime) => void }) {
   const {
     chatbotMessages,
+    chatbotConversations,
+    activeChatConversationId,
     chatbotLoading,
     stopChatMessage,
     setChatbotVisible,
     sendChatMessage,
     clearChatHistory,
+    newChatConversation,
+    selectChatConversation,
     reasoningEffort,
     setReasoningEffort,
     linkedDocument,
@@ -121,6 +131,8 @@ function ApiChatPanel({ onRuntimeChange }: { onRuntimeChange: (runtime: AIRuntim
   const [webSearchActive, setWebSearchActive] = useState(false);
   const [webSearchLoading, setWebSearchLoading] = useState(false);
   const [workspaceContext, setWorkspaceContext] = useState<WorkspaceContextPayload | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const historyRef = useRef<HTMLDivElement>(null);
   const webSearchEnabled = settings.web_search.enabled;
   useEffect(() => {
     if (!workspaceConfigKey) return;
@@ -133,6 +145,15 @@ function ApiChatPanel({ onRuntimeChange }: { onRuntimeChange: (runtime: AIRuntim
       listRef.current.scrollTop = listRef.current.scrollHeight;
     }
   }, [chatbotMessages, webSearchLoading]);
+
+  useEffect(() => {
+    if (!historyOpen) return;
+    const closeHistory = (event: MouseEvent) => {
+      if (!historyRef.current?.contains(event.target as Node)) setHistoryOpen(false);
+    };
+    window.addEventListener('mousedown', closeHistory);
+    return () => window.removeEventListener('mousedown', closeHistory);
+  }, [historyOpen]);
 
   const handleSend = useCallback(async () => {
     const text = inputValue.trim();
@@ -297,11 +318,37 @@ function ApiChatPanel({ onRuntimeChange }: { onRuntimeChange: (runtime: AIRuntim
               <span className="chatbot-header-subtitle">智能写作助手</span>
             </div>
           </div>
-          <button className="chatbot-close-btn" onClick={() => setChatbotVisible(false)} title="关闭" aria-label="关闭 AI 对话">
-            <svg viewBox="0 0 16 16" aria-hidden="true">
-              <path d="M4 4l8 8M12 4l-8 8" />
-            </svg>
-          </button>
+          <div className="chatbot-header-actions">
+            <button className="chatbot-header-action" onClick={newChatConversation} disabled={chatbotLoading} title="新建 AI 对话" aria-label="新建 AI 对话">
+              <ComposerIcon type="newChat" />
+            </button>
+            <div className="chatbot-history" ref={historyRef}>
+              <button className={`chatbot-header-action ${historyOpen ? 'active' : ''}`} onClick={() => setHistoryOpen((open) => !open)} title="对话历史" aria-label="打开 AI 对话历史" aria-expanded={historyOpen}>
+                <ComposerIcon type="history" />
+              </button>
+              {historyOpen && (
+                <div className="chatbot-history-popover" role="dialog" aria-label="AI 对话历史">
+                  <header><strong>对话历史</strong><span>{chatbotConversations.length} 条</span></header>
+                  <div className="chatbot-history-list">
+                    {chatbotConversations.map((conversation) => (
+                      <button
+                        key={conversation.id}
+                        className={conversation.id === activeChatConversationId ? 'active' : ''}
+                        onClick={() => { selectChatConversation(conversation.id); setHistoryOpen(false); }}
+                      >
+                        <strong>{conversation.title}</strong>
+                        <span>{new Date(conversation.updatedAt).toLocaleString()} · {conversation.messages.filter((message) => message.role === 'user').length} 轮</span>
+                      </button>
+                    ))}
+                    {chatbotConversations.length === 0 && <div className="chatbot-history-empty">暂无历史对话</div>}
+                  </div>
+                </div>
+              )}
+            </div>
+            <button className="chatbot-close-btn" onClick={() => setChatbotVisible(false)} title="关闭" aria-label="关闭 AI 对话">
+              <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" /></svg>
+            </button>
+          </div>
         </div>
         <div className="chatbot-ai-selectors">
           <span className="chatbot-selector-label chatbot-provider-label">服务商</span>

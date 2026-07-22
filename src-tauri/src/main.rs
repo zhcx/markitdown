@@ -153,6 +153,7 @@ fn main() {
             commands::convert_document,
             commands::save_file_content,
             commands::read_file_base64,
+            commands::reveal_in_file_manager,
             commands::get_recent_files,
             commands::update_recent_file,
             commands::remove_recent_file,

@@ -41,7 +41,7 @@ function ToolbarGlyph({ name }: { name: ToolbarIconName }) {
   return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 2.5h10M4.5 6h7M6 9.5h4M8 9.5v4" /></svg>;
 }
 
-function ImageOptionsModal({ onClose, onInsert }: { onClose: () => void; onInsert: (url: string, alt?: string) => void }) {
+export function ImageOptionsModal({ onClose, onInsert }: { onClose: () => void; onInsert: (url: string, alt?: string) => void }) {
   const [mode, setMode] = useState<'link' | 'upload' | null>(null);
   const [imageUrl, setImageUrl] = useState('');
   const [altText, setAltText] = useState('');

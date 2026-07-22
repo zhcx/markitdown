@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 test('wrapped editor does not reserve or display horizontal scrolling', async () => {
   let options: {
     scrollBeyondLastColumn?: number;
-    scrollbar?: { horizontal?: string; horizontalScrollbarSize?: number };
+    scrollbar?: { horizontal?: string; vertical?: string; useShadows?: boolean; horizontalScrollbarSize?: number; verticalScrollbarSize?: number; verticalSliderSize?: number };
   } = {};
 
   try {
@@ -16,7 +16,11 @@ test('wrapped editor does not reserve or display horizontal scrolling', async ()
 
   assert.equal(options.scrollBeyondLastColumn, 0);
   assert.equal(options.scrollbar?.horizontal, 'hidden');
+  assert.equal(options.scrollbar?.vertical, 'auto');
+  assert.equal(options.scrollbar?.useShadows, false);
   assert.equal(options.scrollbar?.horizontalScrollbarSize, 0);
+  assert.equal(options.scrollbar?.verticalScrollbarSize, 10);
+  assert.equal(options.scrollbar?.verticalSliderSize, 10);
 });
 
 test('allows Chinese locales without disabling ambiguous character detection', async () => {

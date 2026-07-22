@@ -82,7 +82,15 @@ pub fn build_launch(
                         }]
                     }
                 });
-                command.args(["--settings", &settings.to_string()]);
+                let settings_path = request_dir.join("claude-settings.json");
+                std::fs::create_dir_all(request_dir)
+                    .map_err(|error| format!("无法创建 Claude Code 审批配置目录：{error}"))?;
+                std::fs::write(
+                    &settings_path,
+                    serde_json::to_vec(&settings).map_err(|error| error.to_string())?,
+                )
+                .map_err(|error| format!("无法写入 Claude Code 审批配置：{error}"))?;
+                command.arg("--settings").arg(settings_path);
             }
             command.arg(prompt_with_context(prompt, cwd, context_paths));
             AdapterProtocol::ClaudeJson

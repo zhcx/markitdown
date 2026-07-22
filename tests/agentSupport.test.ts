@@ -38,7 +38,20 @@ test('discovers Agent CLIs without spawning probes when the panel opens', () => 
   assert.match(rust, /fn discover_executable\(name: &str\)[\s\S]*process::discover_executable\(name\)/);
   assert.match(process, /std::env::split_paths/);
   assert.match(process, /openai\.chatgpt-/);
+  assert.match(process, /@anthropic-ai/);
   assert.doesNotMatch(rust.match(/pub async fn agent_detect_backends[\s\S]*?\n\}/)?.[0] || '', /executable_version|probe_capabilities/);
+});
+
+test('Claude approval settings avoid Windows command-line JSON quoting', () => {
+  const adapters = read('src-tauri/src/agent/adapters.rs');
+  assert.match(adapters, /claude-settings\.json/);
+  assert.match(adapters, /command\.arg\("--settings"\)\.arg\(settings_path\)/);
+});
+
+test('Agent settings and direct-write status stay inside compact surfaces', () => {
+  const styles = read('src/styles/main.css');
+  assert.match(styles, /\.agent-backend-options[^}]*repeat\(2, minmax\(0, 1fr\)\)/);
+  assert.match(styles, /\.agent-direct-write-banner[\s\S]*border-radius:/);
 });
 
 test('non-Git Agent sessions authorize the current directory for direct writes', () => {
@@ -108,4 +121,11 @@ test('runtime mode tabs use distinct icons and a standalone Beta badge', () => {
   assert.match(panel, /ai-runtime-tab-icon/);
   assert.match(styles, /\.ai-runtime-tabs button\.active::after/);
   assert.match(styles, /\.ai-runtime-tabs small/);
+});
+
+test('Agent history normalizes canonical Windows workspace paths', () => {
+  const panel = read('src/components/Chatbot/AgentPanel.tsx');
+  assert.match(panel, /const normalizeWorkspacePath/);
+  assert.match(panel, /normalizedWorkspaceRoot/);
+  assert.match(panel, /normalizeWorkspacePath\(session\.workspace_root\) === normalizedWorkspaceRoot/);
 });

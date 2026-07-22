@@ -106,7 +106,8 @@ export const useAgentStore = create<AgentState>((set, get) => ({
           pendingApproval: payload.kind === 'approval_requested' ? payload.approval || null
             : payload.kind === 'approval_resolved' ? null : state.pendingApproval,
           loading: terminal ? false : state.loading || payload.kind !== 'approval_resolved',
-          diagnostic: payload.kind === 'error' ? payload.content || payload.message || 'Agent 执行失败' : state.diagnostic,
+          // Terminal errors already render in the timeline; diagnostics are reserved for launch failures.
+          diagnostic: payload.kind === 'error' ? '' : state.diagnostic,
           sessions: state.sessions.map((session) => session.id === payload.session_id ? {
             ...session,
             status: payload.kind === 'done' ? 'completed' : payload.kind === 'error' ? 'error'
@@ -270,6 +271,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
       timeline: events.reduce(appendEvent, [] as AgentTimelineItem[]),
       pendingApproval: null,
       changes: null,
+      diagnostic: '',
       loading: session?.status === 'running' || session?.status === 'waiting_approval',
     });
     await get().refreshChanges();

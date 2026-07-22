@@ -130,6 +130,16 @@ export function SettingsPanel() {
     FONT_SIZE_RANGE_THUMB,
   );
 
+  const previewContentFontSize = (fontSize: number) => {
+    document.documentElement.style.setProperty('--font-content-size', `${fontSize}px`);
+    window.dispatchEvent(new CustomEvent('markitdown-content-font-size-preview', { detail: fontSize }));
+  };
+
+  const handleCancel = () => {
+    previewContentFontSize(settings.appearance.font_size);
+    setSettingsOpen(false);
+  };
+
   const loadLocalFonts = async () => {
     const queryLocalFonts = (window as LocalFontAccessWindow).queryLocalFonts;
     if (isTauriRuntime()) {
@@ -187,7 +197,7 @@ export function SettingsPanel() {
     }
   };
 
-  const handleSave = async () => {
+  const handleSave = () => {
     // 保存前确保当前 API KEY 已记录到映射中
     const keys = { ...parseProviderKeys(), [localSettings.ai.provider]: localSettings.ai.api_key };
     const profiles = {
@@ -204,8 +214,8 @@ export function SettingsPanel() {
       ...localSettings,
       ai: { ...localSettings.ai, provider_api_keys: JSON.stringify(keys), provider_profiles: JSON.stringify(profiles) },
     };
-    await saveSettings(saveData);
     setSettingsOpen(false);
+    window.setTimeout(() => void saveSettings(saveData), 0);
   };
 
   const tabs = [
@@ -228,11 +238,11 @@ export function SettingsPanel() {
   ];
 
   return (
-    <div className="settings-overlay" onClick={() => setSettingsOpen(false)}>
+    <div className="settings-overlay" onClick={handleCancel}>
       <div className="settings-panel" onClick={(e) => e.stopPropagation()}>
         <aside className="settings-navigation">
           <div className="settings-navigation-header">
-            <button className="close-btn" onClick={() => setSettingsOpen(false)} aria-label="关闭设置">
+            <button className="close-btn" onClick={handleCancel} aria-label="关闭设置">
               <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 5 10 10M15 5 5 15" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>
             </button>
             <span>设置</span>
@@ -298,8 +308,6 @@ export function SettingsPanel() {
                 >
                   <option value="vscode-dark">VS Code 深色主题</option>
                   <option value="vscode-light">VS Code 浅色主题</option>
-                  <option value="inkwell-light">Inkwell 浅色主题</option>
-                  <option value="inkwell-dark">Inkwell 深色主题</option>
                   <option value="claude-light">Claude 浅色主题</option>
                   <option value="claude-dark">Claude 深色主题</option>
                   <option value="notion-light">Notion 浅色主题</option>
@@ -370,12 +378,14 @@ export function SettingsPanel() {
                     '--range-progress': `${fontSizeGeometry.progressPercent}%`,
                     '--range-thumb-size': `${FONT_SIZE_RANGE_THUMB}px`,
                   } as CSSProperties}
-                  onChange={(e) =>
+                  onChange={(e) => {
+                    const fontSize = Number(e.target.value);
                     setLocalSettings({
                       ...localSettings,
-                      appearance: { ...localSettings.appearance, font_size: Number(e.target.value) },
-                    })
-                  }
+                      appearance: { ...localSettings.appearance, font_size: fontSize },
+                    });
+                    previewContentFontSize(fontSize);
+                  }}
                 />
                 <div
                   className="settings-range-scale"
@@ -1231,7 +1241,7 @@ export function SettingsPanel() {
         </div>
 
         <div className="settings-footer">
-          <button className="cancel-btn" onClick={() => setSettingsOpen(false)}>
+          <button className="cancel-btn" onClick={handleCancel}>
             取消
           </button>
           <button className="save-btn" onClick={handleSave}>

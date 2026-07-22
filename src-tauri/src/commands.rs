@@ -9,6 +9,38 @@ use tauri::{AppHandle, Emitter, Manager};
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
+#[tauri::command]
+pub fn reveal_in_file_manager(path: String) -> Result<(), String> {
+    let target = PathBuf::from(&path);
+    if !target.exists() {
+        return Err(format!("文件不存在：{}", target.display()));
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("explorer.exe")
+            .arg(format!("/select,{}", target.display()))
+            .spawn()
+            .map_err(|error| format!("无法在文件夹中显示文件：{error}"))?;
+    }
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .args(["-R", &path])
+            .spawn()
+            .map_err(|error| format!("无法在 Finder 中显示文件：{error}"))?;
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        let parent = target.parent().unwrap_or(&target);
+        std::process::Command::new("xdg-open")
+            .arg(parent)
+            .spawn()
+            .map_err(|error| format!("无法打开文件夹：{error}"))?;
+    }
+    Ok(())
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateInfo {
     pub has_update: bool,

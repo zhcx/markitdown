@@ -29,6 +29,13 @@ const EFFORT_LABELS: Record<string, string> = {
   ultra: 'Ultra',
 };
 
+const normalizeWorkspacePath = (value: string) => {
+  let path = value.trim();
+  if (path.startsWith('\\\\?\\UNC\\')) path = `\\\\${path.slice(8)}`;
+  else if (path.startsWith('\\\\?\\')) path = path.slice(4);
+  return path.replace(/[\\/]+$/, '').toLocaleLowerCase();
+};
+
 interface AgentPanelProps {
   onRuntimeChange: (runtime: 'api' | 'agent') => void;
 }
@@ -194,7 +201,8 @@ export function AgentPanel({ onRuntimeChange }: AgentPanelProps) {
     effortOptions.push({ value: reasoningEffort, label: EFFORT_LABELS[reasoningEffort] || reasoningEffort });
   }
   const modelLabel = selectedModel?.display_name || effectiveModel || (modelsLoading === backend ? '读取模型…' : 'CLI 默认模型');
-  const workspaceSessions = sessions.filter((session) => session.workspace_root === workspaceRoot);
+  const normalizedWorkspaceRoot = normalizeWorkspacePath(workspaceRoot);
+  const workspaceSessions = sessions.filter((session) => normalizeWorkspacePath(session.workspace_root) === normalizedWorkspaceRoot);
   const sessionLabel = activeSession
     ? `${BACKEND_LABELS[activeSession.backend]} · ${new Date(activeSession.updated_at).toLocaleString()}`
     : '新会话';

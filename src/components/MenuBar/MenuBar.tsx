@@ -572,6 +572,15 @@ export function MenuBar() {
     setMenuOpen(false);
   };
 
+  useEffect(() => {
+    const handleExportRequest = (event: Event) => {
+      const format = (event as CustomEvent<{ format?: 'pdf' | 'html' | 'word' }>).detail?.format;
+      if (format) void handleExport(format);
+    };
+    window.addEventListener('markitdown-export-request', handleExportRequest);
+    return () => window.removeEventListener('markitdown-export-request', handleExportRequest);
+  });
+
   const menus: MenuGroup[] = [
     {
       label: APP_NAME,
@@ -632,16 +641,6 @@ export function MenuBar() {
             }},
             { label: 'VS Code 浅色主题', action: () => {
               setSettings({ ...settings, appearance: { ...settings.appearance, theme: 'vscode-light' } });
-              setActiveMenu(null);
-              setMenuOpen(false);
-            }},
-            { label: 'Inkwell 浅色主题', action: () => {
-              setSettings({ ...settings, appearance: { ...settings.appearance, theme: 'inkwell-light' } });
-              setActiveMenu(null);
-              setMenuOpen(false);
-            }},
-            { label: 'Inkwell 深色主题', action: () => {
-              setSettings({ ...settings, appearance: { ...settings.appearance, theme: 'inkwell-dark' } });
               setActiveMenu(null);
               setMenuOpen(false);
             }},

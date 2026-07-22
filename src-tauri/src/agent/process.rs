@@ -24,8 +24,13 @@ pub fn system_command(program: impl AsRef<OsStr>) -> Command {
 pub fn discover_executable(name: &str) -> Option<PathBuf> {
     let mut preferred = Vec::new();
     #[cfg(windows)]
-    if name.eq_ignore_ascii_case("codex") {
-        preferred.extend(official_codex_extension_candidates());
+    {
+        if name.eq_ignore_ascii_case("claude") {
+            preferred.extend(official_claude_npm_candidates());
+        }
+        if name.eq_ignore_ascii_case("codex") {
+            preferred.extend(official_codex_extension_candidates());
+        }
     }
 
     let mut directories: Vec<PathBuf> = std::env::var_os("PATH")
@@ -54,6 +59,29 @@ pub fn discover_executable(name: &str) -> Option<PathBuf> {
 
     preferred.extend(candidate_paths(name, directories));
     select_discovered(preferred)
+}
+
+#[cfg(windows)]
+fn official_claude_npm_candidates() -> Vec<PathBuf> {
+    let Some(app_data) = std::env::var_os("APPDATA") else {
+        return Vec::new();
+    };
+    official_claude_candidates_from_roots([PathBuf::from(app_data).join("npm")])
+}
+
+#[cfg(windows)]
+fn official_claude_candidates_from_roots(roots: impl IntoIterator<Item = PathBuf>) -> Vec<PathBuf> {
+    roots
+        .into_iter()
+        .map(|root| {
+            root.join("node_modules")
+                .join("@anthropic-ai")
+                .join("claude-code")
+                .join("bin")
+                .join("claude.exe")
+        })
+        .filter(|path| path.is_file())
+        .collect()
 }
 
 #[cfg(test)]
@@ -273,6 +301,29 @@ mod tests {
         assert_eq!(
             official_codex_candidates_from_roots([root.clone()]),
             vec![newer, older]
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn claude_discovery_uses_native_npm_binary_before_cmd_shim() {
+        let root = std::env::temp_dir().join(format!(
+            "markitdown-claude-discovery-test-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let native = root
+            .join("node_modules")
+            .join("@anthropic-ai")
+            .join("claude-code")
+            .join("bin")
+            .join("claude.exe");
+        fs::create_dir_all(native.parent().unwrap()).unwrap();
+        fs::write(&native, []).unwrap();
+
+        assert_eq!(
+            official_claude_candidates_from_roots([root.clone()]),
+            vec![native]
         );
         fs::remove_dir_all(root).unwrap();
     }
