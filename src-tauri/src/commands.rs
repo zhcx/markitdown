@@ -82,7 +82,7 @@ pub struct Settings {
     pub web_search: WebSearchSettings,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct AgentBackendConfig {
     #[serde(default)]
     pub executable_path: String,
@@ -92,17 +92,6 @@ pub struct AgentBackendConfig {
     pub profile: String,
     #[serde(default)]
     pub reasoning_effort: String,
-}
-
-impl Default for AgentBackendConfig {
-    fn default() -> Self {
-        Self {
-            executable_path: String::new(),
-            model: String::new(),
-            profile: String::new(),
-            reasoning_effort: String::new(),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

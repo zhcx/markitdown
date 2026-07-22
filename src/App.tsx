@@ -22,7 +22,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { message, save as chooseSaveFile } from '@tauri-apps/plugin-dialog';
-import { createElementScrollViewport, getSyncedScrollTop, type ObservableScrollViewport, type ScrollAnchor, type ScrollRange } from './utils/scrollSync';
+import { createElementScrollViewport, getAlignedScrollTop, getSyncedScrollTop, type ObservableScrollViewport, type ScrollAnchor, type ScrollRange } from './utils/scrollSync';
 import { getImmersiveWorkspacePolicy } from './utils/immersiveWorkspace';
 import { guardWindowClose, type CloseGuardTab, type UnsavedChangesAction } from './utils/windowCloseGuard';
 import { findActiveSourceElement } from './utils/activeSourceLine';
@@ -116,7 +116,7 @@ function App() {
     anchors: ScrollAnchor[];
     range: ScrollRange;
   } | null>(null);
-  const programmaticScrollRef = useRef<{ viewport: ObservableScrollViewport; top: number } | null>(null);
+  const programmaticScrollTargetsRef = useRef(new Map<ObservableScrollViewport, number>());
   const revealPreviewLineRef = useRef<(lineNumber: number) => void>(() => undefined);
   const revealEditorLineRef = useRef<(lineNumber: number) => void>(() => undefined);
   const closeGuardInProgress = useRef(false);
@@ -577,6 +577,7 @@ function App() {
 
     const editorViewport: ObservableScrollViewport = editorView;
     const previewViewport = createElementScrollViewport(previewScrollElement);
+    const programmaticScrollTargets = programmaticScrollTargetsRef.current;
 
     let editorToPreviewAnchors: ScrollAnchor[] = [];
     let previewToEditorAnchors: ScrollAnchor[] = [];
@@ -640,17 +641,38 @@ function App() {
         const editorLineScreenTop = editorBounds.top + editorLineTop - editorViewport.getScrollTop();
         const targetContentTop = previewViewport.getScrollTop() + targetBounds.top - previewBounds.top;
         const previewMaxScroll = Math.max(0, previewViewport.getScrollHeight() - previewViewport.getClientHeight());
-        const nextTop = Math.max(0, Math.min(targetContentTop + previewBounds.top - editorLineScreenTop, previewMaxScroll));
-        programmaticScrollRef.current = { viewport: previewViewport, top: nextTop };
-        previewViewport.setScrollTop(nextTop);
+        const nextTop = getAlignedScrollTop(previewBounds.top, targetContentTop, editorLineScreenTop, previewMaxScroll);
+        if (Math.abs(previewViewport.getScrollTop() - nextTop) >= 0.5) {
+          programmaticScrollTargets.set(previewViewport, nextTop);
+          previewViewport.setScrollTop(nextTop);
+        }
+
+        const previewTargetScreenTop = previewBounds.top + targetContentTop - nextTop;
+        const editorMaxScroll = Math.max(0, editorViewport.getScrollHeight() - editorViewport.getClientHeight());
+        const fallbackEditorTop = getAlignedScrollTop(editorBounds.top, editorLineTop, previewTargetScreenTop, editorMaxScroll);
+        if (Math.abs(editorViewport.getScrollTop() - fallbackEditorTop) >= 0.5) {
+          programmaticScrollTargets.set(editorViewport, fallbackEditorTop);
+          editorViewport.setScrollTop(fallbackEditorTop);
+        }
         return;
       }
 
       const previewTargetScreenTop = targetBounds.top;
       const editorMaxScroll = Math.max(0, editorViewport.getScrollHeight() - editorViewport.getClientHeight());
-      const nextTop = Math.max(0, Math.min(editorBounds.top + editorLineTop - previewTargetScreenTop, editorMaxScroll));
-      programmaticScrollRef.current = { viewport: editorViewport, top: nextTop };
-      editorViewport.setScrollTop(nextTop);
+      const nextTop = getAlignedScrollTop(editorBounds.top, editorLineTop, previewTargetScreenTop, editorMaxScroll);
+      if (Math.abs(editorViewport.getScrollTop() - nextTop) >= 0.5) {
+        programmaticScrollTargets.set(editorViewport, nextTop);
+        editorViewport.setScrollTop(nextTop);
+      }
+
+      const editorLineScreenTop = editorBounds.top + editorLineTop - nextTop;
+      const targetContentTop = previewViewport.getScrollTop() + targetBounds.top - previewBounds.top;
+      const previewMaxScroll = Math.max(0, previewViewport.getScrollHeight() - previewViewport.getClientHeight());
+      const fallbackPreviewTop = getAlignedScrollTop(previewBounds.top, targetContentTop, editorLineScreenTop, previewMaxScroll);
+      if (Math.abs(previewViewport.getScrollTop() - fallbackPreviewTop) >= 0.5) {
+        programmaticScrollTargets.set(previewViewport, fallbackPreviewTop);
+        previewViewport.setScrollTop(fallbackPreviewTop);
+      }
     };
     const revealPreviewLine = (lineNumber: number) => alignEditorLineWithPreview(lineNumber, 'editor-to-preview');
     const revealEditorLine = (lineNumber: number) => alignEditorLineWithPreview(lineNumber, 'preview-to-editor');
@@ -663,9 +685,10 @@ function App() {
       anchors: ScrollAnchor[],
       range: ScrollRange,
     ) => {
-      const ignored = programmaticScrollRef.current;
-      if (ignored?.viewport === source && Math.abs(source.getScrollTop() - ignored.top) < 0.5) {
-        return;
+      const ignoredTop = programmaticScrollTargets.get(source);
+      if (ignoredTop !== undefined) {
+        programmaticScrollTargets.delete(source);
+        if (Math.abs(source.getScrollTop() - ignoredTop) < 0.5) return;
       }
 
       pendingScrollSync.current = { source, target, anchors, range };
@@ -684,7 +707,7 @@ function App() {
         // while preserving the feel of one-to-one scrolling for long documents.
         if (Math.abs(latestTarget.getScrollTop() - nextTop) < 0.5) return;
 
-        programmaticScrollRef.current = { viewport: latestTarget, top: nextTop };
+        programmaticScrollTargets.set(latestTarget, nextTop);
         latestTarget.setScrollTop(nextTop);
       });
     };
@@ -736,7 +759,7 @@ function App() {
       }
 
       pendingScrollSync.current = null;
-      programmaticScrollRef.current = null;
+      programmaticScrollTargets.clear();
       if (revealPreviewLineRef.current === revealPreviewLine) revealPreviewLineRef.current = () => undefined;
       if (revealEditorLineRef.current === revealEditorLine) revealEditorLineRef.current = () => undefined;
     };

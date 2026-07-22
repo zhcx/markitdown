@@ -16,6 +16,11 @@ test('AI chat can create, persist, and reopen conversations from the history but
   assert.match(panel, /chatbot-history-popover/);
 });
 
+test('AI actions never log settings, document content, or model responses', () => {
+  const store = read('src/stores/aiStore.ts');
+  assert.doesNotMatch(store, /console\.log\(/);
+});
+
 test('editor context menu exposes grouped editing, export, image, and file actions', () => {
   const editor = read('src/components/Editor/Editor.tsx');
   const menu = read('src/components/MenuBar/MenuBar.tsx');
@@ -54,7 +59,7 @@ test('floating editor toolbar stays compact and Monaco uses the shared scrollbar
   assert.match(layout, /verticalScrollbarSize: 10/);
   assert.match(layout, /verticalSliderSize: 10/);
   assert.match(styles, /--ui-scrollbar-size: 10px/);
-  assert.match(styles, /\.explorer-tree::\-webkit-scrollbar-thumb/);
+  assert.match(styles, /\.explorer-tree::-webkit-scrollbar-thumb/);
   assert.match(styles, /\.monaco-editor \.monaco-scrollable-element > \.scrollbar > \.slider[\s\S]*width: 6px !important/);
   assert.match(styles, /\.monaco-editor \.monaco-scrollable-element > \.scrollbar > \.slider[\s\S]*border-radius: 999px !important/);
   assert.match(styles, /\.monaco-editor \.decorationsOverviewRuler[\s\S]*display: none !important/);

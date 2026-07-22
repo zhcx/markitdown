@@ -25,7 +25,7 @@ export function TitleBar({ onRequestClose }: TitleBarProps) {
     getCurrentWindow()
       .isMaximized()
       .then((maximized) => {
-        if (mountedRef.current && maximized !== isMaximized) {
+        if (mountedRef.current) {
           setIsMaximized(maximized);
         }
       })
@@ -34,8 +34,6 @@ export function TitleBar({ onRequestClose }: TitleBarProps) {
     return () => {
       mountedRef.current = false;
     };
-    // Run once on mount only
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isTauri]);
 
   const handleResize = useCallback(async () => {

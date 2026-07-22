@@ -22,20 +22,36 @@ pub enum AdapterProtocol {
     OpenCodeJson,
 }
 
-pub fn build_launch(
-    backend: AgentBackendId,
-    executable: &Path,
-    cwd: &Path,
-    prompt: &str,
-    model: Option<&str>,
-    profile: Option<&str>,
-    reasoning_effort: Option<&str>,
-    context_paths: &[PathBuf],
-    approval_mode: AgentApprovalMode,
-    read_only: bool,
-    backend_session_id: Option<&str>,
-    permission_bridge: Option<(&Path, &Path)>,
-) -> Result<AdapterLaunch, String> {
+pub struct AdapterLaunchConfig<'a> {
+    pub backend: AgentBackendId,
+    pub executable: &'a Path,
+    pub cwd: &'a Path,
+    pub prompt: &'a str,
+    pub model: Option<&'a str>,
+    pub profile: Option<&'a str>,
+    pub reasoning_effort: Option<&'a str>,
+    pub context_paths: &'a [PathBuf],
+    pub approval_mode: AgentApprovalMode,
+    pub read_only: bool,
+    pub backend_session_id: Option<&'a str>,
+    pub permission_bridge: Option<(&'a Path, &'a Path)>,
+}
+
+pub fn build_launch(config: AdapterLaunchConfig<'_>) -> Result<AdapterLaunch, String> {
+    let AdapterLaunchConfig {
+        backend,
+        executable,
+        cwd,
+        prompt,
+        model,
+        profile,
+        reasoning_effort,
+        context_paths,
+        approval_mode,
+        read_only,
+        backend_session_id,
+        permission_bridge,
+    } = config;
     let mut command = process::tokio_executable_command(executable)?;
     command
         .current_dir(cwd)
@@ -176,16 +192,28 @@ pub fn codex_thread_resume(thread_id: &str) -> Value {
     json!({"id": 2, "method": "thread/resume", "params": {"threadId": thread_id}})
 }
 
-pub fn codex_turn_start(
-    thread_id: &str,
-    prompt: &str,
-    cwd: &Path,
-    model: Option<&str>,
-    reasoning_effort: Option<&str>,
-    context_paths: &[PathBuf],
-    mode: AgentApprovalMode,
-    read_only: bool,
-) -> Value {
+pub struct CodexTurnConfig<'a> {
+    pub thread_id: &'a str,
+    pub prompt: &'a str,
+    pub cwd: &'a Path,
+    pub model: Option<&'a str>,
+    pub reasoning_effort: Option<&'a str>,
+    pub context_paths: &'a [PathBuf],
+    pub mode: AgentApprovalMode,
+    pub read_only: bool,
+}
+
+pub fn codex_turn_start(config: CodexTurnConfig<'_>) -> Value {
+    let CodexTurnConfig {
+        thread_id,
+        prompt,
+        cwd,
+        model,
+        reasoning_effort,
+        context_paths,
+        mode,
+        read_only,
+    } = config;
     let mut input = vec![json!({"type": "text", "text": prompt})];
     input.extend(context_paths.iter().map(|path| {
         let extension = path

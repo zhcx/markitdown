@@ -570,32 +570,34 @@ async fn spawn_turn(
         let prompt = adapters::prompt_with_context(&prompt, &worktree, &context_paths);
         return spawn_opencode_turn(
             runtime,
-            executable,
             app,
-            storage_root,
-            worktree,
-            prompt,
-            model,
-            profile,
+            OpenCodeTurnConfig {
+                executable,
+                storage_root,
+                worktree,
+                prompt,
+                model,
+                profile,
+            },
         )
         .await;
     }
     let current_exe = std::env::current_exe().map_err(|error| error.to_string())?;
-    let mut launch = adapters::build_launch(
-        session.backend,
-        &executable,
-        &worktree,
-        &prompt,
-        model.as_deref(),
-        profile.as_deref(),
-        reasoning_effort.as_deref(),
-        &context_paths,
-        session.approval_mode,
-        session.read_only,
-        session.backend_session_id.as_deref(),
-        (session.backend == AgentBackendId::ClaudeCode)
+    let mut launch = adapters::build_launch(adapters::AdapterLaunchConfig {
+        backend: session.backend,
+        executable: &executable,
+        cwd: &worktree,
+        prompt: &prompt,
+        model: model.as_deref(),
+        profile: profile.as_deref(),
+        reasoning_effort: reasoning_effort.as_deref(),
+        context_paths: &context_paths,
+        approval_mode: session.approval_mode,
+        read_only: session.read_only,
+        backend_session_id: session.backend_session_id.as_deref(),
+        permission_bridge: (session.backend == AgentBackendId::ClaudeCode)
             .then_some((current_exe.as_path(), runtime.permission_dir.as_path())),
-    )?;
+    })?;
     let protocol = launch.protocol;
     let mut child = launch
         .command
@@ -645,16 +647,16 @@ async fn spawn_turn(
                         .iter()
                         .map(|path| worktree.join(path))
                         .collect::<Vec<_>>();
-                    let request = adapters::codex_turn_start(
-                        &thread_id,
-                        &prompt,
-                        &worktree,
-                        model.as_deref(),
-                        reasoning_effort.as_deref(),
-                        &context_paths,
+                    let request = adapters::codex_turn_start(adapters::CodexTurnConfig {
+                        thread_id: &thread_id,
+                        prompt: &prompt,
+                        cwd: &worktree,
+                        model: model.as_deref(),
+                        reasoning_effort: reasoning_effort.as_deref(),
+                        context_paths: &context_paths,
                         mode,
                         read_only,
-                    );
+                    });
                     let _ = write_json(&output_runtime.stdin, &request).await;
                 }
             }
@@ -726,16 +728,28 @@ async fn spawn_turn(
     Ok(())
 }
 
-async fn spawn_opencode_turn(
-    runtime: Arc<SessionRuntime>,
+struct OpenCodeTurnConfig {
     executable: PathBuf,
-    app: AppHandle,
     storage_root: PathBuf,
     worktree: PathBuf,
     prompt: String,
     model: Option<String>,
     profile: Option<String>,
+}
+
+async fn spawn_opencode_turn(
+    runtime: Arc<SessionRuntime>,
+    app: AppHandle,
+    config: OpenCodeTurnConfig,
 ) -> Result<(), String> {
+    let OpenCodeTurnConfig {
+        executable,
+        storage_root,
+        worktree,
+        prompt,
+        model,
+        profile,
+    } = config;
     let listener = std::net::TcpListener::bind("127.0.0.1:0")
         .map_err(|error| format!("无法分配 OpenCode 端口：{error}"))?;
     let port = listener
@@ -1608,19 +1622,19 @@ mod tests {
 
     #[test]
     fn codex_turn_carries_model_effort_and_local_context() {
-        let turn = adapters::codex_turn_start(
-            "thread",
-            "inspect",
-            Path::new("C:/notes"),
-            Some("custom-model"),
-            Some("high"),
-            &[
+        let turn = adapters::codex_turn_start(adapters::CodexTurnConfig {
+            thread_id: "thread",
+            prompt: "inspect",
+            cwd: Path::new("C:/notes"),
+            model: Some("custom-model"),
+            reasoning_effort: Some("high"),
+            context_paths: &[
                 PathBuf::from("C:/notes/design.png"),
                 PathBuf::from("C:/notes/README.md"),
             ],
-            AgentApprovalMode::Tiered,
-            false,
-        );
+            mode: AgentApprovalMode::Tiered,
+            read_only: false,
+        });
         assert_eq!(turn.pointer("/params/model"), Some(&json!("custom-model")));
         assert_eq!(turn.pointer("/params/effort"), Some(&json!("high")));
         assert_eq!(
@@ -1645,16 +1659,16 @@ mod tests {
             Some(&json!("deny"))
         );
 
-        let turn = adapters::codex_turn_start(
-            "thread",
-            "inspect",
-            Path::new("C:/notes"),
-            None,
-            None,
-            &[],
-            AgentApprovalMode::AllowAllSession,
-            true,
-        );
+        let turn = adapters::codex_turn_start(adapters::CodexTurnConfig {
+            thread_id: "thread",
+            prompt: "inspect",
+            cwd: Path::new("C:/notes"),
+            model: None,
+            reasoning_effort: None,
+            context_paths: &[],
+            mode: AgentApprovalMode::AllowAllSession,
+            read_only: true,
+        });
         assert_eq!(
             turn.pointer("/params/sandboxPolicy/type"),
             Some(&json!("readOnly"))
@@ -1669,16 +1683,16 @@ mod tests {
             Some(&json!("allow"))
         );
 
-        let turn = adapters::codex_turn_start(
-            "thread",
-            "edit notes",
-            Path::new("C:/notes"),
-            None,
-            None,
-            &[],
-            AgentApprovalMode::Tiered,
-            false,
-        );
+        let turn = adapters::codex_turn_start(adapters::CodexTurnConfig {
+            thread_id: "thread",
+            prompt: "edit notes",
+            cwd: Path::new("C:/notes"),
+            model: None,
+            reasoning_effort: None,
+            context_paths: &[],
+            mode: AgentApprovalMode::Tiered,
+            read_only: false,
+        });
         assert_eq!(
             turn.pointer("/params/sandboxPolicy/type"),
             Some(&json!("workspaceWrite"))

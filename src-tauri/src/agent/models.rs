@@ -236,7 +236,7 @@ async fn list_opencode_models(
         collect_model_ids(&value, &mut ids);
     } else {
         ids.extend(stdout.lines().filter_map(|line| {
-            let token = line.trim().split_whitespace().next()?;
+            let token = line.split_whitespace().next()?;
             (token.contains('/') && !token.starts_with("http")).then(|| token.to_string())
         }));
     }

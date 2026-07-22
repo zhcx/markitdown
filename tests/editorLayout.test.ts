@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 
 test('wrapped editor does not reserve or display horizontal scrolling', async () => {
   let options: {
@@ -23,11 +24,37 @@ test('wrapped editor does not reserve or display horizontal scrolling', async ()
   assert.equal(options.scrollbar?.verticalSliderSize, 10);
 });
 
-test('allows Chinese locales without disabling ambiguous character detection', async () => {
+test('editor wraps against the viewport without shrinking from rendered font measurements', async () => {
+  const source = await readFile(new URL('../src/components/Editor/Editor.tsx', import.meta.url), 'utf8');
+
+  assert.match(source, /wordWrap:\s*'on'/);
+  assert.doesNotMatch(source, /wordWrapColumn|fitRenderedText|scheduleTextFit/);
+});
+
+test('editor synchronizes the preview after the pointer selection gesture finishes', async () => {
+  const source = await readFile(new URL('../src/components/Editor/Editor.tsx', import.meta.url), 'utf8');
+
+  assert.match(source, /editor\.onMouseUp\(\(event\)\s*=>/);
+  assert.doesNotMatch(source, /editor\.onMouseDown\(\(event\)\s*=>\s*\{\s*const lineNumber/);
+});
+
+test('editor does not cover scrolled content with Monaco sticky headings', async () => {
+  const source = await readFile(new URL('../src/components/Editor/Editor.tsx', import.meta.url), 'utf8');
+
+  assert.match(source, /stickyScroll:\s*\{\s*enabled:\s*false\s*\}/);
+});
+
+test('editor uses immediate scrolling so split-view synchronization stays responsive', async () => {
+  const source = await readFile(new URL('../src/components/Editor/Editor.tsx', import.meta.url), 'utf8');
+
+  assert.match(source, /smoothScrolling:\s*false/);
+});
+
+test('suppresses ambiguous Unicode warnings for multilingual documents', async () => {
   const { EDITOR_UNICODE_HIGHLIGHT_OPTIONS } = await import('../src/utils/editorLayout.ts');
 
   assert.equal(EDITOR_UNICODE_HIGHLIGHT_OPTIONS?.nonBasicASCII, false);
-  assert.equal(EDITOR_UNICODE_HIGHLIGHT_OPTIONS?.ambiguousCharacters, true);
+  assert.equal(EDITOR_UNICODE_HIGHLIGHT_OPTIONS?.ambiguousCharacters, false);
   assert.equal(EDITOR_UNICODE_HIGHLIGHT_OPTIONS?.allowedLocales?.['zh-hans'], true);
   assert.equal(EDITOR_UNICODE_HIGHLIGHT_OPTIONS?.allowedLocales?.['zh-hant'], true);
   assert.equal(EDITOR_UNICODE_HIGHLIGHT_OPTIONS?.allowedLocales?._os, true);

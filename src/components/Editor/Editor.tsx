@@ -391,15 +391,15 @@ export function Editor({ className, style, onActiveLineChange, onActiveLineRevea
       overviewRulerLanes: 0,
       overviewRulerBorder: false,
       hideCursorInOverviewRuler: true,
-      wordWrap: 'wordWrapColumn',
-      wordWrapColumn: 80,
+      wordWrap: 'on',
       wrappingIndent: 'same',
       renderWhitespace: 'selection',
       renderLineHighlight: 'line',
       renderLineHighlightOnlyWhenFocus: false,
       scrollBeyondLastLine: false,
+      stickyScroll: { enabled: false },
       ...EDITOR_OVERFLOW_OPTIONS,
-      smoothScrolling: true,
+      smoothScrolling: false,
       padding: { top: 24, bottom: 40 },
       quickSuggestions: false,
       suggestOnTriggerCharacters: false,
@@ -437,47 +437,10 @@ export function Editor({ className, style, onActiveLineChange, onActiveLineRevea
     window.addEventListener('mousedown', closeContextMenu);
     window.addEventListener('blur', closeContextMenu);
 
-    let currentWrapColumn = 0;
-    let viewportSignature = '';
-    let fitFrame: number | null = null;
-
-    const fitRenderedText = () => {
-      fitFrame = null;
-      const scrollbar = root.querySelector<HTMLElement>('.monaco-scrollable-element > .scrollbar.vertical');
-      const renderedRuns = root.querySelectorAll<HTMLElement>('.view-lines .view-line span span');
-      if (!scrollbar || renderedRuns.length === 0) return;
-
-      const textLimit = scrollbar.getBoundingClientRect().left - 6;
-      const maxTextRight = Math.max(...Array.from(renderedRuns, (run) => run.getBoundingClientRect().right));
-      if (maxTextRight <= textLimit + 0.5) return;
-
-      const fontInfo = editor.getOption(monaco.editor.EditorOption.fontInfo);
-      const overflowColumns = Math.max(1, Math.ceil((maxTextRight - textLimit) / fontInfo.typicalHalfwidthCharacterWidth));
-      const nextWrapColumn = Math.max(20, currentWrapColumn - overflowColumns);
-      if (nextWrapColumn === currentWrapColumn) return;
-      currentWrapColumn = nextWrapColumn;
-      editor.updateOptions({ wordWrapColumn: nextWrapColumn });
-      fitFrame = window.requestAnimationFrame(fitRenderedText);
-    };
-
-    const scheduleTextFit = () => {
-      if (fitFrame !== null) window.cancelAnimationFrame(fitFrame);
-      fitFrame = window.requestAnimationFrame(fitRenderedText);
-    };
-
     const syncEditorViewport = (layout = editor.getLayoutInfo()) => {
       root.style.setProperty('--monaco-vertical-scrollbar-width', `${layout.verticalScrollbarWidth}px`);
-      const fontInfo = editor.getOption(monaco.editor.EditorOption.fontInfo);
       const visibleTextWidth = Math.max(1, layout.contentWidth - layout.verticalScrollbarWidth - 8);
       root.style.setProperty('--monaco-visible-text-width', `${visibleTextWidth}px`);
-      const signature = `${layout.contentWidth}:${layout.verticalScrollbarWidth}:${fontInfo.fontFamily}:${fontInfo.fontSize}:${fontInfo.typicalHalfwidthCharacterWidth}`;
-      const nextWrapColumn = Math.max(20, Math.floor(visibleTextWidth / fontInfo.typicalHalfwidthCharacterWidth) - 1);
-      if (signature !== viewportSignature) {
-        viewportSignature = signature;
-        currentWrapColumn = nextWrapColumn;
-        editor.updateOptions({ wordWrapColumn: nextWrapColumn });
-      }
-      scheduleTextFit();
     };
     syncEditorViewport();
     const layoutDisposable = editor.onDidLayoutChange(syncEditorViewport);
@@ -594,7 +557,6 @@ export function Editor({ className, style, onActiveLineChange, onActiveLineRevea
     const contentDisposable = editor.onDidChangeModelContent(() => {
       setContent(model.getValue());
       scheduleCompanion();
-      scheduleTextFit();
       refreshSlashMenu();
     });
     const cursorDisposable = editor.onDidChangeCursorSelection(() => {
@@ -603,12 +565,11 @@ export function Editor({ className, style, onActiveLineChange, onActiveLineRevea
       refreshSlashMenu();
       refreshSelectionToolbar();
     });
-    const mouseDisposable = editor.onMouseDown((event) => {
+    const mouseDisposable = editor.onMouseUp((event) => {
       const lineNumber = event.target.position?.lineNumber;
       if (lineNumber) onActiveLineReveal?.(lineNumber);
     });
     const scrollDisposable = editor.onDidScrollChange(() => {
-      scheduleTextFit();
       refreshSlashMenu();
       refreshSelectionToolbar();
     });
@@ -695,7 +656,6 @@ export function Editor({ className, style, onActiveLineChange, onActiveLineRevea
 
     return () => {
       clearCompanionTimer();
-      if (fitFrame !== null) window.cancelAnimationFrame(fitFrame);
       root.removeEventListener('paste', handlePaste, true);
       root.removeEventListener('contextmenu', handleContextMenu, true);
       window.removeEventListener('mousedown', closeContextMenu);

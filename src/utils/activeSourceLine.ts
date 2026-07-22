@@ -25,7 +25,13 @@ export function findActiveSourceElement(root: ParentNode, editorLine: number): H
   );
   if (sourceLine === null) return null;
 
-  // Markdown-it emits outer containers before their nested content. Choosing
-  // the first matching anchor highlights the complete quote/list/table block.
-  return anchors.find((element) => Number(element.dataset.sourceLine) === sourceLine) ?? null;
+  const matches = anchors.filter((element) => Number(element.dataset.sourceLine) === sourceLine);
+
+  // Quotes and tables are meaningful whole blocks. Tight list items need the
+  // generated content anchor so a parent item does not highlight its children.
+  return matches.find((element) => element.tagName === 'BLOCKQUOTE')
+    ?? matches.find((element) => element.tagName === 'TABLE')
+    ?? matches.find((element) => element.classList.contains('preview-list-item-content'))
+    ?? matches.at(-1)
+    ?? null;
 }

@@ -65,6 +65,22 @@ test('Windows release workflow reserves both SignPath signing stages', () => {
   assert.match(workflow, /manual approval/i)
 })
 
+test('release builds wait for the locked quality gate', () => {
+  const workflow = read('.github/workflows/build.yml')
+  const packageJson = JSON.parse(read('package.json'))
+
+  assert.match(workflow, /quality-checks:/)
+  assert.match(workflow, /needs: quality-checks/)
+  assert.match(workflow, /npm ci/)
+  assert.match(workflow, /npm run lint/)
+  assert.match(workflow, /npm audit --audit-level=high/)
+  assert.match(workflow, /cargo fmt --check/)
+  assert.match(workflow, /cargo clippy --locked --all-targets -- -D warnings/)
+  assert.match(workflow, /cargo test --locked/)
+  assert.ok((workflow.match(/node-version: '22'/g) ?? []).length >= 3)
+  assert.equal(packageJson.engines.node, '>=22.6.0')
+})
+
 test('SignPath application copy contains the confirmed applicant details and no placeholders', () => {
   const application = read('docs/signpath-foundation-application.md')
 

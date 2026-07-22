@@ -15,13 +15,13 @@ export const EDITOR_OVERFLOW_OPTIONS = {
 } as const;
 
 /**
- * Chinese punctuation and typography are normal document content, while
- * invisible code points and confusables from other scripts remain visible to
- * the author as a security aid.
+ * Chinese punctuation and typography are normal document content. Monaco's
+ * ambiguous-character detector produces a noisy warning banner for these
+ * documents, so only genuinely invisible code points remain highlighted.
  */
 export const EDITOR_UNICODE_HIGHLIGHT_OPTIONS = {
   nonBasicASCII: false,
-  ambiguousCharacters: true,
+  ambiguousCharacters: false,
   invisibleCharacters: true,
   allowedLocales: {
     _os: true,

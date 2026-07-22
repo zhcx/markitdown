@@ -506,7 +506,6 @@ export const useAIStore = create<AIState>((set, get) => ({
   getCompanionSuggestion: async (content, context) => {
     const requestSeq = ++companionRequestSeq;
     const settings = useAppStore.getState().settings;
-    console.log('伴写设置:', settings.ai);
 
     if (!settings.ai.enabled) {
       set({ status: 'error', statusMessage: 'AI功能未启用', companionSuggestions: [] });
@@ -549,8 +548,6 @@ export const useAIStore = create<AIState>((set, get) => ({
         context: context || undefined,
         settings: settings.ai,
       };
-      console.log('发送伴写请求:', requestData);
-
       const response = await invokeWithTimeout<{
         success: boolean;
         data: { suggestions: string[] };
@@ -580,10 +577,8 @@ export const useAIStore = create<AIState>((set, get) => ({
 
   rewriteSelection: async (text) => {
     const settings = useAppStore.getState().settings;
-    console.log('重写设置:', settings.ai);
 
     if (!settings.ai.enabled) {
-      console.log('AI功能未启用');
       return text;
     }
 
@@ -600,15 +595,11 @@ export const useAIStore = create<AIState>((set, get) => ({
         content: text,
         settings: settings.ai,
       };
-      console.log('发送重写请求:', requestData);
-
       const response = await invokeWithTimeout<{
         success: boolean;
         data: { rewritten: string };
         message?: string;
       }>('ai_request', requestData, 60000);
-
-      console.log('重写响应:', response);
 
       set({ status: 'idle', statusMessage: '' });
 
@@ -625,10 +616,8 @@ export const useAIStore = create<AIState>((set, get) => ({
 
   translateText: async (text, targetLang = '英文') => {
     const settings = useAppStore.getState().settings;
-    console.log('翻译设置:', settings.ai);
 
     if (!settings.ai.enabled) {
-      console.log('AI功能未启用');
       return text;
     }
 
@@ -646,15 +635,11 @@ export const useAIStore = create<AIState>((set, get) => ({
         context: targetLang,
         settings: settings.ai,
       };
-      console.log('发送翻译请求:', requestData);
-
       const response = await invokeWithTimeout<{
         success: boolean;
         data: { translated: string };
         message?: string;
       }>('ai_request', requestData, 60000);
-
-      console.log('翻译响应:', response);
 
       set({ status: 'idle', statusMessage: '' });
 
@@ -672,10 +657,8 @@ export const useAIStore = create<AIState>((set, get) => ({
 
   summarizeText: async (content) => {
     const settings = useAppStore.getState().settings;
-    console.log('摘要设置:', settings.ai);
 
     if (!settings.ai.enabled) {
-      console.log('AI功能未启用');
       return '';
     }
 
@@ -692,15 +675,11 @@ export const useAIStore = create<AIState>((set, get) => ({
         content,
         settings: settings.ai,
       };
-      console.log('发送摘要请求:', requestData);
-
       const response = await invokeWithTimeout<{
         success: boolean;
         data: { summary: string };
         message?: string;
       }>('ai_request', requestData, 60000);
-
-      console.log('摘要响应:', response);
 
       set({ status: 'idle', statusMessage: '' });
 
@@ -717,10 +696,8 @@ export const useAIStore = create<AIState>((set, get) => ({
 
   generateOutline: async (content) => {
     const settings = useAppStore.getState().settings;
-    console.log('大纲设置:', settings.ai);
 
     if (!settings.ai.enabled) {
-      console.log('AI功能未启用');
       return '';
     }
 
@@ -737,15 +714,11 @@ export const useAIStore = create<AIState>((set, get) => ({
         content,
         settings: settings.ai,
       };
-      console.log('发送大纲请求:', requestData);
-
       const response = await invokeWithTimeout<{
         success: boolean;
         data: { outline: string };
         message?: string;
       }>('ai_request', requestData, 60000);
-
-      console.log('大纲响应:', response);
 
       set({ status: 'idle', statusMessage: '' });
 

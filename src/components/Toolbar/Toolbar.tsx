@@ -443,20 +443,21 @@ export function Toolbar({ variant = 'pinned' }: ToolbarProps) {
   useLayoutEffect(() => {
     const element = toolbarScrollAreaRef.current;
     if (!element) return;
+    const buttonGroups = toolbarStructureKey.split('|').map((item) => item.split(':', 1)[0]);
     const updateVisibleButtons = () => {
       const available = element.clientWidth;
       const buttonWidth = 34;
       const separatorWidth = 15;
       let used = 0;
       let nextCount = 0;
-      toolbarButtons.forEach((button, index) => {
-        const separator = index > 0 && button.group !== toolbarButtons[index - 1].group ? separatorWidth : 0;
+      buttonGroups.forEach((group, index) => {
+        const separator = index > 0 && group !== buttonGroups[index - 1] ? separatorWidth : 0;
         if (used + buttonWidth + separator <= available) {
           used += buttonWidth + separator;
           nextCount += 1;
         }
       });
-      setDirectButtonCount(Math.max(1, Math.min(toolbarButtons.length, nextCount)));
+      setDirectButtonCount(Math.max(1, Math.min(buttonGroups.length, nextCount)));
     };
     updateVisibleButtons();
     const observer = new ResizeObserver(updateVisibleButtons);

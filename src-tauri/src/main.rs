@@ -7,8 +7,8 @@ use std::{
 };
 use tauri::{Emitter, Manager, State};
 
-mod ai;
 mod agent;
+mod ai;
 mod commands;
 mod image;
 mod pdf;
@@ -86,11 +86,18 @@ fn take_pending_open_files(state: State<'_, PendingOpenFiles>) -> Vec<String> {
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
-    if args.get(1).is_some_and(|value| value == "--agent-permission-hook") {
-        let result: Result<(), String> = args.get(2).ok_or_else(|| "missing permission bridge directory".to_string())
+    if args
+        .get(1)
+        .is_some_and(|value| value == "--agent-permission-hook")
+    {
+        let result: Result<(), String> = args
+            .get(2)
+            .ok_or_else(|| "missing permission bridge directory".to_string())
             .map(PathBuf::from)
             .and_then(|path| agent::run_permission_hook(&path));
-        if let Err(error) = result { eprintln!("MarkitDown permission bridge failed: {error}"); }
+        if let Err(error) = result {
+            eprintln!("MarkitDown permission bridge failed: {error}");
+        }
         return;
     }
     // Install a global panic hook that writes to stderr instead of

@@ -22,8 +22,51 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  quality-checks:
+    name: Release quality gate
+    runs-on: windows-latest
+    steps:
+      - name: Checkout release source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Restore Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: ./src-tauri -> target
+
+      - name: Install locked frontend dependencies
+        run: npm ci
+
+      - name: Check frontend quality
+        run: |
+          npm run lint
+          npm test
+          npm run build
+          npm audit --audit-level=high
+
+      - name: Check Rust quality
+        working-directory: src-tauri
+        run: |
+          cargo fmt --check
+          cargo clippy --locked --all-targets -- -D warnings
+          cargo test --locked
+
   prepare-release:
     name: Prepare GitHub release
+    needs: quality-checks
     runs-on: ubuntu-latest
     steps:
       - name: Create release or clear existing assets
@@ -75,7 +118,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: npm
 
       - name: Install Rust stable
@@ -123,7 +166,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: npm
 
       - name: Setup Python
