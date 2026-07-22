@@ -247,7 +247,7 @@ export function Preview({ className, style, onScrollContainerReady, onContentRen
 
   const containerStyle: React.CSSProperties = {
     fontFamily: settings.appearance.font_family,
-    fontSize: settings.appearance.font_size,
+    fontSize: 'var(--font-content-size)',
     lineHeight: settings.appearance.line_height,
   };
 

@@ -36,7 +36,6 @@ interface DragDropPayload {
 const DEFAULT_EDITOR_RATIO = 0.5;
 const SUPPORTED_THEMES = new Set([
   'vscode-light', 'vscode-dark',
-  'inkwell-light', 'inkwell-dark',
   'claude-light', 'claude-dark',
   'notion-light', 'notion-dark',
 ]);

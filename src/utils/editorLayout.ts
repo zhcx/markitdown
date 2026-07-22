@@ -5,8 +5,12 @@
 export const EDITOR_OVERFLOW_OPTIONS = {
   scrollBeyondLastColumn: 0,
   scrollbar: {
+    vertical: 'auto',
+    useShadows: false,
     horizontal: 'hidden',
     horizontalScrollbarSize: 0,
+    verticalScrollbarSize: 10,
+    verticalSliderSize: 10,
   },
 } as const;
 

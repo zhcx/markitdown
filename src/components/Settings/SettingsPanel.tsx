@@ -10,6 +10,7 @@ import {
   getRangeMarkerGeometry,
 } from '../../utils/appearanceSettings';
 import { LANGUAGE_OPTIONS, normalizeLanguage } from '../../i18n';
+import type { AgentBackendId, AgentBackendStatus } from '../../types/agent';
 
 const isTauriRuntime = () => '__TAURI_INTERNALS__' in window;
 
@@ -114,6 +115,8 @@ export function SettingsPanel() {
   const [fontFamilies, setFontFamilies] = useState(DEFAULT_FONT_FAMILIES);
   const [loadingFonts, setLoadingFonts] = useState(false);
   const [fontNotice, setFontNotice] = useState('可直接输入任意已安装字体名称。');
+  const [agentStatuses, setAgentStatuses] = useState<AgentBackendStatus[]>([]);
+  const [detectingAgents, setDetectingAgents] = useState(false);
   const fontSizeGeometry = getRangeMarkerGeometry(
     localSettings.appearance.font_size,
     FONT_SIZE_MIN,
@@ -126,6 +129,16 @@ export function SettingsPanel() {
     FONT_SIZE_MAX,
     FONT_SIZE_RANGE_THUMB,
   );
+
+  const previewContentFontSize = (fontSize: number) => {
+    document.documentElement.style.setProperty('--font-content-size', `${fontSize}px`);
+    window.dispatchEvent(new CustomEvent('markitdown-content-font-size-preview', { detail: fontSize }));
+  };
+
+  const handleCancel = () => {
+    previewContentFontSize(settings.appearance.font_size);
+    setSettingsOpen(false);
+  };
 
   const loadLocalFonts = async () => {
     const queryLocalFonts = (window as LocalFontAccessWindow).queryLocalFonts;
@@ -184,7 +197,7 @@ export function SettingsPanel() {
     }
   };
 
-  const handleSave = async () => {
+  const handleSave = () => {
     // 保存前确保当前 API KEY 已记录到映射中
     const keys = { ...parseProviderKeys(), [localSettings.ai.provider]: localSettings.ai.api_key };
     const profiles = {
@@ -201,8 +214,8 @@ export function SettingsPanel() {
       ...localSettings,
       ai: { ...localSettings.ai, provider_api_keys: JSON.stringify(keys), provider_profiles: JSON.stringify(profiles) },
     };
-    await saveSettings(saveData);
     setSettingsOpen(false);
+    window.setTimeout(() => void saveSettings(saveData), 0);
   };
 
   const tabs = [
@@ -225,11 +238,11 @@ export function SettingsPanel() {
   ];
 
   return (
-    <div className="settings-overlay" onClick={() => setSettingsOpen(false)}>
+    <div className="settings-overlay" onClick={handleCancel}>
       <div className="settings-panel" onClick={(e) => e.stopPropagation()}>
         <aside className="settings-navigation">
           <div className="settings-navigation-header">
-            <button className="close-btn" onClick={() => setSettingsOpen(false)} aria-label="关闭设置">
+            <button className="close-btn" onClick={handleCancel} aria-label="关闭设置">
               <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 5 10 10M15 5 5 15" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>
             </button>
             <span>设置</span>
@@ -295,8 +308,6 @@ export function SettingsPanel() {
                 >
                   <option value="vscode-dark">VS Code 深色主题</option>
                   <option value="vscode-light">VS Code 浅色主题</option>
-                  <option value="inkwell-light">Inkwell 浅色主题</option>
-                  <option value="inkwell-dark">Inkwell 深色主题</option>
                   <option value="claude-light">Claude 浅色主题</option>
                   <option value="claude-dark">Claude 深色主题</option>
                   <option value="notion-light">Notion 浅色主题</option>
@@ -367,12 +378,14 @@ export function SettingsPanel() {
                     '--range-progress': `${fontSizeGeometry.progressPercent}%`,
                     '--range-thumb-size': `${FONT_SIZE_RANGE_THUMB}px`,
                   } as CSSProperties}
-                  onChange={(e) =>
+                  onChange={(e) => {
+                    const fontSize = Number(e.target.value);
                     setLocalSettings({
                       ...localSettings,
-                      appearance: { ...localSettings.appearance, font_size: Number(e.target.value) },
-                    })
-                  }
+                      appearance: { ...localSettings.appearance, font_size: fontSize },
+                    });
+                    previewContentFontSize(fontSize);
+                  }}
                 />
                 <div
                   className="settings-range-scale"
@@ -1039,6 +1052,91 @@ export function SettingsPanel() {
                   )}
                 </>
               )}
+              <div className="settings-subsection-divider" />
+              <SettingToggle
+                label="启用本地 Agent（Beta）"
+                description="调用本机 Claude Code、Codex 或 OpenCode，在隔离 Git worktree 中执行任务"
+                checked={localSettings.agent.enabled}
+                onChange={(checked) => setLocalSettings({
+                  ...localSettings,
+                  agent: { ...localSettings.agent, enabled: checked },
+                })}
+              />
+              {localSettings.agent.enabled && (
+                <div className="agent-settings-block">
+                  <div className="setting-item">
+                    <label>默认 Agent</label>
+                    <select
+                      value={localSettings.agent.backend}
+                      onChange={(event) => setLocalSettings({
+                        ...localSettings,
+                        agent: { ...localSettings.agent, backend: event.target.value as AgentBackendId },
+                      })}
+                    >
+                      <option value="claude_code">Claude Code</option>
+                      <option value="codex">Codex</option>
+                      <option value="opencode">OpenCode</option>
+                    </select>
+                  </div>
+                  {(Object.keys(localSettings.agent.backends) as AgentBackendId[]).map((backendId) => {
+                    const config = localSettings.agent.backends[backendId];
+                    const status = agentStatuses.find((item) => item.id === backendId);
+                    const label = backendId === 'claude_code' ? 'Claude Code' : backendId === 'codex' ? 'Codex' : 'OpenCode';
+                    return (
+                      <section className="agent-backend-settings" key={backendId}>
+                        <header><strong>{label}</strong><span className={status?.compatible ? 'ready' : ''}>{status ? (status.compatible ? status.version || '可用' : status.diagnostic) : '尚未检测'}</span></header>
+                        <div className="setting-item">
+                          <label>可执行文件</label>
+                          <input
+                            type="text"
+                            value={config.executable_path}
+                            onChange={(event) => setLocalSettings({
+                              ...localSettings,
+                              agent: {
+                                ...localSettings.agent,
+                                backends: { ...localSettings.agent.backends, [backendId]: { ...config, executable_path: event.target.value } },
+                              },
+                            })}
+                            placeholder={backendId === 'codex' ? '留空则优先使用官方编辑器扩展或 PATH 中的 codex' : `留空则从 PATH 自动查找 ${backendId === 'claude_code' ? 'claude' : backendId}`}
+                          />
+                        </div>
+                        <div className="agent-backend-options">
+                          <div className="setting-item"><label>模型覆盖</label><input type="text" value={config.model} onChange={(event) => setLocalSettings({ ...localSettings, agent: { ...localSettings.agent, backends: { ...localSettings.agent.backends, [backendId]: { ...config, model: event.target.value } } } })} placeholder="使用 CLI 默认模型" /></div>
+                          <div className="setting-item"><label>{backendId === 'claude_code' ? 'Agent' : backendId === 'codex' ? 'Profile' : 'Agent 模式'}</label><input type="text" value={config.profile} onChange={(event) => setLocalSettings({ ...localSettings, agent: { ...localSettings.agent, backends: { ...localSettings.agent.backends, [backendId]: { ...config, profile: event.target.value } } } })} placeholder="使用 CLI 默认配置" /></div>
+                          {backendId !== 'opencode' && (
+                            <div className="setting-item">
+                              <label>推理强度</label>
+                              <select value={config.reasoning_effort} onChange={(event) => setLocalSettings({ ...localSettings, agent: { ...localSettings.agent, backends: { ...localSettings.agent.backends, [backendId]: { ...config, reasoning_effort: event.target.value } } } })}>
+                                <option value="">自动</option>
+                                <option value="low">低</option>
+                                <option value="medium">中</option>
+                                <option value="high">高</option>
+                                <option value="xhigh">超高</option>
+                                {backendId === 'claude_code' && <option value="max">最大</option>}
+                              </select>
+                            </div>
+                          )}
+                        </div>
+                      </section>
+                    );
+                  })}
+                  <button
+                    className="secondary-btn agent-detect-button"
+                    disabled={detectingAgents || !isTauriRuntime()}
+                    onClick={async () => {
+                      setDetectingAgents(true);
+                      try {
+                        const overrides = Object.fromEntries(Object.entries(localSettings.agent.backends).map(([id, config]) => [id, config.executable_path]));
+                        setAgentStatuses(await invoke<AgentBackendStatus[]>('agent_detect_backends', { overrides }));
+                      } finally {
+                        setDetectingAgents(false);
+                      }
+                    }}
+                  >
+                    {detectingAgents ? '检测中…' : '检测本机 Agent'}
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
@@ -1143,7 +1241,7 @@ export function SettingsPanel() {
         </div>
 
         <div className="settings-footer">
-          <button className="cancel-btn" onClick={() => setSettingsOpen(false)}>
+          <button className="cancel-btn" onClick={handleCancel}>
             取消
           </button>
           <button className="save-btn" onClick={handleSave}>

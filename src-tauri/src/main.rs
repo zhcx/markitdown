@@ -8,6 +8,7 @@ use std::{
 use tauri::{Emitter, Manager, State};
 
 mod ai;
+mod agent;
 mod commands;
 mod image;
 mod pdf;
@@ -84,6 +85,14 @@ fn take_pending_open_files(state: State<'_, PendingOpenFiles>) -> Vec<String> {
 // clippy::unwrap_used is not enabled globally; this is a targeted hardening.
 
 fn main() {
+    let args: Vec<String> = std::env::args().collect();
+    if args.get(1).is_some_and(|value| value == "--agent-permission-hook") {
+        let result: Result<(), String> = args.get(2).ok_or_else(|| "missing permission bridge directory".to_string())
+            .map(PathBuf::from)
+            .and_then(|path| agent::run_permission_hook(&path));
+        if let Err(error) = result { eprintln!("MarkitDown permission bridge failed: {error}"); }
+        return;
+    }
     // Install a global panic hook that writes to stderr instead of
     // crashing the process immediately — the Tauri runtime handles the
     // error gracefully and the window stays open.
@@ -144,6 +153,7 @@ fn main() {
             commands::convert_document,
             commands::save_file_content,
             commands::read_file_base64,
+            commands::reveal_in_file_manager,
             commands::get_recent_files,
             commands::update_recent_file,
             commands::remove_recent_file,
@@ -156,10 +166,23 @@ fn main() {
             ai::ai_streaming,
             ai::ai_chat_streaming,
             ai::fetch_ai_models,
+            agent::agent_detect_backends,
+            agent::agent_list_models,
+            agent::agent_list_sessions,
+            agent::agent_get_session_events,
+            agent::agent_start_turn,
+            agent::agent_respond_approval,
+            agent::agent_set_approval_mode,
+            agent::agent_cancel_turn,
+            agent::agent_get_changes,
+            agent::agent_apply_changes,
+            agent::agent_discard_session,
             pdf::converter::export_pdf_direct,
         ])
         .manage(pending_open_files)
         .setup(|_app| {
+            let agent_storage = _app.path().app_data_dir()?.join("agent-runtime");
+            _app.manage(agent::AgentSupervisor::new(agent_storage));
             #[cfg(debug_assertions)]
             {
                 if let Some(window) = _app.get_webview_window("main") {

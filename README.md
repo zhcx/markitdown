@@ -74,6 +74,8 @@
 - **思考模式** — 关闭/快速/均衡/深度，灵活控制 AI 推理强度
 - **关联文档** — 一键将当前编辑文档作为对话上下文
 - **附件上传** — 图片和文本文件上传，与对话一起发送
+- **本地 Agent（Beta）** — 在同一面板调用 Claude Code、Codex 或 OpenCode，支持流式任务、命令审批和会话恢复
+- **隔离变更审阅** — Git 仓库任务在临时 worktree 中工作，完成后可按文件应用，不覆盖当前未提交修改
 
 ### 🤖 AI 服务商支持
 
@@ -91,6 +93,16 @@
 | Kimi | 支持 |
 | 自定义 OpenAI 兼容 | 支持 |
 
+### 🧩 本地 Agent 支持（桌面端 Beta）
+
+| Agent | 接入方式 |
+| --- | --- |
+| Claude Code | Stream JSON + PreToolUse 审批 Hook |
+| Codex | App Server JSON-RPC v2 |
+| OpenCode | 本地 Server API + SSE |
+
+Agent 默认关闭，需要先在“设置 → AI 助手”中启用。MarkitDown 复用各 CLI 的登录与默认模型，不保存其账号凭据。Git 根目录中的任务使用隔离 worktree；其他目录在进入 Agent 后授权为当前会话的读写范围，修改会直接写入。命令、网络和 MCP 默认逐次审批，也可仅对当前会话启用完全允许。详细说明见 [Agent 使用与安全说明](docs/agent-support.md)。
+
 ### 🔄 自动更新
 
 - MarkitDown 菜单 → 检查更新
@@ -105,36 +117,36 @@
 
 ## 🚀 快速开始
 
-## v0.3.3 更新
+## v0.3.4 更新
 
 ### 更新日志
 
-- 编辑器快捷按钮栏改为主题自适应的紧凑工具带，按编辑区宽度自动折叠，超出功能进入“更多”菜单。
-- 选中文字后显示浮动编辑栏，跟随主题明暗切换，并修复重复选择后不再出现的问题。
-- `/` 快捷命令面板补充常用编辑、插入、AI 写作和文档结构命令，弥补常驻按钮减少后的操作入口。
-- Monaco 搜索栏保留原生查找能力，统一汉化为简体中文并调整为当前主题风格。
-- 优化编辑区与预览区高度联动、行距对齐、同步滚动和底部内容定位，长文滚动更顺畅。
-- 底部菜单栏重整 AI 入口：AI 对话保留在左侧栏，校对文字独立为一键按钮，伴写状态独立显示并可切换写作风格。
+- 新增本地 Agent（Beta），可调用 Claude Code、Codex 和 OpenCode，并支持流式任务、命令审批与会话恢复。
+- AI 对话和 Agent 均可新建、保存并从历史记录恢复会话，切换工作目录时正确关联对应记录。
+- 编辑器右键菜单新增 AI 润色、AI 翻译、复制为 HTML、导出、插图和文件定位等常用操作。
+- 统一编辑器、预览区与资源管理器滚动条，并移除 Monaco 右侧多余概览标记。
+- 设置中的内容字号可实时同步到编辑器和预览区，保存设置改为异步持久化，减少界面停顿。
+- 优化 Agent 设置排版、错误提示、直接写入状态和浮动编辑栏尺寸，并移除 Inkwell 主题。
 
-### v0.3.3 平台安装包对照
+### v0.3.4 平台安装包对照
 
-> 以下链接指向 v0.3.3 Release 资产；安装包由 GitHub Actions 根据本版本源码构建。
+> 以下链接指向 v0.3.4 Release 资产；安装包由 GitHub Actions 根据本版本源码构建。
 
 | 操作系统 | 架构 | 推荐安装包 | 适用场景 |
 | --- | --- | --- | --- |
-| Windows 10/11 | x86_64 | [NSIS `.exe`](https://github.com/zhcx/markitdown/releases/download/v0.3.3/MarkitDown_0.3.3_x64-setup.exe) | 推荐大多数用户使用，按向导安装 |
-| Windows 10/11 | x86_64 | [MSI](https://github.com/zhcx/markitdown/releases/download/v0.3.3/MarkitDown_0.3.3_x64_en-US.msi) | 企业部署、系统管理或静默安装 |
-| macOS Apple Silicon | arm64 | [DMG](https://github.com/zhcx/markitdown/releases/download/v0.3.3/MarkitDown_0.3.3_aarch64.dmg) | M1、M2、M3、M4 等 Apple 芯片 |
-| macOS Apple Silicon | arm64 | [APP 压缩包](https://github.com/zhcx/markitdown/releases/download/v0.3.3/MarkitDown_aarch64.app.tar.gz) | 手动解压或更新 |
-| macOS Intel | x86_64 | [DMG](https://github.com/zhcx/markitdown/releases/download/v0.3.3/MarkitDown_0.3.3_x64.dmg) | Intel 芯片 Mac |
-| macOS Intel | x86_64 | [APP 压缩包](https://github.com/zhcx/markitdown/releases/download/v0.3.3/MarkitDown_x64.app.tar.gz) | 手动解压或更新 |
-| Ubuntu / Debian | x86_64 | [DEB](https://github.com/zhcx/markitdown/releases/download/v0.3.3/MarkitDown_0.3.3_amd64.deb) | Ubuntu、Debian、Linux Mint 等 |
-| Fedora / RHEL / openSUSE | x86_64 | [RPM](https://github.com/zhcx/markitdown/releases/download/v0.3.3/MarkitDown-0.3.3-1.x86_64.rpm) | RPM 系发行版 |
-| 通用 Linux | x86_64 | [AppImage](https://github.com/zhcx/markitdown/releases/download/v0.3.3/MarkitDown_0.3.3_amd64.AppImage) | 无需安装，赋予执行权限后运行 |
+| Windows 10/11 | x86_64 | [NSIS `.exe`](https://github.com/zhcx/markitdown/releases/download/v0.3.4/MarkitDown_0.3.4_x64-setup.exe) | 推荐大多数用户使用，按向导安装 |
+| Windows 10/11 | x86_64 | [MSI](https://github.com/zhcx/markitdown/releases/download/v0.3.4/MarkitDown_0.3.4_x64_en-US.msi) | 企业部署、系统管理或静默安装 |
+| macOS Apple Silicon | arm64 | [DMG](https://github.com/zhcx/markitdown/releases/download/v0.3.4/MarkitDown_0.3.4_aarch64.dmg) | M1、M2、M3、M4 等 Apple 芯片 |
+| macOS Apple Silicon | arm64 | [APP 压缩包](https://github.com/zhcx/markitdown/releases/download/v0.3.4/MarkitDown_aarch64.app.tar.gz) | 手动解压或更新 |
+| macOS Intel | x86_64 | [DMG](https://github.com/zhcx/markitdown/releases/download/v0.3.4/MarkitDown_0.3.4_x64.dmg) | Intel 芯片 Mac |
+| macOS Intel | x86_64 | [APP 压缩包](https://github.com/zhcx/markitdown/releases/download/v0.3.4/MarkitDown_x64.app.tar.gz) | 手动解压或更新 |
+| Ubuntu / Debian | x86_64 | [DEB](https://github.com/zhcx/markitdown/releases/download/v0.3.4/MarkitDown_0.3.4_amd64.deb) | Ubuntu、Debian、Linux Mint 等 |
+| Fedora / RHEL / openSUSE | x86_64 | [RPM](https://github.com/zhcx/markitdown/releases/download/v0.3.4/MarkitDown-0.3.4-1.x86_64.rpm) | RPM 系发行版 |
+| 通用 Linux | x86_64 | [AppImage](https://github.com/zhcx/markitdown/releases/download/v0.3.4/MarkitDown_0.3.4_amd64.AppImage) | 无需安装，赋予执行权限后运行 |
 
 > 不确定如何选择？Windows 下载 `.exe`，Apple 芯片 Mac 下载 `aarch64.dmg`，Intel Mac 下载 `x64.dmg`，Ubuntu/Debian 下载 `.deb`。
 
-完整更新说明与安装提示见 [`docs/releases/v0.3.3.md`](docs/releases/v0.3.3.md)。
+完整更新说明与安装提示见 [`docs/releases/v0.3.4.md`](docs/releases/v0.3.4.md)。
 
 ## Contributors
 

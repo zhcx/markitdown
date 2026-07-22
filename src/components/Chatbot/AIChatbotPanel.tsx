@@ -8,6 +8,9 @@ import { invoke } from '@tauri-apps/api/core';
 import MarkdownIt from 'markdown-it';
 import { readStoredStringArray } from '../../utils/storage';
 import { sanitizeRenderedHtml } from '../../utils/safeHtml';
+import { AgentPanel, RuntimeTabs } from './AgentPanel';
+import { ChatSelectMenu } from './ChatSelectMenu';
+import type { AIRuntime } from '../../types/agent';
 
 const md = new MarkdownIt({ html: false, breaks: true, linkify: true });
 
@@ -25,7 +28,7 @@ interface PendingAttachment {
   content?: string;
 }
 
-function ComposerIcon({ type }: { type: 'attach' | 'document' | 'image' | 'chat' | 'send' | 'stop' | 'search' | 'reasoning' | 'chevronDown' }) {
+function ComposerIcon({ type }: { type: 'attach' | 'document' | 'image' | 'chat' | 'send' | 'stop' | 'search' | 'reasoning' | 'chevronDown' | 'newChat' | 'history' }) {
   if (type === 'attach') {
     return <svg className={`composer-icon composer-icon-${type}`} viewBox="0 0 16 16" aria-hidden="true"><path d="M5.2 8.8 9.7 4.3a2.35 2.35 0 1 1 3.3 3.3l-5.4 5.4a3.6 3.6 0 0 1-5.1-5.1l5-5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>;
   }
@@ -50,6 +53,12 @@ function ComposerIcon({ type }: { type: 'attach' | 'document' | 'image' | 'chat'
   if (type === 'reasoning') {
     return <svg className={`composer-icon composer-icon-${type}`} viewBox="0 0 16 16" aria-hidden="true"><path d="M2.3 10.9a5.7 5.7 0 1 1 11.4 0" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" /><path d="M8 10.8 10.65 7.9M4.4 11.05h.01M11.6 11.05h.01" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round" /><path d="M3.5 13.1h9" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" /></svg>;
   }
+  if (type === 'newChat') {
+    return <svg className={`composer-icon composer-icon-${type}`} viewBox="0 0 16 16" aria-hidden="true"><path d="M2.4 2.8h8.7v7H6.4l-2.7 2.3V9.8H2.4zM12.2 5.2v5.6M9.4 8h5.6" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" /></svg>;
+  }
+  if (type === 'history') {
+    return <svg className={`composer-icon composer-icon-${type}`} viewBox="0 0 16 16" aria-hidden="true"><path d="M3.1 4.5A5.5 5.5 0 1 1 2.5 8M3.1 4.5V1.8M3.1 4.5h2.7M8 4.7v3.6l2.4 1.4" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" /></svg>;
+  }
   return <svg className={`composer-icon composer-icon-${type}`} viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.45" strokeLinecap="round" strokeLinejoin="round" /></svg>;
 }
 
@@ -67,13 +76,31 @@ function ReasoningOptionIcon({ effort }: { effort: ReasoningEffort }) {
 }
 
 export function AIChatbotPanel() {
+  const [runtime, setRuntime] = useState<AIRuntime>(() => {
+    try { return localStorage.getItem('markitdown.ai-runtime') === 'agent' ? 'agent' : 'api'; }
+    catch { return 'api'; }
+  });
+  const handleRuntimeChange = (next: AIRuntime) => {
+    setRuntime(next);
+    try { localStorage.setItem('markitdown.ai-runtime', next); } catch { /* ignored */ }
+  };
+  return runtime === 'agent'
+    ? <AgentPanel onRuntimeChange={handleRuntimeChange} />
+    : <ApiChatPanel onRuntimeChange={handleRuntimeChange} />;
+}
+
+function ApiChatPanel({ onRuntimeChange }: { onRuntimeChange: (runtime: AIRuntime) => void }) {
   const {
     chatbotMessages,
+    chatbotConversations,
+    activeChatConversationId,
     chatbotLoading,
     stopChatMessage,
     setChatbotVisible,
     sendChatMessage,
     clearChatHistory,
+    newChatConversation,
+    selectChatConversation,
     reasoningEffort,
     setReasoningEffort,
     linkedDocument,
@@ -104,6 +131,8 @@ export function AIChatbotPanel() {
   const [webSearchActive, setWebSearchActive] = useState(false);
   const [webSearchLoading, setWebSearchLoading] = useState(false);
   const [workspaceContext, setWorkspaceContext] = useState<WorkspaceContextPayload | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const historyRef = useRef<HTMLDivElement>(null);
   const webSearchEnabled = settings.web_search.enabled;
   useEffect(() => {
     if (!workspaceConfigKey) return;
@@ -116,6 +145,15 @@ export function AIChatbotPanel() {
       listRef.current.scrollTop = listRef.current.scrollHeight;
     }
   }, [chatbotMessages, webSearchLoading]);
+
+  useEffect(() => {
+    if (!historyOpen) return;
+    const closeHistory = (event: MouseEvent) => {
+      if (!historyRef.current?.contains(event.target as Node)) setHistoryOpen(false);
+    };
+    window.addEventListener('mousedown', closeHistory);
+    return () => window.removeEventListener('mousedown', closeHistory);
+  }, [historyOpen]);
 
   const handleSend = useCallback(async () => {
     const text = inputValue.trim();
@@ -263,6 +301,7 @@ export function AIChatbotPanel() {
   return (
     <div className="chatbot-panel">
       <div className="chatbot-header">
+        <RuntimeTabs active="api" onChange={onRuntimeChange} />
         <div className="chatbot-header-main">
           <div className="chatbot-header-identity">
             <span className="chatbot-header-mark" aria-hidden="true">AI</span>
@@ -279,37 +318,58 @@ export function AIChatbotPanel() {
               <span className="chatbot-header-subtitle">智能写作助手</span>
             </div>
           </div>
-          <button className="chatbot-close-btn" onClick={() => setChatbotVisible(false)} title="关闭" aria-label="关闭 AI 对话">
-            <svg viewBox="0 0 16 16" aria-hidden="true">
-              <path d="M4 4l8 8M12 4l-8 8" />
-            </svg>
-          </button>
+          <div className="chatbot-header-actions">
+            <button className="chatbot-header-action" onClick={newChatConversation} disabled={chatbotLoading} title="新建 AI 对话" aria-label="新建 AI 对话">
+              <ComposerIcon type="newChat" />
+            </button>
+            <div className="chatbot-history" ref={historyRef}>
+              <button className={`chatbot-header-action ${historyOpen ? 'active' : ''}`} onClick={() => setHistoryOpen((open) => !open)} title="对话历史" aria-label="打开 AI 对话历史" aria-expanded={historyOpen}>
+                <ComposerIcon type="history" />
+              </button>
+              {historyOpen && (
+                <div className="chatbot-history-popover" role="dialog" aria-label="AI 对话历史">
+                  <header><strong>对话历史</strong><span>{chatbotConversations.length} 条</span></header>
+                  <div className="chatbot-history-list">
+                    {chatbotConversations.map((conversation) => (
+                      <button
+                        key={conversation.id}
+                        className={conversation.id === activeChatConversationId ? 'active' : ''}
+                        onClick={() => { selectChatConversation(conversation.id); setHistoryOpen(false); }}
+                      >
+                        <strong>{conversation.title}</strong>
+                        <span>{new Date(conversation.updatedAt).toLocaleString()} · {conversation.messages.filter((message) => message.role === 'user').length} 轮</span>
+                      </button>
+                    ))}
+                    {chatbotConversations.length === 0 && <div className="chatbot-history-empty">暂无历史对话</div>}
+                  </div>
+                </div>
+              )}
+            </div>
+            <button className="chatbot-close-btn" onClick={() => setChatbotVisible(false)} title="关闭" aria-label="关闭 AI 对话">
+              <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" /></svg>
+            </button>
+          </div>
         </div>
         <div className="chatbot-ai-selectors">
-          <label className="chatbot-selector-label chatbot-provider-label" htmlFor="chatbot-provider">服务商</label>
-          <label className="chatbot-selector-label chatbot-model-label" htmlFor="chatbot-model">模型</label>
-          <select
-            id="chatbot-provider"
+          <span className="chatbot-selector-label chatbot-provider-label">服务商</span>
+          <span className="chatbot-selector-label chatbot-model-label">模型</span>
+          <ChatSelectMenu
             className="chatbot-provider-select"
             value={chatProvider}
-            onChange={(event) => handleChatProviderChange(event.target.value as AIProviderId)}
-            title="选择 AI 服务商"
-          >
-            {availableProviders.map((provider) => (
-              <option key={provider.id} value={provider.id}>{provider.label}</option>
-            ))}
-          </select>
-          <select
-            id="chatbot-model"
+            label={selectedDefinition?.label || chatProvider}
+            options={availableProviders.map((provider) => ({ value: provider.id, label: provider.label }))}
+            onChange={(value) => handleChatProviderChange(value as AIProviderId)}
+            ariaLabel="选择 AI 服务商"
+          />
+          <ChatSelectMenu
             className="chatbot-model-select"
             value={chatModel}
-            onChange={(event) => setChatModel(event.target.value)}
-            title={selectedDefinition ? `${selectedDefinition.label} 模型` : '选择模型'}
-          >
-            {chatModels.length > 0 ? chatModels.map((model) => (
-              <option key={model} value={model}>{model}</option>
-            )) : <option value="">请先在设置中配置模型</option>}
-          </select>
+            label={chatModel || '请先配置模型'}
+            options={chatModels.map((model) => ({ value: model, label: model }))}
+            onChange={setChatModel}
+            ariaLabel={selectedDefinition ? `${selectedDefinition.label} 模型` : '选择模型'}
+            disabled={chatModels.length === 0}
+          />
         </div>
       </div>
 

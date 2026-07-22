@@ -120,8 +120,6 @@ const entries: Record<string, Translation> = {
   'Access Key Secret': { 'zh-CN': '访问密钥', 'zh-TW': '存取密鑰', en: 'Access Key Secret' },
   'VS Code Dark Theme': { 'zh-CN': 'VS Code 深色主题', 'zh-TW': 'VS Code 深色主題', en: 'VS Code Dark Theme' },
   'VS Code Light Theme': { 'zh-CN': 'VS Code 浅色主题', 'zh-TW': 'VS Code 淺色主題', en: 'VS Code Light Theme' },
-  'Inkwell Light Theme': { 'zh-CN': 'Inkwell 浅色主题', 'zh-TW': 'Inkwell 淺色主題', en: 'Inkwell Light Theme' },
-  'Inkwell Dark Theme': { 'zh-CN': 'Inkwell 深色主题', 'zh-TW': 'Inkwell 深色主題', en: 'Inkwell Dark Theme' },
   'Claude Light Theme': { 'zh-CN': 'Claude 浅色主题', 'zh-TW': 'Claude 淺色主題', en: 'Claude Light Theme' },
   'Claude Dark Theme': { 'zh-CN': 'Claude 深色主题', 'zh-TW': 'Claude 深色主題', en: 'Claude Dark Theme' },
   'Notion Light Theme': { 'zh-CN': 'Notion 浅色主题', 'zh-TW': 'Notion 淺色主題', en: 'Notion Light Theme' },
@@ -131,7 +129,6 @@ const entries: Record<string, Translation> = {
 const englishEntries: Record<string, string> = {
   '入门指南': 'BEGINNER GUIDE', '基础': 'Basic', '快速': 'Fast', '高级': 'Advanced', '极速': 'Ultra fast',
   'VS Code 深色主题': 'VS Code Dark Theme', 'VS Code 浅色主题': 'VS Code Light Theme',
-  'Inkwell 深色主题': 'Inkwell Dark Theme', 'Inkwell 浅色主题': 'Inkwell Light Theme',
   'Claude 深色主题': 'Claude Dark Theme', 'Claude 浅色主题': 'Claude Light Theme',
   'Notion 深色主题': 'Notion Dark Theme', 'Notion 浅色主题': 'Notion Light Theme',
   '云名称': 'Cloud Name', 'API 密钥': 'API Secret', '服务端点': 'Endpoint', '存储桶名称': 'Bucket name', '地域': 'Region', '访问密钥 ID': 'Access Key ID', '访问密钥': 'Access Key Secret',

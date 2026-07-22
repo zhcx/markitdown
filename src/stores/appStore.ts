@@ -5,6 +5,7 @@ import { formatTextStatistics } from '../utils/textStatistics';
 import { DEFAULT_FONT_SIZE, DEFAULT_LINE_HEIGHT } from '../utils/appearanceSettings';
 import { applySavedTab } from '../utils/tabPersistence';
 import { detectSystemLanguage, normalizeLanguage, type AppLanguage } from '../i18n';
+import type { AgentSettings } from '../types/agent';
 
 const isTauriRuntime = () => typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 const browserSettingsKey = 'markitdown.browser.settings';
@@ -82,6 +83,7 @@ export interface Settings {
     provider_api_keys: string;
     provider_profiles: string;
   };
+  agent: AgentSettings;
 }
 
 export interface WebSearchSettings {
@@ -295,6 +297,15 @@ const defaultSettings: Settings = {
     provider_api_keys: '{}',
     provider_profiles: '{}',
   },
+  agent: {
+    enabled: false,
+    backend: 'claude_code',
+    backends: {
+      claude_code: { executable_path: '', model: '', profile: '', reasoning_effort: '' },
+      codex: { executable_path: '', model: '', profile: '', reasoning_effort: '' },
+      opencode: { executable_path: '', model: '', profile: '', reasoning_effort: '' },
+    },
+  },
 };
 
 const normalizeSettings = (saved: Settings): Settings => ({
@@ -310,6 +321,15 @@ const normalizeSettings = (saved: Settings): Settings => ({
   export: { ...defaultSettings.export, ...saved.export },
   web_search: { ...defaultSettings.web_search, ...saved.web_search },
   ai: { ...defaultSettings.ai, ...saved.ai },
+  agent: {
+    ...defaultSettings.agent,
+    ...saved.agent,
+    backends: {
+      claude_code: { ...defaultSettings.agent.backends.claude_code, ...saved.agent?.backends?.claude_code },
+      codex: { ...defaultSettings.agent.backends.codex, ...saved.agent?.backends?.codex },
+      opencode: { ...defaultSettings.agent.backends.opencode, ...saved.agent?.backends?.opencode },
+    },
+  },
 });
 
 const initialSettings = (() => {
