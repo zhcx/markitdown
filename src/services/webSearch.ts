@@ -1,3 +1,4 @@
+import { invoke } from '@tauri-apps/api/core';
 import type { WebSearchSettings } from '../stores/appStore';
 
 export interface WebSearchResult {
@@ -57,7 +58,6 @@ export async function performWebSearch(query: string, settings: WebSearchSetting
   if (settings.provider === 'searxng' && !settings.searxng_url.trim()) throw new Error('请先填写 SearXNG API 地址');
 
   if (isTauriRuntime()) {
-    const { invoke } = await import('@tauri-apps/api/core');
     return normalizeWebSearchResponse(await invoke<WebSearchResponse>('web_search', { query: normalizedQuery, settings }));
   }
 

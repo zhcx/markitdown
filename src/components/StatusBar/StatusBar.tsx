@@ -15,7 +15,6 @@ const WRITING_STYLES: Array<{ value: WritingStyle; label: string }> = [
 const EDIT_MODES: Array<{ value: AIEditMode; label: string }> = [
   { value: 'ask', label: '询问' },
   { value: 'suggest', label: '建议' },
-  { value: 'agent', label: '代理' },
 ];
 
 function StatusGlyph({ name }: { name: 'ai' | 'proofread' | 'success' | 'error' }) {

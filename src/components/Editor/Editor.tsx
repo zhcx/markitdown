@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import 'monaco-editor/esm/nls.messages.zh-cn.js';
 import * as monaco from 'monaco-editor/esm/vs/editor/editor.api.js';
 import 'monaco-editor/esm/vs/basic-languages/markdown/markdown.contribution';
+import MarkdownIt from 'markdown-it';
 import EditorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker';
 import { invoke } from '@tauri-apps/api/core';
 import { useAppStore, type Settings } from '../../stores/appStore';
@@ -10,8 +11,9 @@ import type { EditorController, EditorDispatchSpec, EditorLine } from '../../typ
 import { EDITOR_OVERFLOW_OPTIONS, EDITOR_UNICODE_HIGHLIGHT_OPTIONS } from '../../utils/editorLayout';
 import { filterSlashCommands, findSlashCommandTrigger, type SlashCommand } from '../../utils/slashCommands';
 import { SlashCommandMenu, type SlashMenuAnchor } from './SlashCommandMenu';
-import { Toolbar } from '../Toolbar/Toolbar';
+import { ImageOptionsModal, Toolbar } from '../Toolbar/Toolbar';
 import { normalizeLanguage, t } from '../../i18n';
+import { sanitizeRenderedHtml } from '../../utils/safeHtml';
 
 (self as typeof self & { MonacoEnvironment: { getWorker: () => Worker } }).MonacoEnvironment = {
   getWorker: () => new EditorWorker(),
@@ -20,6 +22,8 @@ import { normalizeLanguage, t } from '../../i18n';
 interface EditorProps {
   className?: string;
   style?: React.CSSProperties;
+  onActiveLineChange?: (lineNumber: number) => void;
+  onActiveLineReveal?: (lineNumber: number) => void;
 }
 
 const MIN_AUTO_COMPANION_CHARS = 6;
@@ -36,16 +40,38 @@ interface SlashMenuState {
 interface EditorContextMenuState {
   x: number;
   y: number;
+  submenuDirection: 'left' | 'right';
   hasSelection: boolean;
   canUndo: boolean;
   canRedo: boolean;
 }
+
+const contextMenuMarkdown = new MarkdownIt({ html: true, breaks: true, linkify: true, typographer: true });
 
 interface SelectionToolbarState {
   left: number;
   top: number;
   width: number;
   placement: 'above' | 'below';
+}
+
+type ContextMenuIconName = 'sparkles' | 'translate' | 'copy' | 'copyAs' | 'paste' | 'text' | 'pdf' | 'document' | 'code' | 'image' | 'folder' | 'undo' | 'redo' | 'select';
+
+function ContextMenuIcon({ name }: { name: ContextMenuIconName }) {
+  if (name === 'sparkles') return <svg viewBox="0 0 18 18"><path d="m6.2 2 .7 2.1L9 5l-2.1.8-.7 2.1-.8-2.1L3.3 5l2.1-.9zM12.3 7.2l.9 2.5 2.5.9-2.5.9-.9 2.5-.9-2.5-2.5-.9 2.5-.9z" /></svg>;
+  if (name === 'translate') return <svg viewBox="0 0 18 18"><circle cx="9" cy="9" r="6.5" /><path d="M2.5 9h13M9 2.5c1.7 1.8 2.6 4 2.6 6.5S10.7 13.7 9 15.5C7.3 13.7 6.4 11.5 6.4 9S7.3 4.3 9 2.5Z" /></svg>;
+  if (name === 'copy') return <svg viewBox="0 0 18 18"><rect x="5.2" y="3.2" width="9" height="11.5" rx="1.5" /><path d="M3.4 12V5.3c0-1 .8-1.8 1.8-1.8" /></svg>;
+  if (name === 'copyAs') return <svg viewBox="0 0 18 18"><rect x="5.2" y="4" width="8.8" height="11" rx="1.4" /><path d="M3.2 12V4.8C3.2 3.8 4 3 5 3M15.5 7.2l1.8 1.8-1.8 1.8" /></svg>;
+  if (name === 'paste') return <svg viewBox="0 0 18 18"><path d="M6.2 3.7h-2v11h8.6v-2.1" /><rect x="6.2" y="2.5" width="6.5" height="9" rx="1.3" /><path d="M8 2.5V1.4h3v1.1" /></svg>;
+  if (name === 'text') return <svg viewBox="0 0 18 18"><path d="M2.4 6.2h5.2M5 6.2v6M10 6.2h5.6M12.8 6.2v6M10.6 12h4.4" /></svg>;
+  if (name === 'pdf') return <svg viewBox="0 0 18 18"><path d="M4 1.8h6l3.5 3.5v10.9H4zM10 1.8v3.5h3.5" /><path d="M5.5 12.8h1.2c1.4 0 1.4-2.3 0-2.3H5.5v4M8.7 14.5v-4h1c1.7 0 1.7 4 0 4zM12 14.5v-4h2" /></svg>;
+  if (name === 'document') return <svg viewBox="0 0 18 18"><path d="M4 1.8h6l3.5 3.5v10.9H4zM10 1.8v3.5h3.5M6.2 8.3h5.2M6.2 11h5.2M6.2 13.7h3.5" /></svg>;
+  if (name === 'code') return <svg viewBox="0 0 18 18"><path d="m6.4 4-4 5 4 5M11.6 4l4 5-4 5M10.2 2.8 7.8 15.2" /></svg>;
+  if (name === 'image') return <svg viewBox="0 0 18 18"><rect x="2.4" y="2.8" width="13.2" height="12.4" rx="1.4" /><circle cx="6.2" cy="6.7" r="1.2" /><path d="m3.5 13.5 3.6-3.8 2.5 2.4 2.1-2.2 2.8 3.1" /></svg>;
+  if (name === 'folder') return <svg viewBox="0 0 18 18"><path d="M2 5.2h5l1.3 1.5H16v7.8H2zM2 5.2V3.5h5l1.3 1.7" /></svg>;
+  if (name === 'undo') return <svg viewBox="0 0 18 18"><path d="M6.5 5 3 8.5 6.5 12M3.4 8.5h6.2c3 0 4.8 1.6 4.8 4.3" /></svg>;
+  if (name === 'redo') return <svg viewBox="0 0 18 18"><path d="m11.5 5 3.5 3.5-3.5 3.5M14.6 8.5H8.4c-3 0-4.8 1.6-4.8 4.3" /></svg>;
+  return <svg viewBox="0 0 18 18"><path d="M3 4h12M3 9h12M3 14h12" /></svg>;
 }
 
 const isTauriRuntime = () => '__TAURI_INTERNALS__' in window;
@@ -171,7 +197,7 @@ async function fileAsDataUrl(file: File) {
   });
 }
 
-export function Editor({ className, style }: EditorProps) {
+export function Editor({ className, style, onActiveLineChange, onActiveLineReveal }: EditorProps) {
   const editorRef = useRef<HTMLDivElement>(null);
   const monacoRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const modelRef = useRef<monaco.editor.ITextModel | null>(null);
@@ -185,9 +211,11 @@ export function Editor({ className, style }: EditorProps) {
   const [slashMenu, setSlashMenu] = useState<SlashMenuState | null>(null);
   const [slashSelectedIndex, setSlashSelectedIndex] = useState(0);
   const [contextMenu, setContextMenu] = useState<EditorContextMenuState | null>(null);
+  const [copyAsOpen, setCopyAsOpen] = useState(false);
+  const [showContextImageModal, setShowContextImageModal] = useState(false);
   const [selectionToolbar, setSelectionToolbar] = useState<SelectionToolbarState | null>(null);
-  const { content, setContent, settings, setEditorView } = useAppStore();
-  const { proofreadResults } = useAIStore();
+  const { content, currentFile, setContent, settings, setEditorView } = useAppStore();
+  const { proofreadResults, rewriteSelection, translateText, setTranslationVisible, setStatus } = useAIStore();
   const initialContentRef = useRef(content);
   const slashCommands = useMemo(() => filterSlashCommands(slashMenu?.query || ''), [slashMenu?.query]);
   const language = normalizeLanguage(settings.appearance.language);
@@ -207,7 +235,7 @@ export function Editor({ className, style }: EditorProps) {
     return () => window.removeEventListener('markitdown-editor-find', handleFindRequest);
   }, []);
 
-  const runContextMenuAction = useCallback(async (action: 'undo' | 'redo' | 'cut' | 'copy' | 'paste' | 'selectAll') => {
+  const runContextMenuAction = useCallback(async (action: 'undo' | 'redo' | 'cut' | 'copy' | 'copyHtml' | 'copyPlain' | 'paste' | 'selectAll') => {
     const editor = monacoRef.current;
     const model = modelRef.current;
     const controller = controllerRef.current;
@@ -233,15 +261,92 @@ export function Editor({ className, style }: EditorProps) {
       const selection = controller.getSelection();
       const selectedText = controller.getText(selection.from, selection.to);
       if (!selectedText) return;
+      const clipboardText = action === 'copyPlain'
+        ? selectedText
+            .replace(/!\[([^\]]*)\]\([^)]+\)/g, '$1')
+            .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+            .replace(/^#{1,6}\s+/gm, '')
+            .replace(/(?:\*\*|__|~~|`)/g, '')
+        : action === 'copyHtml'
+          ? sanitizeRenderedHtml(contextMenuMarkdown.render(selectedText))
+        : selectedText;
       try {
-        await navigator.clipboard.writeText(selectedText);
+        if (action === 'copyHtml' && typeof ClipboardItem !== 'undefined' && navigator.clipboard.write) {
+          await navigator.clipboard.write([new ClipboardItem({
+            'text/html': new Blob([clipboardText], { type: 'text/html' }),
+            'text/plain': new Blob([clipboardText], { type: 'text/plain' }),
+          })]);
+        } else {
+          await navigator.clipboard.writeText(clipboardText);
+        }
         if (action === 'cut') controller.replaceRange(selection.from, selection.to, '');
       } catch {
-        editor.trigger('markitdown-context-menu', `editor.action.clipboard${action === 'cut' ? 'Cut' : 'Copy'}Action`, null);
+        if (action === 'copyHtml') {
+          try {
+            await navigator.clipboard.writeText(clipboardText);
+          } catch {
+            // Clipboard permissions can be denied by the host WebView.
+          }
+        } else {
+          editor.trigger('markitdown-context-menu', `editor.action.clipboard${action === 'cut' ? 'Cut' : 'Copy'}Action`, null);
+        }
       }
     }
     editor.focus();
   }, []);
+
+  const polishContextSelection = useCallback(async () => {
+    const controller = controllerRef.current;
+    setContextMenu(null);
+    if (!controller) return;
+    const selection = controller.getSelection();
+    const selectedText = controller.getText(selection.from, selection.to);
+    if (!selectedText) return;
+    setStatus('loading', '正在润色选中文本...');
+    const polished = await rewriteSelection(selectedText);
+    if (polished) controller.replaceRange(selection.from, selection.to, polished, { from: selection.from, to: selection.from + polished.length });
+    controller.focus();
+  }, [rewriteSelection, setStatus]);
+
+  const translateContextSelection = useCallback(async () => {
+    const controller = controllerRef.current;
+    setContextMenu(null);
+    if (!controller) return;
+    const selection = controller.getSelection();
+    const selectedText = controller.getText(selection.from, selection.to);
+    if (!selectedText) return;
+    const coords = controller.coordsAtPos(selection.from);
+    const result = await translateText(selectedText);
+    const separatorIndex = result.indexOf('|||');
+    if (separatorIndex < 0) return;
+    const original = result.slice(0, separatorIndex);
+    const translated = result.slice(separatorIndex + 3);
+    if (translated && translated !== selectedText) {
+      setTranslationVisible(true, coords ? { x: coords.left, y: coords.bottom } : undefined, original, translated);
+    }
+    controller.focus();
+  }, [setTranslationVisible, translateText]);
+
+  const insertContextImage = useCallback((url: string, alt = '图片') => {
+    const controller = controllerRef.current;
+    if (!controller) return;
+    const selection = controller.getSelection();
+    const markdown = `![${alt}](${url})`;
+    controller.replaceRange(selection.from, selection.to, markdown, { from: selection.from + markdown.length, to: selection.from + markdown.length });
+    controller.focus();
+    setShowContextImageModal(false);
+  }, []);
+
+  const requestExport = useCallback((format: 'pdf' | 'word' | 'html') => {
+    setContextMenu(null);
+    window.dispatchEvent(new CustomEvent('markitdown-export-request', { detail: { format } }));
+  }, []);
+
+  const revealCurrentFile = useCallback(async () => {
+    setContextMenu(null);
+    if (!currentFile || currentFile.startsWith('web://')) return;
+    await invoke('reveal_in_file_manager', { path: currentFile });
+  }, [currentFile]);
 
   const closeSlashMenu = useCallback(() => {
     slashMenuRef.current = null;
@@ -283,15 +388,18 @@ export function Editor({ className, style }: EditorProps) {
       lineHeight: Math.round(useAppStore.getState().settings.appearance.font_size * useAppStore.getState().settings.appearance.line_height),
       lineNumbers: 'on',
       minimap: { enabled: false },
-      wordWrap: 'wordWrapColumn',
-      wordWrapColumn: 80,
+      overviewRulerLanes: 0,
+      overviewRulerBorder: false,
+      hideCursorInOverviewRuler: true,
+      wordWrap: 'on',
       wrappingIndent: 'same',
       renderWhitespace: 'selection',
       renderLineHighlight: 'line',
-      renderLineHighlightOnlyWhenFocus: true,
+      renderLineHighlightOnlyWhenFocus: false,
       scrollBeyondLastLine: false,
+      stickyScroll: { enabled: false },
       ...EDITOR_OVERFLOW_OPTIONS,
-      smoothScrolling: true,
+      smoothScrolling: false,
       padding: { top: 24, bottom: 40 },
       quickSuggestions: false,
       suggestOnTriggerCharacters: false,
@@ -304,14 +412,21 @@ export function Editor({ className, style }: EditorProps) {
     modelRef.current = model;
     controllerRef.current = controller;
     setEditorView(controller);
+    onActiveLineChange?.(editor.getPosition()?.lineNumber || 1);
 
     const handleContextMenu = (event: MouseEvent) => {
       event.preventDefault();
       event.stopPropagation();
+      setCopyAsOpen(false);
       const selection = controller.getSelection();
+      const menuWidth = 336;
+      const submenuWidth = 150;
+      const menuHeight = 660;
+      const x = Math.max(8, Math.min(event.clientX, window.innerWidth - menuWidth - 8));
       setContextMenu({
-        x: Math.max(8, Math.min(event.clientX, window.innerWidth - 190)),
-        y: Math.max(8, Math.min(event.clientY, window.innerHeight - 250)),
+        x,
+        y: Math.max(8, Math.min(event.clientY, window.innerHeight - menuHeight - 8)),
+        submenuDirection: x + menuWidth + submenuWidth + 4 <= window.innerWidth ? 'right' : 'left',
         hasSelection: !selection.empty,
         canUndo: model.canUndo(),
         canRedo: model.canRedo(),
@@ -322,47 +437,10 @@ export function Editor({ className, style }: EditorProps) {
     window.addEventListener('mousedown', closeContextMenu);
     window.addEventListener('blur', closeContextMenu);
 
-    let currentWrapColumn = 0;
-    let viewportSignature = '';
-    let fitFrame: number | null = null;
-
-    const fitRenderedText = () => {
-      fitFrame = null;
-      const scrollbar = root.querySelector<HTMLElement>('.monaco-scrollable-element > .scrollbar.vertical');
-      const renderedRuns = root.querySelectorAll<HTMLElement>('.view-lines .view-line span span');
-      if (!scrollbar || renderedRuns.length === 0) return;
-
-      const textLimit = scrollbar.getBoundingClientRect().left - 6;
-      const maxTextRight = Math.max(...Array.from(renderedRuns, (run) => run.getBoundingClientRect().right));
-      if (maxTextRight <= textLimit + 0.5) return;
-
-      const fontInfo = editor.getOption(monaco.editor.EditorOption.fontInfo);
-      const overflowColumns = Math.max(1, Math.ceil((maxTextRight - textLimit) / fontInfo.typicalHalfwidthCharacterWidth));
-      const nextWrapColumn = Math.max(20, currentWrapColumn - overflowColumns);
-      if (nextWrapColumn === currentWrapColumn) return;
-      currentWrapColumn = nextWrapColumn;
-      editor.updateOptions({ wordWrapColumn: nextWrapColumn });
-      fitFrame = window.requestAnimationFrame(fitRenderedText);
-    };
-
-    const scheduleTextFit = () => {
-      if (fitFrame !== null) window.cancelAnimationFrame(fitFrame);
-      fitFrame = window.requestAnimationFrame(fitRenderedText);
-    };
-
     const syncEditorViewport = (layout = editor.getLayoutInfo()) => {
       root.style.setProperty('--monaco-vertical-scrollbar-width', `${layout.verticalScrollbarWidth}px`);
-      const fontInfo = editor.getOption(monaco.editor.EditorOption.fontInfo);
       const visibleTextWidth = Math.max(1, layout.contentWidth - layout.verticalScrollbarWidth - 8);
       root.style.setProperty('--monaco-visible-text-width', `${visibleTextWidth}px`);
-      const signature = `${layout.contentWidth}:${layout.verticalScrollbarWidth}:${fontInfo.fontFamily}:${fontInfo.fontSize}:${fontInfo.typicalHalfwidthCharacterWidth}`;
-      const nextWrapColumn = Math.max(20, Math.floor(visibleTextWidth / fontInfo.typicalHalfwidthCharacterWidth) - 1);
-      if (signature !== viewportSignature) {
-        viewportSignature = signature;
-        currentWrapColumn = nextWrapColumn;
-        editor.updateOptions({ wordWrapColumn: nextWrapColumn });
-      }
-      scheduleTextFit();
     };
     syncEditorViewport();
     const layoutDisposable = editor.onDidLayoutChange(syncEditorViewport);
@@ -426,7 +504,7 @@ export function Editor({ className, style }: EditorProps) {
         return;
       }
       const rect = editorNode.getBoundingClientRect();
-      const width = Math.min(1120, Math.max(220, rect.width - 16), window.innerWidth - 16);
+      const width = Math.min(720, Math.max(220, rect.width - 16), window.innerWidth - 16);
       const desiredLeft = rect.left + visible.left - width * 0.28;
       const left = Math.max(rect.left + 8, Math.min(desiredLeft, rect.right - width - 8));
       const toolbarHeight = 44;
@@ -479,16 +557,19 @@ export function Editor({ className, style }: EditorProps) {
     const contentDisposable = editor.onDidChangeModelContent(() => {
       setContent(model.getValue());
       scheduleCompanion();
-      scheduleTextFit();
       refreshSlashMenu();
     });
     const cursorDisposable = editor.onDidChangeCursorSelection(() => {
+      onActiveLineChange?.(editor.getPosition()?.lineNumber || 1);
       scheduleCompanion();
       refreshSlashMenu();
       refreshSelectionToolbar();
     });
+    const mouseDisposable = editor.onMouseUp((event) => {
+      const lineNumber = event.target.position?.lineNumber;
+      if (lineNumber) onActiveLineReveal?.(lineNumber);
+    });
     const scrollDisposable = editor.onDidScrollChange(() => {
-      scheduleTextFit();
       refreshSlashMenu();
       refreshSelectionToolbar();
     });
@@ -575,7 +656,6 @@ export function Editor({ className, style }: EditorProps) {
 
     return () => {
       clearCompanionTimer();
-      if (fitFrame !== null) window.cancelAnimationFrame(fitFrame);
       root.removeEventListener('paste', handlePaste, true);
       root.removeEventListener('contextmenu', handleContextMenu, true);
       window.removeEventListener('mousedown', closeContextMenu);
@@ -586,6 +666,7 @@ export function Editor({ className, style }: EditorProps) {
       window.removeEventListener('markitdown-theme-change', handleTheme);
       contentDisposable.dispose();
       cursorDisposable.dispose();
+      mouseDisposable.dispose();
       scrollDisposable.dispose();
       slashKeyDisposable.dispose();
       layoutDisposable.dispose();
@@ -598,7 +679,7 @@ export function Editor({ className, style }: EditorProps) {
       slashMenuRef.current = null;
       setEditorView(null);
     };
-  }, [setContent, setEditorView]);
+  }, [onActiveLineChange, onActiveLineReveal, setContent, setEditorView]);
 
   useEffect(() => {
     const model = modelRef.current;
@@ -614,6 +695,19 @@ export function Editor({ className, style }: EditorProps) {
       fontFamily: settings.appearance.font_family,
     });
   }, [settings.appearance.font_family, settings.appearance.font_size, settings.appearance.line_height]);
+
+  useEffect(() => {
+    const handleFontSizePreview = (event: Event) => {
+      const fontSize = Number((event as CustomEvent<number>).detail);
+      if (!Number.isFinite(fontSize) || fontSize <= 0) return;
+      monacoRef.current?.updateOptions({
+        fontSize,
+        lineHeight: Math.round(fontSize * settings.appearance.line_height),
+      });
+    };
+    window.addEventListener('markitdown-content-font-size-preview', handleFontSizePreview);
+    return () => window.removeEventListener('markitdown-content-font-size-preview', handleFontSizePreview);
+  }, [settings.appearance.line_height]);
 
   useEffect(() => {
     const editor = monacoRef.current;
@@ -662,28 +756,60 @@ export function Editor({ className, style }: EditorProps) {
           style={{ left: contextMenu.x, top: contextMenu.y }}
           onMouseDown={(event) => event.stopPropagation()}
         >
+          <button type="button" role="menuitem" disabled={!contextMenu.hasSelection} onClick={() => void polishContextSelection()}>
+            <span className="editor-context-menu-icon tone-accent"><ContextMenuIcon name="sparkles" /></span><span className="editor-context-menu-label">AI 润色</span>
+          </button>
+          <button type="button" role="menuitem" disabled={!contextMenu.hasSelection} onClick={() => void translateContextSelection()}>
+            <span className="editor-context-menu-icon tone-blue"><ContextMenuIcon name="translate" /></span><span className="editor-context-menu-label">AI 翻译</span>
+          </button>
+          <div className="editor-context-menu-divider" role="separator" />
           <button type="button" role="menuitem" disabled={!contextMenu.canUndo} onClick={() => void runContextMenuAction('undo')}>
-            <span>{t('撤销', language)}</span><kbd>Ctrl+Z</kbd>
+            <span className="editor-context-menu-icon"><ContextMenuIcon name="undo" /></span><span className="editor-context-menu-label">{t('撤销', language)}</span><kbd>Ctrl+Z</kbd>
           </button>
           <button type="button" role="menuitem" disabled={!contextMenu.canRedo} onClick={() => void runContextMenuAction('redo')}>
-            <span>{t('重做', language)}</span><kbd>Ctrl+Y</kbd>
+            <span className="editor-context-menu-icon"><ContextMenuIcon name="redo" /></span><span className="editor-context-menu-label">{t('重做', language)}</span><kbd>Ctrl+Y</kbd>
           </button>
           <div className="editor-context-menu-divider" role="separator" />
-          <button type="button" role="menuitem" disabled={!contextMenu.hasSelection} onClick={() => void runContextMenuAction('cut')}>
-            <span>{t('剪切', language)}</span><kbd>Ctrl+X</kbd>
-          </button>
           <button type="button" role="menuitem" disabled={!contextMenu.hasSelection} onClick={() => void runContextMenuAction('copy')}>
-            <span>{t('复制', language)}</span><kbd>Ctrl+C</kbd>
+            <span className="editor-context-menu-icon tone-blue"><ContextMenuIcon name="copy" /></span><span className="editor-context-menu-label">{t('复制', language)}</span><kbd>Ctrl+C</kbd>
+          </button>
+          <div className="editor-context-copy-as" data-submenu-direction={contextMenu.submenuDirection} onMouseEnter={() => setCopyAsOpen(true)} onMouseLeave={() => setCopyAsOpen(false)}>
+            <button type="button" role="menuitem" disabled={!contextMenu.hasSelection} onClick={() => setCopyAsOpen((open) => !open)}>
+              <span className="editor-context-menu-icon"><ContextMenuIcon name="copyAs" /></span><span className="editor-context-menu-label">复制为</span><span className="editor-context-menu-chevron">›</span>
+            </button>
+            {copyAsOpen && contextMenu.hasSelection && (
+              <div className="editor-context-submenu" role="menu">
+                <button type="button" role="menuitem" onClick={() => void runContextMenuAction('copyHtml')}><span>HTML</span></button>
+                <button type="button" role="menuitem" onClick={() => void runContextMenuAction('copyPlain')}><span>纯文本</span></button>
+              </div>
+            )}
+          </div>
+          <button type="button" role="menuitem" onClick={() => void runContextMenuAction('paste')}>
+            <span className="editor-context-menu-icon tone-green"><ContextMenuIcon name="paste" /></span><span className="editor-context-menu-label">{t('粘贴', language)}</span><kbd>Ctrl+V</kbd>
           </button>
           <button type="button" role="menuitem" onClick={() => void runContextMenuAction('paste')}>
-            <span>{t('粘贴', language)}</span><kbd>Ctrl+V</kbd>
+            <span className="editor-context-menu-icon"><ContextMenuIcon name="text" /></span><span className="editor-context-menu-label">粘贴为纯文本</span><kbd>Ctrl+Shift+V</kbd>
           </button>
           <div className="editor-context-menu-divider" role="separator" />
-          <button type="button" role="menuitem" onClick={() => void runContextMenuAction('selectAll')}>
-            <span>{t('全选', language)}</span><kbd>Ctrl+A</kbd>
+          <button type="button" role="menuitem" onClick={() => requestExport('pdf')}>
+            <span className="editor-context-menu-icon tone-red"><ContextMenuIcon name="pdf" /></span><span className="editor-context-menu-label">导出 PDF</span>
+          </button>
+          <button type="button" role="menuitem" onClick={() => requestExport('word')}>
+            <span className="editor-context-menu-icon tone-blue"><ContextMenuIcon name="document" /></span><span className="editor-context-menu-label">导出 Word</span>
+          </button>
+          <button type="button" role="menuitem" onClick={() => requestExport('html')}>
+            <span className="editor-context-menu-icon tone-blue"><ContextMenuIcon name="code" /></span><span className="editor-context-menu-label">导出 HTML</span>
+          </button>
+          <div className="editor-context-menu-divider" role="separator" />
+          <button type="button" role="menuitem" onClick={() => { setContextMenu(null); setShowContextImageModal(true); }}>
+            <span className="editor-context-menu-icon tone-gold"><ContextMenuIcon name="image" /></span><span className="editor-context-menu-label">插入图片</span>
+          </button>
+          <button type="button" role="menuitem" disabled={!currentFile || currentFile.startsWith('web://')} onClick={() => void revealCurrentFile()}>
+            <span className="editor-context-menu-icon tone-blue"><ContextMenuIcon name="folder" /></span><span className="editor-context-menu-label">在文件夹中显示</span>
           </button>
         </div>
       )}
+      {showContextImageModal && <ImageOptionsModal onClose={() => setShowContextImageModal(false)} onInsert={insertContextImage} />}
     </div>
   );
 }

@@ -3,7 +3,6 @@ import { useAIStore, type AIChangeKind, type AIEditMode } from '../../stores/aiS
 const MODE_LABELS: Record<AIEditMode, string> = {
   ask: '询问模式',
   suggest: '建议模式',
-  agent: '代理模式',
 };
 
 const KIND_LABELS: Record<AIChangeKind, string> = {

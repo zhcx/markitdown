@@ -73,6 +73,69 @@ export interface ChatMessage {
   search?: ChatSearchContext;
 }
 
+export interface ChatConversation {
+  id: string;
+  title: string;
+  createdAt: number;
+  updatedAt: number;
+  messages: ChatMessage[];
+}
+
+const CHAT_HISTORY_STORAGE_KEY = 'markitdown.ai-chat-history';
+const CHAT_HISTORY_LIMIT = 30;
+
+const createConversationId = () => `chat-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+
+const conversationTitle = (messages: ChatMessage[]) => {
+  const firstQuestion = messages.find((message) => message.role === 'user')?.content || '新对话';
+  const title = firstQuestion
+    .replace(/!\[[^\]]*\]\(data:[^)]+\)/g, '[图片]')
+    .replace(/\s+/g, ' ')
+    .replace(/^#+\s*/, '')
+    .trim();
+  return title.slice(0, 32) || '新对话';
+};
+
+const upsertConversation = (conversations: ChatConversation[], id: string, messages: ChatMessage[]) => {
+  const existing = conversations.find((conversation) => conversation.id === id);
+  const now = Date.now();
+  const next: ChatConversation = {
+    id,
+    title: conversationTitle(messages),
+    createdAt: existing?.createdAt || now,
+    updatedAt: now,
+    messages,
+  };
+  return [next, ...conversations.filter((conversation) => conversation.id !== id)]
+    .sort((left, right) => right.updatedAt - left.updatedAt)
+    .slice(0, CHAT_HISTORY_LIMIT);
+};
+
+const safePersistedMessages = (messages: ChatMessage[]) => messages.map((message) => ({
+  ...message,
+  content: message.content
+    .replace(/data:image\/[^;\s]+;base64,[A-Za-z0-9+/=]+/g, '[图片数据已省略]')
+    .slice(0, 100_000),
+}));
+
+const loadChatHistory = (): { conversations: ChatConversation[]; activeId: string | null } => {
+  try {
+    const saved = JSON.parse(localStorage.getItem(CHAT_HISTORY_STORAGE_KEY) || '{}') as {
+      conversations?: ChatConversation[];
+      activeId?: string | null;
+    };
+    const conversations = Array.isArray(saved.conversations)
+      ? saved.conversations.filter((conversation) => conversation && typeof conversation.id === 'string' && Array.isArray(conversation.messages)).slice(0, CHAT_HISTORY_LIMIT)
+      : [];
+    const activeId = conversations.some((conversation) => conversation.id === saved.activeId) ? saved.activeId || null : null;
+    return { conversations, activeId };
+  } catch {
+    return { conversations: [], activeId: null };
+  }
+};
+
+const initialChatHistory = loadChatHistory();
+
 export interface ChatSearchContext {
   provider: string;
   query: string;
@@ -94,7 +157,7 @@ export interface ChatMessageAttachment {
 export type ReasoningEffort = 'off' | 'fast' | 'balanced' | 'deep';
 
 export type AIStatus = 'idle' | 'loading' | 'proofreading' | 'companion' | 'success' | 'error';
-export type AIEditMode = 'ask' | 'suggest' | 'agent';
+export type AIEditMode = 'ask' | 'suggest';
 export type AIChangeKind = 'polish' | 'translation' | 'fact' | 'structure' | 'continuation' | 'proofread';
 
 export interface AIEditProposal {
@@ -210,6 +273,8 @@ interface AIState {
   // 聊天
   chatbotVisible: boolean;
   chatbotMessages: ChatMessage[];
+  chatbotConversations: ChatConversation[];
+  activeChatConversationId: string | null;
   chatbotLoading: boolean;
   chatbotStreamingPhase: 'reasoning' | 'content' | null;
   reasoningEffort: ReasoningEffort;
@@ -236,6 +301,8 @@ interface AIState {
   sendChatMessage: (content: string, attachments?: ChatMessageAttachment[], selection?: { provider: AIProviderId; model: string; searchContext?: string; searchPreview?: ChatSearchContext; workspaceContext?: WorkspaceContextPayload | null }) => Promise<void>;
   stopChatMessage: () => void;
   clearChatHistory: () => void;
+  newChatConversation: () => void;
+  selectChatConversation: (conversationId: string) => void;
   setReasoningEffort: (effort: ReasoningEffort) => void;
   toggleLinkDocument: () => void;
   setLinkedDocument: (doc: { title: string; content: string } | null) => void;
@@ -266,7 +333,9 @@ export const useAIStore = create<AIState>((set, get) => ({
   translationOriginal: '',
   translationResult: '',
   chatbotVisible: false,
-  chatbotMessages: [],
+  chatbotMessages: initialChatHistory.conversations.find((conversation) => conversation.id === initialChatHistory.activeId)?.messages || [],
+  chatbotConversations: initialChatHistory.conversations,
+  activeChatConversationId: initialChatHistory.activeId,
   chatbotLoading: false,
   chatbotStreamingPhase: null,
   reasoningEffort: 'balanced',
@@ -287,7 +356,7 @@ export const useAIStore = create<AIState>((set, get) => ({
     set({
       pendingEdit: { ...proposal, id: `ai-edit-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, createdAt: Date.now() },
       status: 'success',
-      statusMessage: get().editMode === 'agent' ? '代理任务到达写入点，等待确认。' : 'AI 修改建议等待确认。',
+      statusMessage: 'AI 修改建议等待确认。',
     });
   },
 
@@ -437,7 +506,6 @@ export const useAIStore = create<AIState>((set, get) => ({
   getCompanionSuggestion: async (content, context) => {
     const requestSeq = ++companionRequestSeq;
     const settings = useAppStore.getState().settings;
-    console.log('伴写设置:', settings.ai);
 
     if (!settings.ai.enabled) {
       set({ status: 'error', statusMessage: 'AI功能未启用', companionSuggestions: [] });
@@ -480,8 +548,6 @@ export const useAIStore = create<AIState>((set, get) => ({
         context: context || undefined,
         settings: settings.ai,
       };
-      console.log('发送伴写请求:', requestData);
-
       const response = await invokeWithTimeout<{
         success: boolean;
         data: { suggestions: string[] };
@@ -511,10 +577,8 @@ export const useAIStore = create<AIState>((set, get) => ({
 
   rewriteSelection: async (text) => {
     const settings = useAppStore.getState().settings;
-    console.log('重写设置:', settings.ai);
 
     if (!settings.ai.enabled) {
-      console.log('AI功能未启用');
       return text;
     }
 
@@ -531,15 +595,11 @@ export const useAIStore = create<AIState>((set, get) => ({
         content: text,
         settings: settings.ai,
       };
-      console.log('发送重写请求:', requestData);
-
       const response = await invokeWithTimeout<{
         success: boolean;
         data: { rewritten: string };
         message?: string;
       }>('ai_request', requestData, 60000);
-
-      console.log('重写响应:', response);
 
       set({ status: 'idle', statusMessage: '' });
 
@@ -556,10 +616,8 @@ export const useAIStore = create<AIState>((set, get) => ({
 
   translateText: async (text, targetLang = '英文') => {
     const settings = useAppStore.getState().settings;
-    console.log('翻译设置:', settings.ai);
 
     if (!settings.ai.enabled) {
-      console.log('AI功能未启用');
       return text;
     }
 
@@ -577,15 +635,11 @@ export const useAIStore = create<AIState>((set, get) => ({
         context: targetLang,
         settings: settings.ai,
       };
-      console.log('发送翻译请求:', requestData);
-
       const response = await invokeWithTimeout<{
         success: boolean;
         data: { translated: string };
         message?: string;
       }>('ai_request', requestData, 60000);
-
-      console.log('翻译响应:', response);
 
       set({ status: 'idle', statusMessage: '' });
 
@@ -603,10 +657,8 @@ export const useAIStore = create<AIState>((set, get) => ({
 
   summarizeText: async (content) => {
     const settings = useAppStore.getState().settings;
-    console.log('摘要设置:', settings.ai);
 
     if (!settings.ai.enabled) {
-      console.log('AI功能未启用');
       return '';
     }
 
@@ -623,15 +675,11 @@ export const useAIStore = create<AIState>((set, get) => ({
         content,
         settings: settings.ai,
       };
-      console.log('发送摘要请求:', requestData);
-
       const response = await invokeWithTimeout<{
         success: boolean;
         data: { summary: string };
         message?: string;
       }>('ai_request', requestData, 60000);
-
-      console.log('摘要响应:', response);
 
       set({ status: 'idle', statusMessage: '' });
 
@@ -648,10 +696,8 @@ export const useAIStore = create<AIState>((set, get) => ({
 
   generateOutline: async (content) => {
     const settings = useAppStore.getState().settings;
-    console.log('大纲设置:', settings.ai);
 
     if (!settings.ai.enabled) {
-      console.log('AI功能未启用');
       return '';
     }
 
@@ -668,15 +714,11 @@ export const useAIStore = create<AIState>((set, get) => ({
         content,
         settings: settings.ai,
       };
-      console.log('发送大纲请求:', requestData);
-
       const response = await invokeWithTimeout<{
         success: boolean;
         data: { outline: string };
         message?: string;
       }>('ai_request', requestData, 60000);
-
-      console.log('大纲响应:', response);
 
       set({ status: 'idle', statusMessage: '' });
 
@@ -700,6 +742,17 @@ export const useAIStore = create<AIState>((set, get) => ({
   },
 
   sendChatMessage: async (content, attachments, selection) => {
+    const ensureActiveConversation = () => {
+      const state = get();
+      if (state.activeChatConversationId) return state.activeChatConversationId;
+      const id = createConversationId();
+      set({
+        activeChatConversationId: id,
+        chatbotConversations: upsertConversation(state.chatbotConversations, id, state.chatbotMessages),
+      });
+      return id;
+    };
+
     // Browser preview uses the Vite local proxy. Desktop keeps its native
     // streaming path below, while browser testing receives a full reply.
     if (!('__TAURI_INTERNALS__' in window)) {
@@ -732,6 +785,7 @@ export const useAIStore = create<AIState>((set, get) => ({
       const timestamp = Date.now();
       const assistantId = `${timestamp.toString(36)}-browser`;
       const previousMessages = get().chatbotMessages;
+      ensureActiveConversation();
       set({
         chatbotMessages: [
           ...previousMessages,
@@ -869,6 +923,7 @@ export const useAIStore = create<AIState>((set, get) => ({
       timestamp: Date.now(),
       search: selection?.searchPreview,
     };
+    ensureActiveConversation();
     set({
       chatbotMessages: [...prevMessages, userMessage, assistantPlaceholder],
       chatbotLoading: true,
@@ -1000,7 +1055,37 @@ export const useAIStore = create<AIState>((set, get) => ({
   },
 
   clearChatHistory: () => {
-    set({ chatbotMessages: [] });
+    const activeId = get().activeChatConversationId;
+    set((state) => ({
+      chatbotMessages: [],
+      activeChatConversationId: null,
+      chatbotConversations: activeId
+        ? state.chatbotConversations.filter((conversation) => conversation.id !== activeId)
+        : state.chatbotConversations,
+    }));
+  },
+
+  newChatConversation: () => {
+    activeChatRequestId = null;
+    set({
+      chatbotMessages: [],
+      activeChatConversationId: null,
+      chatbotLoading: false,
+      chatbotStreamingPhase: null,
+      linkedDocument: null,
+    });
+  },
+
+  selectChatConversation: (conversationId) => {
+    const conversation = get().chatbotConversations.find((item) => item.id === conversationId);
+    if (!conversation) return;
+    activeChatRequestId = null;
+    set({
+      activeChatConversationId: conversation.id,
+      chatbotMessages: conversation.messages,
+      chatbotLoading: false,
+      chatbotStreamingPhase: null,
+    });
   },
 
   setReasoningEffort: (effort) => {
@@ -1108,3 +1193,42 @@ export const useAIStore = create<AIState>((set, get) => ({
     });
   },
 }));
+
+let chatHistoryPersistTimer: number | null = null;
+
+useAIStore.subscribe((state, previous) => {
+  if (
+    state.chatbotMessages !== previous.chatbotMessages
+    && state.activeChatConversationId
+  ) {
+    useAIStore.setState({
+      chatbotConversations: upsertConversation(
+        state.chatbotConversations,
+        state.activeChatConversationId,
+        state.chatbotMessages,
+      ),
+    });
+    return;
+  }
+
+  if (
+    state.chatbotConversations === previous.chatbotConversations
+    && state.activeChatConversationId === previous.activeChatConversationId
+  ) return;
+
+  if (chatHistoryPersistTimer !== null) window.clearTimeout(chatHistoryPersistTimer);
+  chatHistoryPersistTimer = window.setTimeout(() => {
+    chatHistoryPersistTimer = null;
+    try {
+      localStorage.setItem(CHAT_HISTORY_STORAGE_KEY, JSON.stringify({
+        activeId: useAIStore.getState().activeChatConversationId,
+        conversations: useAIStore.getState().chatbotConversations.map((conversation) => ({
+          ...conversation,
+          messages: safePersistedMessages(conversation.messages),
+        })),
+      }));
+    } catch {
+      // A full storage quota must not interrupt the active conversation.
+    }
+  }, 160);
+});

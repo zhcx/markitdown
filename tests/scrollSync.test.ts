@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { getSyncedScrollTop, syncScrollPosition, type ScrollViewport } from '../src/utils/scrollSync.ts';
+import { getAlignedScrollTop, getSyncedScrollTop, syncScrollPosition, type ScrollViewport } from '../src/utils/scrollSync.ts';
 
 function viewport(top: number, height: number, clientHeight: number) {
   let currentTop = top;
@@ -71,4 +71,11 @@ test('uses cached scroll ranges without reading layout dimensions', () => {
   };
 
   assert.equal(getSyncedScrollTop(source, target, [], { sourceMax: 800, targetMax: 1600 }), 800);
+});
+
+test('clamps line alignment at scroll boundaries so the opposite pane can compensate', () => {
+  assert.equal(getAlignedScrollTop(68, 824, 924, 1000), 0);
+  assert.equal(getAlignedScrollTop(68, 824, 892, 1000), 0);
+  assert.equal(getAlignedScrollTop(68, 1400, 500, 800), 800);
+  assert.equal(getAlignedScrollTop(68, 700, 500, 800), 268);
 });

@@ -1,4 +1,4 @@
-import { useDeferredValue, useEffect, useRef, useState } from 'react';
+import { useCallback, useDeferredValue, useEffect, useRef, useState } from 'react';
 import MarkdownIt from 'markdown-it';
 import taskLists from 'markdown-it-task-lists';
 import hljs from 'highlight.js';
@@ -6,12 +6,16 @@ import katex from 'katex';
 import 'katex/dist/katex.min.css';
 import { useAppStore } from '../../stores/appStore';
 import { sanitizeRenderedHtml } from '../../utils/safeHtml';
+import { findActiveSourceElement } from '../../utils/activeSourceLine';
+import { addHeadingAnchors, findLocalHeadingTarget } from '../../utils/headingAnchors';
 
 interface PreviewProps {
   className?: string;
   style?: React.CSSProperties;
   onScrollContainerReady?: (element: HTMLDivElement | null) => void;
   onContentRendered?: () => void;
+  activeEditorLine?: number;
+  onSourceLineClick?: (lineNumber: number) => void;
 }
 
 const md = new MarkdownIt({
@@ -56,6 +60,27 @@ md.renderer.rules.heading_open = (tokens, index, options, _env, self) => {
   if (token.map) token.attrSet('data-source-line', String(token.map[0] + 1));
   return self.renderToken(tokens, index, options);
 };
+
+function addListItemContentAnchors(container: HTMLElement) {
+  container.querySelectorAll<HTMLLIElement>('li[data-source-line]').forEach((item) => {
+    // Loose lists already have a paragraph anchor that excludes nested lists.
+    if (item.querySelector(':scope > p[data-source-line]')) return;
+
+    const sourceLine = item.dataset.sourceLine;
+    const directNodes = Array.from(item.childNodes);
+    const nestedListIndex = directNodes.findIndex(
+      (node) => node instanceof HTMLElement && (node.tagName === 'UL' || node.tagName === 'OL'),
+    );
+    const contentNodes = nestedListIndex >= 0 ? directNodes.slice(0, nestedListIndex) : directNodes;
+    if (!sourceLine || contentNodes.length === 0) return;
+
+    const anchor = document.createElement('span');
+    anchor.className = 'preview-list-item-content';
+    anchor.dataset.sourceLine = sourceLine;
+    item.insertBefore(anchor, contentNodes[0]);
+    contentNodes.forEach((node) => anchor.appendChild(node));
+  });
+}
 
 function videoEmbedUrl(rawUrl: string) {
   try {
@@ -126,7 +151,7 @@ const renderMath = (source: string) => source
     }).join('');
   }).join('');
 
-export function Preview({ className, style, onScrollContainerReady, onContentRendered }: PreviewProps) {
+export function Preview({ className, style, onScrollContainerReady, onContentRendered, activeEditorLine = 1, onSourceLineClick }: PreviewProps) {
   const containerRef = useRef<HTMLElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
   // CSS variables handle normal Markdown theme changes without touching the
@@ -173,6 +198,8 @@ export function Preview({ className, style, onScrollContainerReady, onContentRen
 
     const rendered = sanitizeRenderedHtml(md.render(renderMath(renderVideoExtensions(deferredContent))));
     containerRef.current.innerHTML = rendered;
+    addHeadingAnchors(containerRef.current);
+    addListItemContentAnchors(containerRef.current);
     onContentRendered?.();
 
     // Mermaid is imported and rendered only when a diagram is close to the
@@ -245,9 +272,42 @@ export function Preview({ className, style, onScrollContainerReady, onContentRen
     };
   }, [deferredContent, mermaidThemeVersion, onContentRendered]);
 
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const activeElement = findActiveSourceElement(container, activeEditorLine);
+    activeElement?.classList.add('is-active-source-block');
+
+    return () => activeElement?.classList.remove('is-active-source-block');
+  }, [activeEditorLine, deferredContent, mermaidThemeVersion]);
+
+  const handleSourceClick = useCallback((event: React.MouseEvent<HTMLElement>) => {
+    if (event.button !== 0) return;
+    const clickedElement = event.target instanceof Element ? event.target : null;
+    const localLink = clickedElement?.closest<HTMLAnchorElement>('a[href^="#"]');
+    const container = containerRef.current;
+    if (localLink && container) {
+      const destination = findLocalHeadingTarget(container, localLink.getAttribute('href') || '');
+      if (destination) {
+        event.preventDefault();
+        destination.scrollIntoView({ block: 'start' });
+        const destinationLine = Number(destination.dataset.sourceLine);
+        if (Number.isFinite(destinationLine) && destinationLine > 0) onSourceLineClick?.(destinationLine);
+        return;
+      }
+    }
+
+    const target = clickedElement
+      ? clickedElement.closest<HTMLElement>('[data-source-line]')
+      : null;
+    const lineNumber = Number(target?.dataset.sourceLine);
+    if (Number.isFinite(lineNumber) && lineNumber > 0) onSourceLineClick?.(lineNumber);
+  }, [onSourceLineClick]);
+
   const containerStyle: React.CSSProperties = {
     fontFamily: settings.appearance.font_family,
-    fontSize: settings.appearance.font_size,
+    fontSize: 'var(--font-content-size)',
     lineHeight: settings.appearance.line_height,
   };
 
@@ -257,7 +317,7 @@ export function Preview({ className, style, onScrollContainerReady, onContentRen
       style={{ ...containerStyle, ...style }}
     >
       <div ref={cardRef} className={`preview-card ${isEmpty ? 'is-empty' : ''}`}>
-        <article ref={containerRef} className="preview-document markdown-body" />
+        <article ref={containerRef} className="preview-document markdown-body" onClick={handleSourceClick} />
         {isEmpty && (
           <div className="preview-empty-state">
             <span className="preview-empty-mark" aria-hidden="true">↗</span>

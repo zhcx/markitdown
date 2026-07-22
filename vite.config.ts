@@ -235,7 +235,9 @@ export default defineConfig({
     },
   ],
   build: {
-    chunkSizeWarningLimit: 2500,
+    // Monaco is the primary offline editor and is intentionally isolated in
+    // one cacheable chunk. Keep the warning useful for anything larger.
+    chunkSizeWarningLimit: 4000,
     rollupOptions: {
       output: {
         manualChunks(id) {

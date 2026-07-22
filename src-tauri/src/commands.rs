@@ -9,6 +9,38 @@ use tauri::{AppHandle, Emitter, Manager};
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
+#[tauri::command]
+pub fn reveal_in_file_manager(path: String) -> Result<(), String> {
+    let target = PathBuf::from(&path);
+    if !target.exists() {
+        return Err(format!("文件不存在：{}", target.display()));
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("explorer.exe")
+            .arg(format!("/select,{}", target.display()))
+            .spawn()
+            .map_err(|error| format!("无法在文件夹中显示文件：{error}"))?;
+    }
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .args(["-R", &path])
+            .spawn()
+            .map_err(|error| format!("无法在 Finder 中显示文件：{error}"))?;
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        let parent = target.parent().unwrap_or(&target);
+        std::process::Command::new("xdg-open")
+            .arg(parent)
+            .spawn()
+            .map_err(|error| format!("无法打开文件夹：{error}"))?;
+    }
+    Ok(())
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateInfo {
     pub has_update: bool,
@@ -45,7 +77,42 @@ pub struct Settings {
     pub export: ExportSettings,
     pub ai: AISettings,
     #[serde(default)]
+    pub agent: AgentSettings,
+    #[serde(default)]
     pub web_search: WebSearchSettings,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct AgentBackendConfig {
+    #[serde(default)]
+    pub executable_path: String,
+    #[serde(default)]
+    pub model: String,
+    #[serde(default)]
+    pub profile: String,
+    #[serde(default)]
+    pub reasoning_effort: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentSettings {
+    pub enabled: bool,
+    pub backend: String,
+    pub backends: std::collections::HashMap<String, AgentBackendConfig>,
+}
+
+impl Default for AgentSettings {
+    fn default() -> Self {
+        let backends = ["claude_code", "codex", "opencode"]
+            .into_iter()
+            .map(|id| (id.to_string(), AgentBackendConfig::default()))
+            .collect();
+        Self {
+            enabled: false,
+            backend: "claude_code".into(),
+            backends,
+        }
+    }
 }
 
 fn default_ui_font_family() -> String {
@@ -228,6 +295,7 @@ impl Default for Settings {
                 provider_api_keys: "{}".into(),
                 provider_profiles: "{}".into(),
             },
+            agent: AgentSettings::default(),
             web_search: WebSearchSettings {
                 enabled: false,
                 provider: "tavily".into(),
@@ -1614,7 +1682,17 @@ fn compare_versions(latest: &str, current: &str) -> Result<bool, String> {
 
 #[cfg(test)]
 mod update_tests {
-    use super::{extract_latest_tag_from_atom, validate_update_download};
+    use super::{extract_latest_tag_from_atom, validate_update_download, Settings};
+
+    #[test]
+    fn old_settings_without_agent_configuration_receive_safe_defaults() {
+        let mut value = serde_json::to_value(Settings::default()).unwrap();
+        value.as_object_mut().unwrap().remove("agent");
+        let restored: Settings = serde_json::from_value(value).unwrap();
+        assert!(!restored.agent.enabled);
+        assert_eq!(restored.agent.backend, "claude_code");
+        assert_eq!(restored.agent.backends.len(), 3);
+    }
 
     #[test]
     fn extracts_the_first_release_tag_from_an_atom_feed() {

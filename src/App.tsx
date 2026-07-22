@@ -22,9 +22,10 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { message, save as chooseSaveFile } from '@tauri-apps/plugin-dialog';
-import { createElementScrollViewport, getSyncedScrollTop, type ObservableScrollViewport, type ScrollAnchor, type ScrollRange } from './utils/scrollSync';
+import { createElementScrollViewport, getAlignedScrollTop, getSyncedScrollTop, type ObservableScrollViewport, type ScrollAnchor, type ScrollRange } from './utils/scrollSync';
 import { getImmersiveWorkspacePolicy } from './utils/immersiveWorkspace';
 import { guardWindowClose, type CloseGuardTab, type UnsavedChangesAction } from './utils/windowCloseGuard';
+import { findActiveSourceElement } from './utils/activeSourceLine';
 import './styles/main.css';
 import './styles/workbench.css';
 
@@ -36,7 +37,6 @@ interface DragDropPayload {
 const DEFAULT_EDITOR_RATIO = 0.5;
 const SUPPORTED_THEMES = new Set([
   'vscode-light', 'vscode-dark',
-  'inkwell-light', 'inkwell-dark',
   'claude-light', 'claude-dark',
   'notion-light', 'notion-dark',
 ]);
@@ -104,6 +104,7 @@ function App() {
   const [chatbotPanelWidth, setChatbotPanelWidth] = useState(340);
   const [previewScrollElement, setPreviewScrollElement] = useState<HTMLDivElement | null>(null);
   const [previewRenderVersion, setPreviewRenderVersion] = useState(0);
+  const [activeEditorLine, setActiveEditorLine] = useState(1);
   const [activityView, setActivityView] = useState<'explorer' | 'search'>('explorer');
   const [immersiveOutlineCollapsed, setImmersiveOutlineCollapsed] = useState(false);
   const [immersivePreviewScrollElement, setImmersivePreviewScrollElement] = useState<HTMLDivElement | null>(null);
@@ -115,7 +116,9 @@ function App() {
     anchors: ScrollAnchor[];
     range: ScrollRange;
   } | null>(null);
-  const programmaticScrollRef = useRef<{ viewport: ObservableScrollViewport; top: number } | null>(null);
+  const programmaticScrollTargetsRef = useRef(new Map<ObservableScrollViewport, number>());
+  const revealPreviewLineRef = useRef<(lineNumber: number) => void>(() => undefined);
+  const revealEditorLineRef = useRef<(lineNumber: number) => void>(() => undefined);
   const closeGuardInProgress = useRef(false);
   const closePromptResolver = useRef<((action: UnsavedChangesAction) => void) | null>(null);
   const dragValues = useRef({ splitRatio, sidebarWidth, proofreadPanelWidth, chatbotPanelWidth });
@@ -555,11 +558,26 @@ function App() {
     setPreviewRenderVersion((version) => version + 1);
   }, []);
 
+  const handleEditorLineReveal = useCallback((lineNumber: number) => {
+    revealPreviewLineRef.current(lineNumber);
+  }, []);
+
+  const handlePreviewSourceClick = useCallback((lineNumber: number) => {
+    const editor = useAppStore.getState().editorView;
+    if (!editor) return;
+    const line = editor.line(lineNumber);
+    setActiveEditorLine(line.number);
+    editor.setSelection(line.from);
+    revealEditorLineRef.current(line.number);
+    editor.focus();
+  }, []);
+
   useEffect(() => {
     if (mode !== 'split' || !editorView || !previewScrollElement) return undefined;
 
     const editorViewport: ObservableScrollViewport = editorView;
     const previewViewport = createElementScrollViewport(previewScrollElement);
+    const programmaticScrollTargets = programmaticScrollTargetsRef.current;
 
     let editorToPreviewAnchors: ScrollAnchor[] = [];
     let previewToEditorAnchors: ScrollAnchor[] = [];
@@ -602,15 +620,75 @@ function App() {
     };
     rebuildScrollAnchors();
 
+    const stopPendingScrollSync = () => {
+      pendingScrollSync.current = null;
+      if (scrollSyncFrame.current !== null) {
+        window.cancelAnimationFrame(scrollSyncFrame.current);
+        scrollSyncFrame.current = null;
+      }
+    };
+    const alignEditorLineWithPreview = (lineNumber: number, direction: 'editor-to-preview' | 'preview-to-editor') => {
+      const target = findActiveSourceElement(previewScrollElement, lineNumber);
+      if (!target) return;
+
+      const editorBounds = editorView.scrollDOM.getBoundingClientRect();
+      const previewBounds = previewScrollElement.getBoundingClientRect();
+      const targetBounds = target.getBoundingClientRect();
+      const editorLineTop = editorView.getTopForLineNumber(lineNumber);
+      stopPendingScrollSync();
+
+      if (direction === 'editor-to-preview') {
+        const editorLineScreenTop = editorBounds.top + editorLineTop - editorViewport.getScrollTop();
+        const targetContentTop = previewViewport.getScrollTop() + targetBounds.top - previewBounds.top;
+        const previewMaxScroll = Math.max(0, previewViewport.getScrollHeight() - previewViewport.getClientHeight());
+        const nextTop = getAlignedScrollTop(previewBounds.top, targetContentTop, editorLineScreenTop, previewMaxScroll);
+        if (Math.abs(previewViewport.getScrollTop() - nextTop) >= 0.5) {
+          programmaticScrollTargets.set(previewViewport, nextTop);
+          previewViewport.setScrollTop(nextTop);
+        }
+
+        const previewTargetScreenTop = previewBounds.top + targetContentTop - nextTop;
+        const editorMaxScroll = Math.max(0, editorViewport.getScrollHeight() - editorViewport.getClientHeight());
+        const fallbackEditorTop = getAlignedScrollTop(editorBounds.top, editorLineTop, previewTargetScreenTop, editorMaxScroll);
+        if (Math.abs(editorViewport.getScrollTop() - fallbackEditorTop) >= 0.5) {
+          programmaticScrollTargets.set(editorViewport, fallbackEditorTop);
+          editorViewport.setScrollTop(fallbackEditorTop);
+        }
+        return;
+      }
+
+      const previewTargetScreenTop = targetBounds.top;
+      const editorMaxScroll = Math.max(0, editorViewport.getScrollHeight() - editorViewport.getClientHeight());
+      const nextTop = getAlignedScrollTop(editorBounds.top, editorLineTop, previewTargetScreenTop, editorMaxScroll);
+      if (Math.abs(editorViewport.getScrollTop() - nextTop) >= 0.5) {
+        programmaticScrollTargets.set(editorViewport, nextTop);
+        editorViewport.setScrollTop(nextTop);
+      }
+
+      const editorLineScreenTop = editorBounds.top + editorLineTop - nextTop;
+      const targetContentTop = previewViewport.getScrollTop() + targetBounds.top - previewBounds.top;
+      const previewMaxScroll = Math.max(0, previewViewport.getScrollHeight() - previewViewport.getClientHeight());
+      const fallbackPreviewTop = getAlignedScrollTop(previewBounds.top, targetContentTop, editorLineScreenTop, previewMaxScroll);
+      if (Math.abs(previewViewport.getScrollTop() - fallbackPreviewTop) >= 0.5) {
+        programmaticScrollTargets.set(previewViewport, fallbackPreviewTop);
+        previewViewport.setScrollTop(fallbackPreviewTop);
+      }
+    };
+    const revealPreviewLine = (lineNumber: number) => alignEditorLineWithPreview(lineNumber, 'editor-to-preview');
+    const revealEditorLine = (lineNumber: number) => alignEditorLineWithPreview(lineNumber, 'preview-to-editor');
+    revealPreviewLineRef.current = revealPreviewLine;
+    revealEditorLineRef.current = revealEditorLine;
+
     const syncScroll = (
       source: ObservableScrollViewport,
       target: ObservableScrollViewport,
       anchors: ScrollAnchor[],
       range: ScrollRange,
     ) => {
-      const ignored = programmaticScrollRef.current;
-      if (ignored?.viewport === source && Math.abs(source.getScrollTop() - ignored.top) < 0.5) {
-        return;
+      const ignoredTop = programmaticScrollTargets.get(source);
+      if (ignoredTop !== undefined) {
+        programmaticScrollTargets.delete(source);
+        if (Math.abs(source.getScrollTop() - ignoredTop) < 0.5) return;
       }
 
       pendingScrollSync.current = { source, target, anchors, range };
@@ -629,7 +707,7 @@ function App() {
         // while preserving the feel of one-to-one scrolling for long documents.
         if (Math.abs(latestTarget.getScrollTop() - nextTop) < 0.5) return;
 
-        programmaticScrollRef.current = { viewport: latestTarget, top: nextTop };
+        programmaticScrollTargets.set(latestTarget, nextTop);
         latestTarget.setScrollTop(nextTop);
       });
     };
@@ -681,7 +759,9 @@ function App() {
       }
 
       pendingScrollSync.current = null;
-      programmaticScrollRef.current = null;
+      programmaticScrollTargets.clear();
+      if (revealPreviewLineRef.current === revealPreviewLine) revealPreviewLineRef.current = () => undefined;
+      if (revealEditorLineRef.current === revealEditorLine) revealEditorLineRef.current = () => undefined;
     };
   }, [mode, editorView, previewScrollElement, previewRenderVersion]);
 
@@ -730,7 +810,11 @@ function App() {
                     <Toolbar />
                   </div>
                 )}
-                <Editor className="editor-pane" />
+                <Editor
+                  className="editor-pane"
+                  onActiveLineChange={setActiveEditorLine}
+                  onActiveLineReveal={handleEditorLineReveal}
+                />
               </section>
               <div
                 ref={dividerRef}
@@ -746,6 +830,8 @@ function App() {
                   <Preview
                     className="preview-pane"
                     style={{ flex: 1 }}
+                    activeEditorLine={activeEditorLine}
+                    onSourceLineClick={handlePreviewSourceClick}
                     onScrollContainerReady={handlePreviewScrollContainerReady}
                     onContentRendered={handlePreviewContentRendered}
                   />
@@ -855,10 +941,16 @@ function App() {
                 </header>
                 <div className="immersive-document-surface">
                   {mode === 'zen' ? (
-                    <Editor className="zen-editor-pane" />
+                    <Editor
+                      className="zen-editor-pane"
+                      onActiveLineChange={setActiveEditorLine}
+                      onActiveLineReveal={handleEditorLineReveal}
+                    />
                   ) : (
                     <Preview
                       className="immersive-preview"
+                      activeEditorLine={activeEditorLine}
+                      onSourceLineClick={handlePreviewSourceClick}
                       onScrollContainerReady={setImmersivePreviewScrollElement}
                     />
                   )}

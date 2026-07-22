@@ -19,6 +19,16 @@ export interface ScrollRange {
   targetMax: number;
 }
 
+export function getAlignedScrollTop(
+  containerScreenTop: number,
+  contentTop: number,
+  targetScreenTop: number,
+  maxScroll: number,
+): number {
+  const safeMax = Math.max(0, maxScroll);
+  return Math.max(0, Math.min(containerScreenTop + contentTop - targetScreenTop, safeMax));
+}
+
 const sortedAnchorCache = new WeakMap<ScrollAnchor[], ScrollAnchor[]>();
 
 function getSortedAnchors(anchors: ScrollAnchor[]): ScrollAnchor[] {
