@@ -198,24 +198,9 @@ jobs:
         id: signpath
         shell: pwsh
         run: |
-          $required = @(
-            $env:SIGNPATH_API_TOKEN,
-            $env:SIGNPATH_ORGANIZATION_ID,
-            $env:SIGNPATH_PROJECT_SLUG,
-            $env:SIGNPATH_SIGNING_POLICY_SLUG,
-            $env:SIGNPATH_EXECUTABLES_ARTIFACT_CONFIGURATION_SLUG,
-            $env:SIGNPATH_INSTALLERS_ARTIFACT_CONFIGURATION_SLUG
-          )
-          $enabled = -not ($required | Where-Object { [string]::IsNullOrWhiteSpace($_) })
-          if ($enabled) {
-            "enabled=true" >> $env:GITHUB_OUTPUT
-            "SIGNPATH_ENABLED=true" >> $env:GITHUB_ENV
-            Write-Host "SignPath two-stage signing is enabled. Each request requires manual approval."
-          } else {
-            "enabled=false" >> $env:GITHUB_OUTPUT
-            "SIGNPATH_ENABLED=false" >> $env:GITHUB_ENV
-            Write-Warning "SignPath is not fully configured. Publishing explicitly unsigned Windows installers."
-          }
+          "enabled=false" >> $env:GITHUB_OUTPUT
+          "SIGNPATH_ENABLED=false" >> $env:GITHUB_ENV
+          Write-Host "Code signing disabled for this build."
 
       - name: Build hash-locked document converter
         shell: pwsh
