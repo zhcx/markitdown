@@ -3886,6 +3886,17 @@ textarea {
   background: transparent !important;
 }
 
+.preview-document .is-active-source-block {
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--accent-color) 10%, transparent) !important;
+  box-shadow: -4px 0 0 color-mix(in srgb, var(--accent-color) 42%, transparent);
+  transition: background-color 120ms ease, box-shadow 120ms ease;
+}
+
+.preview-document table.is-active-source-block :is(th, td) {
+  background: color-mix(in srgb, var(--accent-color) 10%, transparent) !important;
+}
+
 .monaco-proofread-error {
   background: color-mix(in srgb, var(--danger-color) 18%, transparent);
   border-bottom: 2px solid var(--danger-color);

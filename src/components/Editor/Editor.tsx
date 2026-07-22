@@ -22,6 +22,8 @@ import { sanitizeRenderedHtml } from '../../utils/safeHtml';
 interface EditorProps {
   className?: string;
   style?: React.CSSProperties;
+  onActiveLineChange?: (lineNumber: number) => void;
+  onActiveLineReveal?: (lineNumber: number) => void;
 }
 
 const MIN_AUTO_COMPANION_CHARS = 6;
@@ -195,7 +197,7 @@ async function fileAsDataUrl(file: File) {
   });
 }
 
-export function Editor({ className, style }: EditorProps) {
+export function Editor({ className, style, onActiveLineChange, onActiveLineReveal }: EditorProps) {
   const editorRef = useRef<HTMLDivElement>(null);
   const monacoRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const modelRef = useRef<monaco.editor.ITextModel | null>(null);
@@ -394,7 +396,7 @@ export function Editor({ className, style }: EditorProps) {
       wrappingIndent: 'same',
       renderWhitespace: 'selection',
       renderLineHighlight: 'line',
-      renderLineHighlightOnlyWhenFocus: true,
+      renderLineHighlightOnlyWhenFocus: false,
       scrollBeyondLastLine: false,
       ...EDITOR_OVERFLOW_OPTIONS,
       smoothScrolling: true,
@@ -410,6 +412,7 @@ export function Editor({ className, style }: EditorProps) {
     modelRef.current = model;
     controllerRef.current = controller;
     setEditorView(controller);
+    onActiveLineChange?.(editor.getPosition()?.lineNumber || 1);
 
     const handleContextMenu = (event: MouseEvent) => {
       event.preventDefault();
@@ -595,9 +598,14 @@ export function Editor({ className, style }: EditorProps) {
       refreshSlashMenu();
     });
     const cursorDisposable = editor.onDidChangeCursorSelection(() => {
+      onActiveLineChange?.(editor.getPosition()?.lineNumber || 1);
       scheduleCompanion();
       refreshSlashMenu();
       refreshSelectionToolbar();
+    });
+    const mouseDisposable = editor.onMouseDown((event) => {
+      const lineNumber = event.target.position?.lineNumber;
+      if (lineNumber) onActiveLineReveal?.(lineNumber);
     });
     const scrollDisposable = editor.onDidScrollChange(() => {
       scheduleTextFit();
@@ -698,6 +706,7 @@ export function Editor({ className, style }: EditorProps) {
       window.removeEventListener('markitdown-theme-change', handleTheme);
       contentDisposable.dispose();
       cursorDisposable.dispose();
+      mouseDisposable.dispose();
       scrollDisposable.dispose();
       slashKeyDisposable.dispose();
       layoutDisposable.dispose();
@@ -710,7 +719,7 @@ export function Editor({ className, style }: EditorProps) {
       slashMenuRef.current = null;
       setEditorView(null);
     };
-  }, [setContent, setEditorView]);
+  }, [onActiveLineChange, onActiveLineReveal, setContent, setEditorView]);
 
   useEffect(() => {
     const model = modelRef.current;

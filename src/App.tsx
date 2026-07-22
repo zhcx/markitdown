@@ -25,6 +25,7 @@ import { message, save as chooseSaveFile } from '@tauri-apps/plugin-dialog';
 import { createElementScrollViewport, getSyncedScrollTop, type ObservableScrollViewport, type ScrollAnchor, type ScrollRange } from './utils/scrollSync';
 import { getImmersiveWorkspacePolicy } from './utils/immersiveWorkspace';
 import { guardWindowClose, type CloseGuardTab, type UnsavedChangesAction } from './utils/windowCloseGuard';
+import { findActiveSourceElement } from './utils/activeSourceLine';
 import './styles/main.css';
 import './styles/workbench.css';
 
@@ -103,6 +104,7 @@ function App() {
   const [chatbotPanelWidth, setChatbotPanelWidth] = useState(340);
   const [previewScrollElement, setPreviewScrollElement] = useState<HTMLDivElement | null>(null);
   const [previewRenderVersion, setPreviewRenderVersion] = useState(0);
+  const [activeEditorLine, setActiveEditorLine] = useState(1);
   const [activityView, setActivityView] = useState<'explorer' | 'search'>('explorer');
   const [immersiveOutlineCollapsed, setImmersiveOutlineCollapsed] = useState(false);
   const [immersivePreviewScrollElement, setImmersivePreviewScrollElement] = useState<HTMLDivElement | null>(null);
@@ -115,6 +117,8 @@ function App() {
     range: ScrollRange;
   } | null>(null);
   const programmaticScrollRef = useRef<{ viewport: ObservableScrollViewport; top: number } | null>(null);
+  const revealPreviewLineRef = useRef<(lineNumber: number) => void>(() => undefined);
+  const revealEditorLineRef = useRef<(lineNumber: number) => void>(() => undefined);
   const closeGuardInProgress = useRef(false);
   const closePromptResolver = useRef<((action: UnsavedChangesAction) => void) | null>(null);
   const dragValues = useRef({ splitRatio, sidebarWidth, proofreadPanelWidth, chatbotPanelWidth });
@@ -554,6 +558,20 @@ function App() {
     setPreviewRenderVersion((version) => version + 1);
   }, []);
 
+  const handleEditorLineReveal = useCallback((lineNumber: number) => {
+    revealPreviewLineRef.current(lineNumber);
+  }, []);
+
+  const handlePreviewSourceClick = useCallback((lineNumber: number) => {
+    const editor = useAppStore.getState().editorView;
+    if (!editor) return;
+    const line = editor.line(lineNumber);
+    setActiveEditorLine(line.number);
+    editor.setSelection(line.from);
+    revealEditorLineRef.current(line.number);
+    editor.focus();
+  }, []);
+
   useEffect(() => {
     if (mode !== 'split' || !editorView || !previewScrollElement) return undefined;
 
@@ -600,6 +618,44 @@ function App() {
       }));
     };
     rebuildScrollAnchors();
+
+    const stopPendingScrollSync = () => {
+      pendingScrollSync.current = null;
+      if (scrollSyncFrame.current !== null) {
+        window.cancelAnimationFrame(scrollSyncFrame.current);
+        scrollSyncFrame.current = null;
+      }
+    };
+    const alignEditorLineWithPreview = (lineNumber: number, direction: 'editor-to-preview' | 'preview-to-editor') => {
+      const target = findActiveSourceElement(previewScrollElement, lineNumber);
+      if (!target) return;
+
+      const editorBounds = editorView.scrollDOM.getBoundingClientRect();
+      const previewBounds = previewScrollElement.getBoundingClientRect();
+      const targetBounds = target.getBoundingClientRect();
+      const editorLineTop = editorView.getTopForLineNumber(lineNumber);
+      stopPendingScrollSync();
+
+      if (direction === 'editor-to-preview') {
+        const editorLineScreenTop = editorBounds.top + editorLineTop - editorViewport.getScrollTop();
+        const targetContentTop = previewViewport.getScrollTop() + targetBounds.top - previewBounds.top;
+        const previewMaxScroll = Math.max(0, previewViewport.getScrollHeight() - previewViewport.getClientHeight());
+        const nextTop = Math.max(0, Math.min(targetContentTop + previewBounds.top - editorLineScreenTop, previewMaxScroll));
+        programmaticScrollRef.current = { viewport: previewViewport, top: nextTop };
+        previewViewport.setScrollTop(nextTop);
+        return;
+      }
+
+      const previewTargetScreenTop = targetBounds.top;
+      const editorMaxScroll = Math.max(0, editorViewport.getScrollHeight() - editorViewport.getClientHeight());
+      const nextTop = Math.max(0, Math.min(editorBounds.top + editorLineTop - previewTargetScreenTop, editorMaxScroll));
+      programmaticScrollRef.current = { viewport: editorViewport, top: nextTop };
+      editorViewport.setScrollTop(nextTop);
+    };
+    const revealPreviewLine = (lineNumber: number) => alignEditorLineWithPreview(lineNumber, 'editor-to-preview');
+    const revealEditorLine = (lineNumber: number) => alignEditorLineWithPreview(lineNumber, 'preview-to-editor');
+    revealPreviewLineRef.current = revealPreviewLine;
+    revealEditorLineRef.current = revealEditorLine;
 
     const syncScroll = (
       source: ObservableScrollViewport,
@@ -681,6 +737,8 @@ function App() {
 
       pendingScrollSync.current = null;
       programmaticScrollRef.current = null;
+      if (revealPreviewLineRef.current === revealPreviewLine) revealPreviewLineRef.current = () => undefined;
+      if (revealEditorLineRef.current === revealEditorLine) revealEditorLineRef.current = () => undefined;
     };
   }, [mode, editorView, previewScrollElement, previewRenderVersion]);
 
@@ -729,7 +787,11 @@ function App() {
                     <Toolbar />
                   </div>
                 )}
-                <Editor className="editor-pane" />
+                <Editor
+                  className="editor-pane"
+                  onActiveLineChange={setActiveEditorLine}
+                  onActiveLineReveal={handleEditorLineReveal}
+                />
               </section>
               <div
                 ref={dividerRef}
@@ -745,6 +807,8 @@ function App() {
                   <Preview
                     className="preview-pane"
                     style={{ flex: 1 }}
+                    activeEditorLine={activeEditorLine}
+                    onSourceLineClick={handlePreviewSourceClick}
                     onScrollContainerReady={handlePreviewScrollContainerReady}
                     onContentRendered={handlePreviewContentRendered}
                   />
@@ -854,10 +918,16 @@ function App() {
                 </header>
                 <div className="immersive-document-surface">
                   {mode === 'zen' ? (
-                    <Editor className="zen-editor-pane" />
+                    <Editor
+                      className="zen-editor-pane"
+                      onActiveLineChange={setActiveEditorLine}
+                      onActiveLineReveal={handleEditorLineReveal}
+                    />
                   ) : (
                     <Preview
                       className="immersive-preview"
+                      activeEditorLine={activeEditorLine}
+                      onSourceLineClick={handlePreviewSourceClick}
                       onScrollContainerReady={setImmersivePreviewScrollElement}
                     />
                   )}

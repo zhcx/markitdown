@@ -1,4 +1,4 @@
-import { useDeferredValue, useEffect, useRef, useState } from 'react';
+import { useCallback, useDeferredValue, useEffect, useRef, useState } from 'react';
 import MarkdownIt from 'markdown-it';
 import taskLists from 'markdown-it-task-lists';
 import hljs from 'highlight.js';
@@ -6,12 +6,15 @@ import katex from 'katex';
 import 'katex/dist/katex.min.css';
 import { useAppStore } from '../../stores/appStore';
 import { sanitizeRenderedHtml } from '../../utils/safeHtml';
+import { findActiveSourceElement } from '../../utils/activeSourceLine';
 
 interface PreviewProps {
   className?: string;
   style?: React.CSSProperties;
   onScrollContainerReady?: (element: HTMLDivElement | null) => void;
   onContentRendered?: () => void;
+  activeEditorLine?: number;
+  onSourceLineClick?: (lineNumber: number) => void;
 }
 
 const md = new MarkdownIt({
@@ -126,7 +129,7 @@ const renderMath = (source: string) => source
     }).join('');
   }).join('');
 
-export function Preview({ className, style, onScrollContainerReady, onContentRendered }: PreviewProps) {
+export function Preview({ className, style, onScrollContainerReady, onContentRendered, activeEditorLine = 1, onSourceLineClick }: PreviewProps) {
   const containerRef = useRef<HTMLElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
   // CSS variables handle normal Markdown theme changes without touching the
@@ -245,6 +248,25 @@ export function Preview({ className, style, onScrollContainerReady, onContentRen
     };
   }, [deferredContent, mermaidThemeVersion, onContentRendered]);
 
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const activeElement = findActiveSourceElement(container, activeEditorLine);
+    activeElement?.classList.add('is-active-source-block');
+
+    return () => activeElement?.classList.remove('is-active-source-block');
+  }, [activeEditorLine, deferredContent, mermaidThemeVersion]);
+
+  const handleSourceClick = useCallback((event: React.MouseEvent<HTMLElement>) => {
+    if (event.button !== 0) return;
+    const target = event.target instanceof Element
+      ? event.target.closest<HTMLElement>('[data-source-line]')
+      : null;
+    const lineNumber = Number(target?.dataset.sourceLine);
+    if (Number.isFinite(lineNumber) && lineNumber > 0) onSourceLineClick?.(lineNumber);
+  }, [onSourceLineClick]);
+
   const containerStyle: React.CSSProperties = {
     fontFamily: settings.appearance.font_family,
     fontSize: 'var(--font-content-size)',
@@ -257,7 +279,7 @@ export function Preview({ className, style, onScrollContainerReady, onContentRen
       style={{ ...containerStyle, ...style }}
     >
       <div ref={cardRef} className={`preview-card ${isEmpty ? 'is-empty' : ''}`}>
-        <article ref={containerRef} className="preview-document markdown-body" />
+        <article ref={containerRef} className="preview-document markdown-body" onClick={handleSourceClick} />
         {isEmpty && (
           <div className="preview-empty-state">
             <span className="preview-empty-mark" aria-hidden="true">↗</span>
