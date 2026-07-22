@@ -5,7 +5,7 @@ MarkitDown Desktop can run Claude Code, Codex, or OpenCode from the AI side pane
 ## Requirements
 
 - Install and sign in to at least one supported CLI: `claude`, `codex`, or `opencode`.
-- Open the root of a Git repository as the MarkitDown workspace.
+- Open the directory you want to use as the MarkitDown workspace. Git repository roots use isolated worktrees; other directories require explicit session authorization and are edited directly.
 - Enable **Local Agent (Beta)** under **Settings → AI Assistant**, then run environment detection.
 - Leave executable, model, and profile fields empty to reuse the CLI defaults.
 
