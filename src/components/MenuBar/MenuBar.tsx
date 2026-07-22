@@ -149,7 +149,7 @@ graph TD
     about: {
       title: '关于 MarkitDown',
       body: `
-**MarkitDown v0.3.0**
+**MarkitDown v0.3.4**
 
 一款现代化的 Markdown 编辑器
 
