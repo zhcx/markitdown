@@ -40,10 +40,20 @@ interface SidebarProps {
   view?: 'explorer' | 'search';
 }
 
-type ContextMenuState = { x: number; y: number; node: FileNode } | null;
+type ContextMenuState = { x: number; y: number; node: FileNode; targetType: 'file' | 'folder' | 'root' } | null;
+type FsClipboard = { sourcePath: string; operation: 'copy' | 'cut' } | null;
 type TimelineHoverState = { entry: TimelineEntry; x: number; y: number } | null;
 type TimelineDialogState = { entry: TimelineEntry; mode: 'preview' | 'diff' } | null;
 type TimelineDiffLine = { kind: 'same' | 'added' | 'removed' | 'collapsed'; text: string };
+type RenameState = { path: string; name: string } | null;
+type CreateState = { parentPath: string; type: 'file' | 'folder' } | null;
+
+interface RecentHistoryEntry {
+  path: string;
+  title: string;
+  timestamp: number;
+  type: 'file' | 'folder';
+}
 
 const OPEN_EDITORS_ID = 'virtual:open-editors';
 const WORKSPACE_ROOTS_KEY = 'markitdown.workspace-roots';
@@ -257,6 +267,7 @@ function ExplorerSidebar({ style }: SidebarProps) {
     outlineVisible,
     setOutlineVisible,
     content,
+    settings,
     openFile,
     convertDocument,
     tabs,
@@ -274,6 +285,12 @@ function ExplorerSidebar({ style }: SidebarProps) {
   const [timelineExpanded, setTimelineExpanded] = useState(false);
   const [timelineHover, setTimelineHover] = useState<TimelineHoverState>(null);
   const [timelineDialog, setTimelineDialog] = useState<TimelineDialogState>(null);
+  const [historyExpanded, setHistoryExpanded] = useState(false);
+  const [recentHistory, setRecentHistory] = useState<RecentHistoryEntry[]>([]);
+  const [renaming, setRenaming] = useState<RenameState>(null);
+  const [creating, setCreating] = useState<CreateState>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const [fsClipboard, setFsClipboard] = useState<FsClipboard>(null);
   const activeTimeline = activeTabId ? timeline[activeTabId] || [] : [];
   const activeTab = tabs.find((tab) => tab.id === activeTabId);
   const outlineContent = selectActiveDocumentContent(tabs, activeTabId, content);
@@ -341,11 +358,37 @@ function ExplorerSidebar({ style }: SidebarProps) {
     }
   }, [readBrowserFolder, readFolder, workspaceFolders]);
 
+  // ── 历史记录管理 ──────────────────────────────────────────
+  const HISTORY_KEY = 'markitdown.explorer-history';
+  const loadHistory = useCallback(() => {
+    try {
+      const stored = localStorage.getItem(HISTORY_KEY);
+      if (!stored) return [];
+      const parsed: RecentHistoryEntry[] = JSON.parse(stored);
+      const retentionMs = settings.explorer.history_retention_days * 24 * 60 * 60 * 1000;
+      const cutoff = Date.now() - retentionMs;
+      return parsed.filter(entry => entry.timestamp > cutoff).slice(0, 50);
+    } catch { return []; }
+  }, [settings.explorer.history_retention_days]);
+
+  const addToHistory = useCallback((path: string, title: string, type: 'file' | 'folder') => {
+    const entries = loadHistory();
+    const filtered = entries.filter(entry => entry.path !== path);
+    filtered.unshift({ path, title, timestamp: Date.now(), type });
+    const trimmed = filtered.slice(0, 50);
+    try { localStorage.setItem(HISTORY_KEY, JSON.stringify(trimmed)); } catch { /* ignore */ }
+    setRecentHistory(trimmed);
+  }, [loadHistory]);
+
+  // Load history on mount and when settings change
+  useEffect(() => { setRecentHistory(loadHistory()); }, [loadHistory]);
+
   useEffect(() => {
     const activeTab = tabs.find(tab => tab.id === activeTabId);
     if (!activeTab?.path) return;
     void invoke('update_recent_file', { path: activeTab.path, title: activeTab.title }).catch(() => undefined);
-  }, [activeTabId, tabs]);
+    addToHistory(activeTab.path, activeTab.title, 'file');
+  }, [activeTabId, tabs, addToHistory]);
 
   useEffect(() => {
     if (!currentFile || currentFile.startsWith('web://')) return;
@@ -357,11 +400,233 @@ function ExplorerSidebar({ style }: SidebarProps) {
     }
   }, [addWorkspaceFolder, currentFile, workspaceFolders]);
 
-  useEffect(() => {
-    const close = () => setContextMenu(null);
-    document.addEventListener('click', close);
-    return () => document.removeEventListener('click', close);
+  // ── 内联重命名 ──────────────────────────────────────────
+  const startRenaming = (path: string, currentName: string) => {
+    setRenaming({ path, name: currentName });
+    setRenameValue(currentName);
+    setContextMenu(null);
+    setCreating(null);
+  };
+
+  const commitRename = async () => {
+    if (!renaming || !renameValue.trim()) { setRenaming(null); return; }
+    const parent = renaming.path.substring(0, renaming.path.length - renaming.name.length);
+    const newPath = `${parent}${renameValue.trim()}`;
+    if (newPath === renaming.path) { setRenaming(null); return; }
+    try {
+      if (isTauriRuntime()) {
+        await invoke('rename_fs_item', { oldPath: renaming.path, newPath });
+      }
+      // Refresh the parent folder
+      const parentDir = renaming.path.replace(/[\\/][^\\/]+$/, '');
+      void refreshWorkspaceFolder(parentDir);
+    } catch (error) {
+      console.error('重命名失败:', error);
+    }
+    setRenaming(null);
+  };
+
+  // ── 创建文件/文件夹 ──────────────────────────────────────
+  const startCreating = (parentPath: string, type: 'file' | 'folder') => {
+    setCreating({ parentPath, type });
+    setRenameValue('');
+    setContextMenu(null);
+    setRenaming(null);
+  };
+
+  const commitCreate = async () => {
+    if (!creating || !renameValue.trim()) { setCreating(null); return; }
+    const newPath = `${creating.parentPath}/${renameValue.trim()}`;
+    try {
+      if (isTauriRuntime()) {
+        if (creating.type === 'file') {
+          await invoke('create_file', { path: newPath, content: '' });
+        } else {
+          await invoke('create_directory', { path: newPath });
+        }
+      }
+      void refreshWorkspaceFolder(creating.parentPath);
+    } catch (error) {
+      console.error('创建失败:', error);
+    }
+    setCreating(null);
+  };
+
+  // ── 删除 ────────────────────────────────────────────────
+  const deleteFsItem = async (path: string) => {
+    const name = path.split(/[\\/]/).pop() || '项目';
+    if (!window.confirm(`确定要删除「${name}」吗？此操作不可撤销。`)) return;
+    try {
+      if (isTauriRuntime()) {
+        await invoke('delete_fs_item', { path });
+      }
+      const parentDir = path.replace(/[\\/][^\\/]+$/, '');
+      void refreshWorkspaceFolder(parentDir);
+    } catch (error) {
+      console.error('删除失败:', error);
+    }
+    setContextMenu(null);
+  };
+
+  // ── 刷新文件夹 ──────────────────────────────────────────
+  const refreshWorkspaceFolder = useCallback(async (folderPath: string) => {
+    try {
+      const tree = await invoke<RawFileNode[]>('read_folder', { path: folderPath });
+      const normalized = (tree || []).map(normalizeNode);
+      setWorkspaceFolders(previous => previous.map(folder => ({
+        ...folder,
+        tree: replaceNodeChildren(folder.tree, folderPath, normalized),
+      })));
+      // Also update sub-trees: find the parent workspace folder that contains this path
+      setWorkspaceFolders(previous => {
+        const containing = previous.find(f => folderPath.startsWith(f.path) || f.path.startsWith(folderPath));
+        if (containing) {
+          return previous.map(f => f.path === containing.path
+            ? { ...f, tree: replaceNodeChildren(f.tree, folderPath, normalized) }
+            : f
+          );
+        }
+        return previous.map(f => f.path === folderPath
+          ? { ...f, tree: normalized }
+          : f
+        );
+      });
+    } catch (error) {
+      console.error('刷新文件夹失败:', error);
+    }
   }, []);
+
+  // ── 自动刷新（Polling） ──────────────────────────────────
+  const refreshIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const refreshVersionRef = useRef(0);
+
+  useEffect(() => {
+    if (!settings.explorer.auto_refresh) {
+      if (refreshIntervalRef.current) { clearInterval(refreshIntervalRef.current); refreshIntervalRef.current = null; }
+      return;
+    }
+    const intervalMs = Math.max(1000, settings.explorer.refresh_interval_seconds * 1000);
+    refreshIntervalRef.current = setInterval(async () => {
+      const foldersToRefresh = workspaceFolders
+        .filter(f => expandedNodes.has(f.path))
+        .map(f => f.path);
+      if (foldersToRefresh.length === 0) return;
+      const version = ++refreshVersionRef.current;
+      for (const folderPath of foldersToRefresh) {
+        if (version !== refreshVersionRef.current) break;
+        const tree = await invoke<RawFileNode[]>('read_folder', { path: folderPath }).catch(() => null);
+        if (!tree || version !== refreshVersionRef.current) continue;
+        const normalized = (tree || []).map(normalizeNode);
+        setWorkspaceFolders(previous => previous.map(f => f.path === folderPath
+          ? { ...f, tree: normalized }
+          : f
+        ));
+      }
+    }, intervalMs);
+    return () => { if (refreshIntervalRef.current) clearInterval(refreshIntervalRef.current); };
+  }, [settings.explorer.auto_refresh, settings.explorer.refresh_interval_seconds, workspaceFolders.length, expandedNodes]);
+
+  // ── 监听 store 刷新事件 ─────────────────────────────────
+  useEffect(() => {
+    const onReset = () => {
+      setWorkspaceFolders([]);
+      setExpandedNodes(new Set([OPEN_EDITORS_ID]));
+      setLoadedFolders(new Set());
+      // Re-add workspace roots from localStorage
+      const roots = readStoredStringArray(WORKSPACE_ROOTS_KEY);
+      for (const root of roots) { void addWorkspaceFolder(root); }
+    };
+    const onRefresh = (event: Event) => {
+      const detail = (event as CustomEvent).detail;
+      if (detail?.path) {
+        refreshWorkspaceFolder(detail.path);
+      }
+    };
+    window.addEventListener('markitdown-reset-explorer', onReset);
+    window.addEventListener('markitdown-refresh-folder', onRefresh as EventListener);
+    return () => {
+      window.removeEventListener('markitdown-reset-explorer', onReset);
+      window.removeEventListener('markitdown-refresh-folder', onRefresh as EventListener);
+    };
+  }, [addWorkspaceFolder, refreshWorkspaceFolder]);
+
+  // ── 关闭右键菜单（点击菜单外部时关闭）────────────────────
+  useEffect(() => {
+    const close = (event: MouseEvent) => {
+      // 点击在菜单内部时不关闭，让 button 的 click 事件正常触发
+      if ((event.target as HTMLElement)?.closest('.context-menu')) return;
+      setContextMenu(null);
+    };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, []);
+
+  // ── 屏蔽资源管理器区域的浏览器原生右键菜单 ────────────────
+  const explorerRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const el = explorerRef.current;
+    if (!el) return;
+    const prevent = (event: MouseEvent) => {
+      // Allow our custom context menu to handle it
+      if ((event.target as HTMLElement)?.closest('.context-menu')) return;
+      event.preventDefault();
+    };
+    el.addEventListener('contextmenu', prevent);
+    return () => el.removeEventListener('contextmenu', prevent);
+  }, []);
+
+  // ── 复制路径 ─────────────────────────────────────────────
+  const copyPath = async (path: string) => {
+    try {
+      await navigator.clipboard.writeText(path);
+    } catch { /* 部分环境下剪贴板不可用 */ }
+    setContextMenu(null);
+  };
+
+  // ── 在文件管理器中显示 ───────────────────────────────────
+  const revealInFileManager = (path: string) => {
+    if (isTauriRuntime()) {
+      void invoke('reveal_in_file_manager', { path });
+    }
+    setContextMenu(null);
+  };
+
+  // ── 系统剪贴板 (文件操作) ────────────────────────────────
+  const copyToClipboard = (path: string) => {
+    setFsClipboard({ sourcePath: path, operation: 'copy' });
+    setContextMenu(null);
+  };
+
+  const cutToClipboard = (path: string) => {
+    setFsClipboard({ sourcePath: path, operation: 'cut' });
+    setContextMenu(null);
+  };
+
+  const pasteFromClipboard = async (targetDir: string) => {
+    if (!fsClipboard) return;
+    setContextMenu(null);
+    const sourceName = fsClipboard.sourcePath.split(/[\\/]/).pop() || 'item';
+    const destPath = `${targetDir}/${sourceName}`;
+    try {
+      if (fsClipboard.operation === 'cut') {
+        // 如果目标路径与源相同，跳过
+        if (fsClipboard.sourcePath === destPath) { setFsClipboard(null); return; }
+        await invoke('rename_fs_item', { oldPath: fsClipboard.sourcePath, newPath: destPath });
+      } else {
+        await invoke('copy_fs_item', { source: fsClipboard.sourcePath, destination: destPath });
+      }
+      setFsClipboard(null);
+      void refreshWorkspaceFolder(targetDir);
+    } catch (error) {
+      console.error('粘贴失败:', error);
+    }
+  };
+
+  const getClipboardLabel = () => {
+    if (!fsClipboard) return '';
+    const name = fsClipboard.sourcePath.split(/[\\/]/).pop() || '';
+    return fsClipboard.operation === 'cut' ? `粘贴 ${name} (剪切)` : `粘贴 ${name}`;
+  };
 
   const toggleExpanded = (path: string) => {
     setExpandedNodes(previous => {
@@ -436,7 +701,9 @@ function ExplorerSidebar({ style }: SidebarProps) {
       const selected = await open({ directory: true, multiple: true });
       if (selected) {
         for (const folderPath of (Array.isArray(selected) ? selected : [selected])) {
-          await addWorkspaceFolder(folderPath as string);
+          const path = folderPath as string;
+          await addWorkspaceFolder(path);
+          addToHistory(path, getFolderName(path), 'folder');
         }
       }
     } catch (error) {
@@ -465,10 +732,13 @@ function ExplorerSidebar({ style }: SidebarProps) {
           style={{ paddingLeft: `${8 + depth * 14}px` }}
           onClick={() => node.isDirectory ? void toggleFolder(node) : void openTreeFile(node)}
           onContextMenu={event => {
-            if (!node.isDirectory) {
-              event.preventDefault();
-              setContextMenu({ x: event.clientX, y: event.clientY, node });
-            }
+            event.preventDefault();
+            setContextMenu({
+              x: event.clientX,
+              y: event.clientY,
+              node,
+              targetType: node.isDirectory ? (depth === 0 ? 'root' : 'folder') : 'file',
+            });
           }}
           title={`${node.path}${!node.isDirectory && !isDirectOpenFile(node.name) ? '\n点击即可转换为 Markdown' : ''}`}
         >
@@ -492,7 +762,7 @@ function ExplorerSidebar({ style }: SidebarProps) {
   const openEditorsExpanded = expandedNodes.has(OPEN_EDITORS_ID);
 
   return (
-    <aside className="sidebar explorer-sidebar vscode-explorer" style={style}>
+    <aside className="sidebar explorer-sidebar vscode-explorer" ref={explorerRef} style={style}>
       <div className="sidebar-surface">
         <header className="vscode-explorer-header">
           <span>资源管理器</span>
@@ -588,6 +858,52 @@ function ExplorerSidebar({ style }: SidebarProps) {
                     <span>{heading.text}</span>
                   </button>
                 )) : <div className="explorer-empty-state">当前文档没有标题</div>}
+              </div>
+            )}
+          </section>
+
+          <section className="explorer-section history-section">
+            <button className="explorer-section-heading" onClick={() => setHistoryExpanded(expanded => !expanded)}>
+              <Chevron expanded={historyExpanded} />
+              <span>近期记录</span>
+              {recentHistory.length > 0 && <span className="explorer-count">{recentHistory.length}</span>}
+            </button>
+            {historyExpanded && (
+              <div role="group" className="history-explorer-list">
+                {recentHistory.length ? recentHistory.map(entry => (
+                  <button
+                    key={`${entry.type}-${entry.path}-${entry.timestamp}`}
+                    className="explorer-row file-row history-row"
+                    style={{ paddingLeft: 12 }}
+                    onClick={() => {
+                      if (entry.type === 'file') {
+                        void openFile(entry.path);
+                      } else {
+                        if (!workspaceFolders.some(f => f.path === entry.path)) {
+                          void addWorkspaceFolder(entry.path);
+                        }
+                        setExpandedNodes(prev => new Set(prev).add(entry.path));
+                      }
+                    }}
+                    onContextMenu={event => {
+                      event.preventDefault();
+                      setContextMenu({
+                        x: event.clientX,
+                        y: event.clientY,
+                        node: { name: entry.title, path: entry.path, isDirectory: entry.type === 'folder' },
+                        targetType: entry.type === 'folder' ? 'folder' : 'file',
+                      });
+                    }}
+                    title={entry.path}
+                  >
+                    <span className="explorer-chevron-spacer" aria-hidden="true" />
+                    {entry.type === 'folder' ? <FolderIcon /> : <FileIcon filename={entry.title} />}
+                    <span className="explorer-name">{entry.title}</span>
+                    <small className="history-time">
+                      {new Date(entry.timestamp).toLocaleDateString([], { month: '2-digit', day: '2-digit' })}
+                    </small>
+                  </button>
+                )) : <div className="explorer-empty-state">近期打开的文件和文件夹将显示在此处</div>}
               </div>
             )}
           </section>
@@ -693,7 +1009,129 @@ function ExplorerSidebar({ style }: SidebarProps) {
 
       {contextMenu && (
         <div className="context-menu" style={{ position: 'fixed', top: contextMenu.y, left: contextMenu.x, zIndex: 1000 }} onClick={event => event.stopPropagation()}>
-          <button className="context-menu-item" onClick={() => { void openTreeFile(contextMenu.node); setContextMenu(null); }}>打开文件</button>
+          {/* ── 顶部操作 ── */}
+          {contextMenu.targetType === 'file' && (
+            <button className="context-menu-item" onClick={() => { void openTreeFile(contextMenu.node); setContextMenu(null); }}>
+              打开文件
+            </button>
+          )}
+          {contextMenu.targetType !== 'file' && (
+            <button className="context-menu-item" onClick={() => {
+              if (!expandedNodes.has(contextMenu.node.path)) { void toggleFolder(contextMenu.node); }
+              setContextMenu(null);
+            }}>
+              {expandedNodes.has(contextMenu.node.path) ? '折叠文件夹' : '展开文件夹'}
+            </button>
+          )}
+
+          <div className="context-menu-divider" />
+
+          {/* ── 新建 ── */}
+          {contextMenu.targetType !== 'file' && (
+            <>
+              <button className="context-menu-item" onClick={() => { startCreating(contextMenu.node.path, 'file'); }}>
+                新建文件
+              </button>
+              <button className="context-menu-item" onClick={() => { startCreating(contextMenu.node.path, 'folder'); }}>
+                新建文件夹
+              </button>
+              <div className="context-menu-divider" />
+            </>
+          )}
+          {contextMenu.targetType === 'file' && (
+            <>
+              <button className="context-menu-item" onClick={() => {
+                const parentDir = contextMenu.node.path.replace(/[\\/][^\\/]+$/, '');
+                startCreating(parentDir, 'folder');
+              }}>
+                新建文件夹
+              </button>
+              <div className="context-menu-divider" />
+            </>
+          )}
+
+          {/* ── 复制 / 剪切 / 粘贴 ── */}
+          <button className="context-menu-item" onClick={() => { copyToClipboard(contextMenu.node.path); }}>
+            复制
+          </button>
+          <button className="context-menu-item" onClick={() => { cutToClipboard(contextMenu.node.path); }}>
+            剪切
+          </button>
+          {contextMenu.targetType !== 'file' && fsClipboard && (
+            <button className="context-menu-item" onClick={() => { void pasteFromClipboard(contextMenu.node.path); }}>
+              {getClipboardLabel()}
+            </button>
+          )}
+
+          <div className="context-menu-divider" />
+
+          {/* ── 路径 / 资源管理器 ── */}
+          <button className="context-menu-item" onClick={() => { void copyPath(contextMenu.node.path); }}>
+            复制路径
+          </button>
+          <button className="context-menu-item" onClick={() => { revealInFileManager(contextMenu.node.path); }}>
+            在资源管理器中打开
+          </button>
+
+          <div className="context-menu-divider" />
+
+          {/* ── 重命名 / 刷新 / 删除 ── */}
+          <button className="context-menu-item" onClick={() => { startRenaming(contextMenu.node.path, contextMenu.node.name); }}>
+            重命名
+          </button>
+          {(contextMenu.targetType === 'folder' || contextMenu.targetType === 'root') && (
+            <button className="context-menu-item" onClick={() => {
+              void refreshWorkspaceFolder(contextMenu.node.path);
+              setContextMenu(null);
+            }}>
+              刷新
+            </button>
+          )}
+          <button className="context-menu-item danger" onClick={() => { void deleteFsItem(contextMenu.node.path); }}>
+            删除
+          </button>
+        </div>
+      )}
+
+      {renaming && (
+        <div className="inline-rename-overlay" onClick={() => setRenaming(null)}>
+          <div className="inline-rename-dialog" onClick={event => event.stopPropagation()}>
+            <input
+              autoFocus
+              value={renameValue}
+              onChange={event => setRenameValue(event.target.value)}
+              onKeyDown={event => {
+                if (event.key === 'Enter') void commitRename();
+                if (event.key === 'Escape') setRenaming(null);
+              }}
+              placeholder="输入新名称"
+            />
+            <div className="inline-rename-actions">
+              <button onClick={() => setRenaming(null)}>取消</button>
+              <button onClick={() => void commitRename()}>确认</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {creating && (
+        <div className="inline-rename-overlay" onClick={() => setCreating(null)}>
+          <div className="inline-rename-dialog" onClick={event => event.stopPropagation()}>
+            <input
+              autoFocus
+              value={renameValue}
+              onChange={event => setRenameValue(event.target.value)}
+              onKeyDown={event => {
+                if (event.key === 'Enter') void commitCreate();
+                if (event.key === 'Escape') setCreating(null);
+              }}
+              placeholder={creating.type === 'file' ? '输入文件名 (如: 笔记.md)' : '输入文件夹名'}
+            />
+            <div className="inline-rename-actions">
+              <button onClick={() => setCreating(null)}>取消</button>
+              <button onClick={() => void commitCreate()}>确认</button>
+            </div>
+          </div>
         </div>
       )}
     </aside>

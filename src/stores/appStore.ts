@@ -84,6 +84,13 @@ export interface Settings {
     provider_profiles: string;
   };
   agent: AgentSettings;
+  explorer: ExplorerSettings;
+}
+
+export interface ExplorerSettings {
+  history_retention_days: number;
+  auto_refresh: boolean;
+  refresh_interval_seconds: number;
 }
 
 export interface WebSearchSettings {
@@ -162,7 +169,7 @@ export interface TimelineEntry {
 
 export type UploadStatus = 'idle' | 'uploading' | 'success' | 'error';
 export type ConversionStatus = 'idle' | 'converting' | 'success' | 'error';
-export type SettingsTab = 'appearance' | 'editor' | 'image' | 'export' | 'ai' | 'web_search';
+export type SettingsTab = 'appearance' | 'editor' | 'image' | 'export' | 'ai' | 'web_search' | 'explorer';
 
 interface AppState {
   content: string;
@@ -219,6 +226,8 @@ interface AppState {
   getActiveTab: () => Tab | undefined;
   setUploadStatus: (status: UploadStatus, progress?: number, message?: string) => void;
   setConversionStatus: (status: ConversionStatus, message?: string) => void;
+  resetWorkspaceFolders: () => void;
+  refreshWorkspaceFolder: (path: string) => Promise<boolean>;
 }
 
 const defaultSettings: Settings = {
@@ -306,6 +315,11 @@ const defaultSettings: Settings = {
       opencode: { executable_path: '', model: '', profile: '', reasoning_effort: '' },
     },
   },
+  explorer: {
+    history_retention_days: 30,
+    auto_refresh: true,
+    refresh_interval_seconds: 5,
+  },
 };
 
 const normalizeSettings = (saved: Settings): Settings => ({
@@ -330,6 +344,7 @@ const normalizeSettings = (saved: Settings): Settings => ({
       opencode: { ...defaultSettings.agent.backends.opencode, ...saved.agent?.backends?.opencode },
     },
   },
+  explorer: { ...defaultSettings.explorer, ...saved.explorer },
 });
 
 const initialSettings = (() => {
@@ -797,6 +812,17 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   cleanupTimeline: () => set(({ timeline }) => ({ timeline: pruneTimeline(timeline) })),
+
+  resetWorkspaceFolders: () => {
+    // Placeholder — the Sidebar component manages workspaceFolders state.
+    // This signals the component to reload by dispatching a custom event.
+    window.dispatchEvent(new CustomEvent('markitdown-reset-explorer'));
+  },
+
+  refreshWorkspaceFolder: async (path) => {
+    window.dispatchEvent(new CustomEvent('markitdown-refresh-folder', { detail: { path } }));
+    return true;
+  },
 
   setConversionStatus: (status, message = '') => {
     if (conversionStatusResetTimer) clearTimeout(conversionStatusResetTimer);

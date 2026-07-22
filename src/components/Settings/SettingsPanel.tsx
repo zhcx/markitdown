@@ -101,6 +101,9 @@ function SettingsNavIcon({ type }: { type: SettingsTab }) {
   if (type === 'web_search') {
     return <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="7.2" fill="none" stroke="currentColor" strokeWidth="1.5" /><path d="M2.8 10h14.4M10 2.8c2 2 2 12.4 0 14.4M10 2.8c-2 2-2 12.4 0 14.4" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" /></svg>;
   }
+  if (type === 'explorer') {
+    return <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M1.8 4.5h5.3l1.5 1.5h8.6v9.5H1.8z" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" /><path d="M4.5 13.5h7M4.5 10.5h5" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" /></svg>;
+  }
   return <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.6 11.5 7l4.4 1.5-4.4 1.5-1.5 4.4L8.5 10 4.1 8.5 8.5 7zM15.5 13l.7 2 .8.3-.8.3-.7 2-.7-2-.8-.3.8-.3z" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" /></svg>;
 }
 
@@ -224,6 +227,7 @@ export function SettingsPanel() {
     { id: 'image', label: '图床', description: '图片上传与存储服务' },
     { id: 'export', label: '导出', description: '文档导出与版式设置' },
     { id: 'ai', label: 'AI 助手', description: '模型、提示与伴写设置' },
+    { id: 'explorer', label: '资源管理器', description: '文件浏览与工作区管理' },
     { id: 'web_search', label: '网络搜索', description: '搜索服务与结果偏好' },
   ] as const;
   const activeTabMeta = tabs.find((tab) => tab.id === activeTab) || tabs[0];
@@ -1135,6 +1139,54 @@ export function SettingsPanel() {
                   >
                     {detectingAgents ? '检测中…' : '检测本机 Agent'}
                   </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'explorer' && (
+            <div className="settings-section">
+              <div className="setting-item">
+                <label>历史记录保留天数</label>
+                <small>设置资源管理器「近期记录」中文件/文件夹的保留时间</small>
+                <input
+                  type="number"
+                  min="1"
+                  max="365"
+                  value={localSettings.explorer.history_retention_days}
+                  onChange={(e) =>
+                    setLocalSettings({
+                      ...localSettings,
+                      explorer: { ...localSettings.explorer, history_retention_days: parseInt(e.target.value) || 30 },
+                    })
+                  }
+                />
+              </div>
+              <SettingToggle
+                label="自动刷新文件树"
+                description="定时检测文件变更并自动刷新资源管理器"
+                checked={localSettings.explorer.auto_refresh}
+                onChange={(checked) => setLocalSettings({
+                  ...localSettings,
+                  explorer: { ...localSettings.explorer, auto_refresh: checked },
+                })}
+              />
+              {localSettings.explorer.auto_refresh && (
+                <div className="setting-item">
+                  <label>刷新间隔（秒）</label>
+                  <small>检测文件变更的频率，设为更短可更快响应外部变更</small>
+                  <input
+                    type="number"
+                    min="1"
+                    max="30"
+                    value={localSettings.explorer.refresh_interval_seconds}
+                    onChange={(e) =>
+                      setLocalSettings({
+                        ...localSettings,
+                        explorer: { ...localSettings.explorer, refresh_interval_seconds: parseInt(e.target.value) || 5 },
+                      })
+                    }
+                  />
                 </div>
               )}
             </div>

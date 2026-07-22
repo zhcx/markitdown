@@ -8705,6 +8705,77 @@ html[data-theme] .preview-container,
   .timeline-version-actions .timeline-delete-action { margin-right: auto; }
 }
 
+/* ── History section (近期记录) ──────────────────────────────── */
+.history-section { border: 0; padding: 0; }
+.history-section + .explorer-section { margin-top: 7px; }
+.history-explorer-list { padding: 2px 0 7px; }
+.history-explorer-list .explorer-empty-state { padding-left: 12px; } /* 与历史条目行对齐，而非默认的 36px */
+.history-row { display: flex; align-items: center; gap: 4px; cursor: pointer; }
+.history-row:hover { color: var(--text-primary); background: var(--bg-hover); }
+.history-row .history-time {
+  margin-left: auto;
+  padding-right: 6px;
+  color: var(--text-muted);
+  font-size: 10px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.history-row:hover .history-time { color: var(--text-secondary); }
+
+/* ── Inline rename / create dialogs ─────────────────────────── */
+.inline-rename-overlay {
+  position: fixed;
+  z-index: 1400;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: var(--overlay-bg);
+}
+.inline-rename-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(360px, 100%);
+  padding: 16px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-lg);
+}
+.inline-rename-dialog input {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  background: var(--bg-panel);
+  color: var(--text-primary);
+  font-size: 13px;
+  outline: none;
+}
+.inline-rename-dialog input:focus { border-color: var(--accent-color); }
+.inline-rename-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.inline-rename-actions button {
+  min-height: 28px;
+  padding: 0 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  background: var(--bg-panel);
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+}
+.inline-rename-actions button:hover { border-color: var(--accent-color); color: var(--text-primary); }
+.inline-rename-actions button:last-child {
+  border-color: var(--accent-color);
+  background: var(--accent-color);
+  color: #fff;
+}
+
 /* Settings workspace: category navigation on the left, flat settings rows on the right. */
 .settings-overlay {
   padding: 28px;

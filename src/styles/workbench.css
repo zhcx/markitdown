@@ -395,7 +395,8 @@ body {
 
 .explorer-row:hover,
 .outline-explorer-row:hover,
-.timeline-explorer-row:hover {
+.timeline-explorer-row:hover,
+.history-row:hover {
   background: var(--ui-bg-hover);
   color: var(--ui-text-primary);
 }

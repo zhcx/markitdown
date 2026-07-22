@@ -1098,6 +1098,178 @@ pub async fn read_folder(path: String) -> Result<Vec<FileNode>, String> {
     .map_err(|error| format!("读取文件夹任务异常：{error}"))?
 }
 
+#[tauri::command]
+pub async fn create_file(path: String, content: Option<String>) -> Result<(), String> {
+    let parent = Path::new(&path)
+        .parent()
+        .ok_or_else(|| "无法获取父目录路径".to_string())?;
+    tokio::fs::create_dir_all(parent)
+        .await
+        .map_err(|e| format!("创建父目录失败：{e}"))?;
+    if let Some(text) = content {
+        tokio::fs::write(&path, text.as_bytes())
+            .await
+            .map_err(|e| format!("创建文件失败：{e}"))?;
+    } else {
+        tokio::fs::write(&path, [])
+            .await
+            .map_err(|e| format!("创建文件失败：{e}"))?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn create_directory(path: String) -> Result<(), String> {
+    tokio::fs::create_dir_all(&path)
+        .await
+        .map_err(|e| format!("创建文件夹失败：{e}"))
+}
+
+#[tauri::command]
+pub async fn delete_fs_item(path: String) -> Result<(), String> {
+    let meta = tokio::fs::metadata(&path)
+        .await
+        .map_err(|e| format!("无法获取文件信息：{e}"))?;
+    if meta.is_dir() {
+        tokio::fs::remove_dir_all(&path)
+            .await
+            .map_err(|e| format!("删除文件夹失败：{e}"))
+    } else {
+        tokio::fs::remove_file(&path)
+            .await
+            .map_err(|e| format!("删除文件失败：{e}"))
+    }
+}
+
+#[tauri::command]
+pub async fn rename_fs_item(old_path: String, new_path: String) -> Result<(), String> {
+    tokio::fs::rename(&old_path, &new_path)
+        .await
+        .map_err(|e| format!("重命名失败：{e}"))
+}
+
+#[tauri::command]
+pub async fn copy_fs_item(source: String, destination: String) -> Result<(), String> {
+    let src_meta = tokio::fs::metadata(&source)
+        .await
+        .map_err(|e| format!("无法读取源文件信息：{e}"))?;
+    if src_meta.is_dir() {
+        copy_dir_recursive(&source, &destination).await
+    } else {
+        tokio::fs::copy(&source, &destination)
+            .await
+            .map_err(|e| format!("复制文件失败：{e}"))?;
+        Ok(())
+    }
+}
+
+async fn copy_dir_recursive(src: &str, dst: &str) -> Result<(), String> {
+    tokio::fs::create_dir_all(dst)
+        .await
+        .map_err(|e| format!("创建目标目录失败：{e}"))?;
+    let mut entries = tokio::fs::read_dir(src)
+        .await
+        .map_err(|e| format!("读取源目录失败：{e}"))?;
+    while let Some(entry) = entries.next_entry().await.map_err(|e| e.to_string())? {
+        let file_name = entry.file_name().to_string_lossy().to_string();
+        let src_path = format!("{}/{}", src, file_name);
+        let dst_path = format!("{}/{}", dst, file_name);
+        if entry.metadata().await.map_err(|e| e.to_string())?.is_dir() {
+            Box::pin(copy_dir_recursive(&src_path, &dst_path)).await?;
+        } else {
+            tokio::fs::copy(&src_path, &dst_path)
+                .await
+                .map_err(|e| format!("复制文件 {file_name} 失败：{e}"))?;
+        }
+    }
+    Ok(())
+}
+
+static RECENT_FOLDERS_LOCK: Mutex<()> = Mutex::new(());
+
+fn get_recent_folders_path(app: &AppHandle) -> Result<PathBuf, String> {
+    app_config_file(app, "recent_folders.json")
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RecentFolder {
+    pub path: String,
+    pub title: String,
+    pub last_opened: u64,
+}
+
+#[tauri::command]
+pub async fn get_recent_folders(app: AppHandle) -> Result<Vec<RecentFolder>, String> {
+    let _guard = RECENT_FOLDERS_LOCK
+        .lock()
+        .map_err(|_| "最近文件夹记录锁已损坏".to_string())?;
+    let p = get_recent_folders_path(&app)?;
+    Ok(if p.exists() {
+        serde_json::from_str(&std::fs::read_to_string(p).map_err(|e| e.to_string())?)
+            .unwrap_or_default()
+    } else {
+        Vec::new()
+    })
+}
+
+#[tauri::command]
+pub async fn update_recent_folder(
+    app: AppHandle,
+    path: String,
+    title: String,
+) -> Result<Vec<RecentFolder>, String> {
+    let _guard = RECENT_FOLDERS_LOCK
+        .lock()
+        .map_err(|_| "最近文件夹记录锁已损坏".to_string())?;
+    let rp = get_recent_folders_path(&app)?;
+    let mut recent: Vec<RecentFolder> = if rp.exists() {
+        serde_json::from_str(&std::fs::read_to_string(&rp).map_err(|e| e.to_string())?)
+            .unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+    recent.retain(|f| f.path != path);
+    recent.insert(
+        0,
+        RecentFolder {
+            path,
+            title,
+            last_opened: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_millis() as u64)
+                .unwrap_or(0),
+        },
+    );
+    recent.truncate(30);
+    std::fs::write(
+        &rp,
+        serde_json::to_string_pretty(&recent).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(recent)
+}
+
+#[tauri::command]
+pub async fn remove_recent_folder(app: AppHandle, path: String) -> Result<Vec<RecentFolder>, String> {
+    let _guard = RECENT_FOLDERS_LOCK
+        .lock()
+        .map_err(|_| "最近文件夹记录锁已损坏".to_string())?;
+    let rp = get_recent_folders_path(&app)?;
+    let mut recent: Vec<RecentFolder> = if rp.exists() {
+        serde_json::from_str(&std::fs::read_to_string(&rp).map_err(|e| e.to_string())?)
+            .unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+    recent.retain(|f| f.path != path);
+    std::fs::write(
+        &rp,
+        serde_json::to_string_pretty(&recent).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(recent)
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct WorkspaceSearchOptions {
     pub roots: Vec<String>,
