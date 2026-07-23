@@ -1,6 +1,6 @@
 [package]
 name = "markitdown"
-version = "0.3.4"
+version = "0.3.5"
 description = "A modern Markdown editor with Notion-style UI"
 authors = ["you"]
 edition = "2021"
