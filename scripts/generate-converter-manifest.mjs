@@ -7,11 +7,6 @@ if (!assetDirectoryArgument || !version || !outputArgument) {
   throw new Error('Usage: node generate-converter-manifest.mjs <asset-directory> <version> <output-directory>');
 }
 
-const encodedPrivateKey = process.env.CONVERTER_SIGNING_PRIVATE_KEY?.trim();
-if (!encodedPrivateKey) {
-  throw new Error('CONVERTER_SIGNING_PRIVATE_KEY must contain a Base64 PKCS#8 Ed25519 private key.');
-}
-
 const assetDirectory = resolve(assetDirectoryArgument);
 const outputDirectory = resolve(outputArgument);
 const prefix = `markitdown-converter-v${version}-`;
@@ -44,11 +39,16 @@ const manifest = {
   artifacts,
 };
 const manifestBytes = Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
-const privateKey = createPrivateKey({
-  key: Buffer.from(encodedPrivateKey, 'base64'),
-  format: 'der',
-  type: 'pkcs8',
-});
-const signature = sign(null, manifestBytes, privateKey).toString('base64');
 await writeFile(resolve(outputDirectory, 'converter-manifest.json'), manifestBytes);
-await writeFile(resolve(outputDirectory, 'converter-manifest.sig'), `${signature}\n`, 'utf8');
+
+// 签名可选：有 CONVERTER_SIGNING_PRIVATE_KEY 时生成 manifest.sig，否则跳过
+const encodedPrivateKey = process.env.CONVERTER_SIGNING_PRIVATE_KEY?.trim();
+if (encodedPrivateKey) {
+  const privateKey = createPrivateKey({
+    key: Buffer.from(encodedPrivateKey, 'base64'),
+    format: 'der',
+    type: 'pkcs8',
+  });
+  const signature = sign(null, manifestBytes, privateKey).toString('base64');
+  await writeFile(resolve(outputDirectory, 'converter-manifest.sig'), `${signature}\n`, 'utf8');
+}

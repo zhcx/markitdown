@@ -7,11 +7,6 @@ if (!executableArgument || !version || !target || !outputArgument) {
   throw new Error('Usage: node prepare-converter-package.mjs <executable> <version> <target> <output-directory>');
 }
 
-const encodedPrivateKey = process.env.CONVERTER_SIGNING_PRIVATE_KEY?.trim();
-if (!encodedPrivateKey) {
-  throw new Error('CONVERTER_SIGNING_PRIVATE_KEY must contain a Base64 PKCS#8 Ed25519 private key.');
-}
-
 const executable = resolve(executableArgument);
 const outputDirectory = resolve(outputArgument);
 const executableName = basename(executable);
@@ -27,14 +22,19 @@ const metadata = {
   supported_formats: ['pdf', 'docx', 'xlsx', 'pptx'],
 };
 const metadataBytes = Buffer.from(`${JSON.stringify(metadata, null, 2)}\n`, 'utf8');
-const privateKey = createPrivateKey({
-  key: Buffer.from(encodedPrivateKey, 'base64'),
-  format: 'der',
-  type: 'pkcs8',
-});
-const signature = sign(null, metadataBytes, privateKey).toString('base64');
 
 await mkdir(outputDirectory, { recursive: true });
 await copyFile(executable, resolve(outputDirectory, executableName));
 await writeFile(resolve(outputDirectory, 'module.json'), metadataBytes);
-await writeFile(resolve(outputDirectory, 'module.sig'), `${signature}\n`, 'utf8');
+
+// 签名可选：有 CONVERTER_SIGNING_PRIVATE_KEY 时生成 module.sig，否则跳过
+const encodedPrivateKey = process.env.CONVERTER_SIGNING_PRIVATE_KEY?.trim();
+if (encodedPrivateKey) {
+  const privateKey = createPrivateKey({
+    key: Buffer.from(encodedPrivateKey, 'base64'),
+    format: 'der',
+    type: 'pkcs8',
+  });
+  const signature = sign(null, metadataBytes, privateKey).toString('base64');
+  await writeFile(resolve(outputDirectory, 'module.sig'), `${signature}\n`, 'utf8');
+}

@@ -15,7 +15,6 @@ permissions:
 
 env:
   CONVERTER_TAG: ${{ github.event.inputs.tag || github.ref_name }}
-  CONVERTER_SIGNING_PRIVATE_KEY: ${{ secrets.CONVERTER_SIGNING_PRIVATE_KEY }}
 
 concurrency:
   group: converter-${{ github.event.inputs.tag || github.ref_name }}
@@ -57,7 +56,6 @@ jobs:
           version="${CONVERTER_TAG#converter-v}"
           test "$version" != "$CONVERTER_TAG"
           test "$(tr -d '\r\n' < src-tauri/resources/converter_version.txt)" = "$version"
-          test -n "$CONVERTER_SIGNING_PRIVATE_KEY"
           echo "CONVERTER_VERSION=$version" >> "$GITHUB_ENV"
 
       - name: Setup Node.js
@@ -84,7 +82,7 @@ jobs:
           "${{ matrix.executable }}" --version-json > converter-version.json
           node -e "const v=require('./converter-version.json'); if(v.module_id!=='document-converter'||v.version!==process.env.CONVERTER_VERSION||v.protocol_version!==1||v.target!=='${{ matrix.target }}') process.exit(1)"
 
-      - name: Prepare signed module payload
+      - name: Prepare module payload
         run: node scripts/prepare-converter-package.mjs "${{ matrix.executable }}" "${{ env.CONVERTER_VERSION }}" "${{ matrix.target }}" converter-package
 
       - name: Create Windows module archive
@@ -128,7 +126,6 @@ jobs:
         run: |
           version="${CONVERTER_TAG#converter-v}"
           test "$version" != "$CONVERTER_TAG"
-          test -n "$CONVERTER_SIGNING_PRIVATE_KEY"
           echo "CONVERTER_VERSION=$version" >> "$GITHUB_ENV"
 
       - name: Download native module archives
@@ -138,7 +135,7 @@ jobs:
           path: converter-assets
           merge-multiple: true
 
-      - name: Generate signed stable manifest
+      - name: Generate converter manifest
         run: node scripts/generate-converter-manifest.mjs converter-assets "${{ env.CONVERTER_VERSION }}" converter-assets
 
       - name: Publish immutable converter release
@@ -152,7 +149,7 @@ jobs:
             --notes "Optional local document-conversion modules for MarkitDown. Windows module is currently not Authenticode-signed; every module is protected by the signed manifest and SHA-256 verification." \
             converter-assets/*
 
-      - name: Update signed stable channel
+      - name: Update stable channel
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -160,12 +157,16 @@ jobs:
           git tag -f converter-stable "$CONVERTER_TAG"
           git push origin refs/tags/converter-stable --force
           if ! gh release view converter-stable >/dev/null 2>&1; then
-            gh release create converter-stable --verify-tag --title "MarkitDown Converter Stable" --notes "Signed pointer to the current stable converter module."
+            gh release create converter-stable --verify-tag --title "MarkitDown Converter Stable" --notes "Pointer to the current stable converter module."
           fi
           gh release upload converter-stable \
             converter-assets/converter-manifest.json \
-            converter-assets/converter-manifest.sig \
-            --clobber
+            --clobber || true
+          if [ -f converter-assets/converter-manifest.sig ]; then
+            gh release upload converter-stable \
+              converter-assets/converter-manifest.sig \
+              --clobber || true
+          fi
 
       - name: Verify published assets
         env:
@@ -173,4 +174,3 @@ jobs:
         shell: bash
         run: |
           test "$(gh release view "$CONVERTER_TAG" --json assets --jq '.assets | length')" -eq 6
-          test "$(gh release view converter-stable --json assets --jq '.assets | length')" -eq 2

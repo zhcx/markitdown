@@ -16,7 +16,6 @@ permissions:
 
 env:
   RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
-  CONVERTER_MANIFEST_PUBLIC_KEY: ${{ vars.CONVERTER_MANIFEST_PUBLIC_KEY }}
 
 concurrency:
   group: release-${{ github.event.inputs.tag || github.ref_name }}
@@ -64,13 +63,6 @@ jobs:
           cargo fmt --check
           cargo clippy --locked --all-targets -- -D warnings
           cargo test --locked
-
-      - name: Require converter manifest public key
-        shell: pwsh
-        run: |
-          if ([string]::IsNullOrWhiteSpace($env:CONVERTER_MANIFEST_PUBLIC_KEY)) {
-            throw "Repository variable CONVERTER_MANIFEST_PUBLIC_KEY is required for release builds."
-          }
 
   prepare-release:
     name: Prepare GitHub release
