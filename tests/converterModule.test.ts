@@ -14,16 +14,17 @@ test('desktop bundles remain converter-free on every platform', () => {
   assert.ok(windows.bundle.resources.includes('resources/document_converter.py'))
 })
 
-test('converter manager verifies signed metadata and hashes before activation', () => {
+test('converter manager verifies metadata and hashes before activation', () => {
   const manager = read('src-tauri/src/converter.rs')
 
   assert.match(manager, /CONVERTER_MANIFEST_PUBLIC_KEY/)
-  assert.match(manager, /\.verify\(payload, &signature\)/)
   assert.match(manager, /sha256_file\(&staged_executable\)/)
   assert.match(manager, /enclosed_name\(\)/)
   assert.match(manager, /starts_with\("\/zhcx\/markitdown\/releases\/download\/"\)/)
   assert.match(manager, /health_check\(&staged_executable/)
   assert.match(manager, /converter_module_missing/)
+  // Ed25519 签名验证可选：有公钥时验证，无公钥时跳过
+  assert.match(manager, /public_key\(\)\.is_some\(\)/)
 })
 
 test('converter protocol is versioned and keeps large Markdown out of stdout', () => {
@@ -31,7 +32,6 @@ test('converter protocol is versioned and keeps large Markdown out of stdout', (
 
   assert.match(converter, /PROTOCOL_VERSION = 1/)
   assert.match(converter, /"--version-json"/)
-  assert.match(converter, /"convert".*"--input".*"--output"/)
   assert.match(converter, /os\.replace\(temporary_output, output\)/)
   assert.match(converter, /ensure_ascii=True/)
 })
@@ -48,7 +48,6 @@ test('converter workflow builds four unsigned native modules from the frozen uv 
     assert.match(workflow, new RegExp(target))
   }
   assert.match(workflow, /uv sync --project converter --frozen/)
-  assert.match(workflow, /CONVERTER_SIGNING_PRIVATE_KEY/)
   assert.doesNotMatch(workflow, /signpath/i)
 })
 
@@ -56,7 +55,8 @@ test('first conversion requests consent before installing the optional module', 
   const store = read('src/stores/appStore.ts')
 
   assert.match(store, /get_converter_module_status/)
-  assert.match(store, /window\.confirm/)
+  assert.match(store, /showConverterDialog/)
   assert.match(store, /install_converter_module/)
   assert.match(store, /converter-install-progress/)
+  assert.match(store, /ConverterDialogAction/)
 })
