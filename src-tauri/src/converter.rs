@@ -483,9 +483,7 @@ fn health_check(executable: &Path, expected: &ModuleMetadata) -> Result<(), Stri
             Ok(())
         }
         Err(error) => {
-            eprintln!(
-                "转换模块 --version-json 无法启动（{error}），降级为基本检查"
-            );
+            eprintln!("转换模块 --version-json 无法启动（{error}），降级为基本检查");
             if !executable.is_file() {
                 return Err("转换模块可执行文件在健康检查时不存在。".into());
             }
