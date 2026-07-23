@@ -117,43 +117,37 @@ Agent 默认关闭，需要先在“设置 → AI 助手”中启用。MarkitDow
 
 ## 🚀 快速开始
 
-## v0.3.4 更新
+## v0.3.5 更新
 
 ### 更新日志
 
-- 新增本地 Agent（Beta），可调用 Claude Code、Codex 和 OpenCode，并支持流式任务、命令审批与会话恢复。
-- AI 对话和 Agent 均可新建、保存并从历史记录恢复会话，切换工作目录时正确关联对应记录。
-- 编辑器右键菜单新增 AI 润色、AI 翻译、复制为 HTML、导出、插图和文件定位等常用操作。
-- 统一编辑器、预览区与资源管理器滚动条，并移除 Monaco 右侧多余概览标记。
-- 编辑器与预览区新增当前内容联动高亮，支持双向点击定位并将对应内容保持在同一水平位置。
-- 修复安装版编辑器异常收窄、点击后误选文字及长列表高亮范围过大的问题，并支持预览目录锚点跳转。
-- 关闭干扰中文写作的易混淆 Unicode 横幅和粘性标题黑条，取消动画滚动以提升双栏滚动响应。
-- 设置中的内容字号可实时同步到编辑器和预览区，保存设置改为异步持久化，减少界面停顿。
-- 优化 Agent 设置排版、错误提示、直接写入状态和浮动编辑栏尺寸，并移除 Inkwell 主题。
+- **文档转换模块**：新增按需安装的本地转换模块，支持 PDF、DOCX、XLSX、PPTX → Markdown 转换。提供在线安装、离线导入、Python 回退三种使用方式。
+- **主题弹窗**：安装确认、错误提示、卸载确认全部改用主题弹窗，自动适配明暗主题。
+- **资源管理器增强**：右键菜单、近期记录面板、文件树自动刷新（v0.3.4 延续）。
+- **编辑预览联动**：双向高亮定位、统一滚动条（v0.3.4 延续）。
 
-### v0.3.4 平台安装包对照
+### v0.3.5 平台安装包对照
 
-> 以下链接指向 v0.3.4 Release 资产；安装包由 GitHub Actions 根据本版本源码构建。
+> 以下链接指向 v0.3.5 Release 资产；安装包由 GitHub Actions 根据本版本源码构建。
 
-| 操作系统 | 架构 | 推荐安装包 | 适用场景 |
-| --- | --- | --- | --- |
-| Windows 10/11 | x86_64 | [NSIS `.exe`](https://github.com/zhcx/markitdown/releases/download/v0.3.4/MarkitDown_0.3.4_x64-setup.exe) | 推荐大多数用户使用，按向导安装 |
-| Windows 10/11 | x86_64 | [MSI](https://github.com/zhcx/markitdown/releases/download/v0.3.4/MarkitDown_0.3.4_x64_en-US.msi) | 企业部署、系统管理或静默安装 |
-| macOS Apple Silicon | arm64 | [DMG](https://github.com/zhcx/markitdown/releases/download/v0.3.4/MarkitDown_0.3.4_aarch64.dmg) | M1、M2、M3、M4 等 Apple 芯片 |
-| macOS Apple Silicon | arm64 | [APP 压缩包](https://github.com/zhcx/markitdown/releases/download/v0.3.4/MarkitDown_aarch64.app.tar.gz) | 手动解压或更新 |
-| macOS Intel | x86_64 | [DMG](https://github.com/zhcx/markitdown/releases/download/v0.3.4/MarkitDown_0.3.4_x64.dmg) | Intel 芯片 Mac |
-| macOS Intel | x86_64 | [APP 压缩包](https://github.com/zhcx/markitdown/releases/download/v0.3.4/MarkitDown_x64.app.tar.gz) | 手动解压或更新 |
-| Ubuntu / Debian | x86_64 | [DEB](https://github.com/zhcx/markitdown/releases/download/v0.3.4/MarkitDown_0.3.4_amd64.deb) | Ubuntu、Debian、Linux Mint 等 |
-| Fedora / RHEL / openSUSE | x86_64 | [RPM](https://github.com/zhcx/markitdown/releases/download/v0.3.4/MarkitDown-0.3.4-1.x86_64.rpm) | RPM 系发行版 |
-| 通用 Linux | x86_64 | [AppImage](https://github.com/zhcx/markitdown/releases/download/v0.3.4/MarkitDown_0.3.4_amd64.AppImage) | 无需安装，赋予执行权限后运行 |
+| 操作系统 | 架构 | 最低系统版本 | 推荐安装包 | 适用场景 |
+| --- | --- | --- | --- | --- |
+| Windows | x86_64 | Windows 10 1809+ | [NSIS `.exe`](https://github.com/zhcx/markitdown/releases/download/v0.3.5/MarkitDown_0.3.5_x64-setup.exe) | 推荐大多数用户使用，按向导安装 |
+| Windows | x86_64 | Windows 10 1809+ | [MSI](https://github.com/zhcx/markitdown/releases/download/v0.3.5/MarkitDown_0.3.5_x64_en-US.msi) | 企业部署、系统管理或静默安装 |
+| macOS Apple Silicon | arm64 | macOS 12+ | [DMG](https://github.com/zhcx/markitdown/releases/download/v0.3.5/MarkitDown_0.3.5_aarch64.dmg) | M1、M2、M3、M4 等 Apple 芯片 |
+| macOS Apple Silicon | arm64 | macOS 12+ | [APP 压缩包](https://github.com/zhcx/markitdown/releases/download/v0.3.5/MarkitDown_aarch64.app.tar.gz) | 手动解压或更新 |
+| macOS Intel | x86_64 | macOS 12+ | [DMG](https://github.com/zhcx/markitdown/releases/download/v0.3.5/MarkitDown_0.3.5_x64.dmg) | Intel 芯片 Mac |
+| macOS Intel | x86_64 | macOS 12+ | [APP 压缩包](https://github.com/zhcx/markitdown/releases/download/v0.3.5/MarkitDown_x64.app.tar.gz) | 手动解压或更新 |
+| Ubuntu / Debian | x86_64 | Ubuntu 20.04+ / Debian 11+ | [DEB](https://github.com/zhcx/markitdown/releases/download/v0.3.5/MarkitDown_0.3.5_amd64.deb) | Ubuntu、Debian、Linux Mint 等 |
+| Fedora / RHEL / openSUSE | x86_64 | Fedora 38+ / RHEL 9+ | [RPM](https://github.com/zhcx/markitdown/releases/download/v0.3.5/MarkitDown-0.3.5-1.x86_64.rpm) | RPM 系发行版 |
+| 通用 Linux | x86_64 | 需 webkit2gtk-4.1 | [AppImage](https://github.com/zhcx/markitdown/releases/download/v0.3.5/MarkitDown_0.3.5_amd64.AppImage) | 无需安装，赋予执行权限后运行 |
 
-> 不确定如何选择？Windows 下载 `.exe`，Apple 芯片 Mac 下载 `aarch64.dmg`，Intel Mac 下载 `x64.dmg`，Ubuntu/Debian 下载 `.deb`。
-
-完整更新说明与安装提示见 [`docs/releases/v0.3.4.md`](docs/releases/v0.3.4.md)。
+完整更新说明与安装提示见 [`docs/releases/v0.3.5.md`](docs/releases/v0.3.5.md)。
 
 ## Contributors
 
 - CodeX
+- Claude Code
 
 ### 下载安装
 
@@ -184,23 +178,62 @@ npm run tauri build
 ```
 
 **环境要求：**
-- Node.js >= 18
-- Rust >= 1.70
+- Node.js >= 22.6
+- Rust >= 1.85
 - Python >= 3.10（仅从源码运行或开发文档转换功能时需要）
 
-### 文档转换
+### 文档转换模块使用指南
 
-应用的“文件 → 导入并转换文档…”菜单和文件拖入支持将文档转换为未保存的 Markdown 标签页。为减小主程序下载体积，Microsoft MarkItDown 及 PDF、Word、Excel、PowerPoint 依赖改为按需安装的本地转换模块；首次使用时可从 GitHub 一键安装，也可导入提前下载的离线模块包，无需安装 Python。
+MarkitDown 支持将 **PDF、DOCX、XLSX、PPTX** 等文档转换为 Markdown 格式，并在新标签页中打开编辑。转换模块有三种使用方式：
 
-从源码运行时，为开发环境安装依赖：
+#### 方式一：在线安装（推荐）
+
+首次转换非 Markdown 文件时，应用会自动弹出**主题弹窗**引导安装：
+
+1. 右键 PDF/DOCX 文件 → “转换为 Markdown”，或在设置 → 文档转换中点击”在线安装”
+2. 应用从 GitHub Release 下载对应平台的转换模块
+3. 安装完成后自动执行转换
+
+#### 方式二：导入离线包
+
+在无网络环境中使用：
+
+1. 从本机或有网络的机器下载对应平台 ZIP 包
+2. 在”设置 → 文档转换”中点击”导入离线包”，选择下载的 ZIP
+3. 模块导入后即可使用
+
+各平台转换模块包名：
+
+| 平台 | 模块包 |
+| --- | --- |
+| Windows x86_64 | `document-converter-v1.0.0_x86_64-pc-windows-msvc.zip` |
+| macOS Apple Silicon | `document-converter-v1.0.0_aarch64-apple-darwin.zip` |
+| macOS Intel | `document-converter-v1.0.0_x86_64-apple-darwin.zip` |
+| Linux x86_64 | `document-converter-v1.0.0_x86_64-unknown-linux-gnu.zip` |
+
+#### 方式三：Python 回退（适合开发环境）
 
 ```bash
-python -m pip install -r requirements.txt
+python -m pip install 'markitdown[pdf,docx,pptx,xlsx]'
 ```
 
-转换文件始终在本机处理，不会上传到服务器。Windows 转换模块当前不进行 Authenticode/SignPath 代码签名，但应用会强制验证签名发布清单和模块 SHA-256。
+安装后无需下载转换模块，应用自动识别并调用 Python。如需指定 Python 路径：
 
-如需让应用显式使用自行维护的 Python 环境，可在启动前设置 `MARKITDOWN_PYTHON` 为对应 Python 可执行文件的绝对路径；应用不会自动探测或安装 Python 依赖。
+```bash
+# Windows (PowerShell)
+$env:MARKITDOWN_PYTHON = “C:\path\to\python.exe”
+markitdown
+
+# macOS / Linux
+MARKITDOWN_PYTHON=”/usr/local/bin/python3” ./markitdown
+```
+
+#### 安全说明
+
+- 文件转换**始终在本机处理**，不会上传到任何服务器
+- 发布清单使用 Ed25519 签名验证（公钥编译期嵌入）
+- 模块可执行文件经过 SHA-256 完整性校验
+- 未配置公钥时自动跳过 Ed25519 验证，适合自建测试
 
 ---
 
