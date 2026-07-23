@@ -315,17 +315,20 @@ async fn download_bytes(
     Ok(bytes.to_vec())
 }
 
-async fn fetch_manifest() -> Result<(ConverterManifest, Vec<u8>), String> {
+async fn fetch_manifest() -> Result<ConverterManifest, String> {
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(30))
         .user_agent(format!("MarkitDown/{}", env!("CARGO_PKG_VERSION")))
         .build()
         .map_err(|error| format!("创建模块下载客户端失败：{error}"))?;
-    let manifest = download_bytes(&client, MANIFEST_URL, 1024 * 1024).await?;
-    let signature = download_bytes(&client, MANIFEST_SIGNATURE_URL, 16 * 1024).await?;
-    verify_signature(&manifest, &signature)?;
-    let parsed: ConverterManifest =
-        serde_json::from_slice(&manifest).map_err(|error| format!("模块清单格式无效：{error}"))?;
+    let manifest_bytes = download_bytes(&client, MANIFEST_URL, 1024 * 1024).await?;
+    // 仅在有公钥时下载并验证签名；无公钥时跳过
+    if public_key().is_some() {
+        let signature = download_bytes(&client, MANIFEST_SIGNATURE_URL, 16 * 1024).await?;
+        verify_signature(&manifest_bytes, &signature)?;
+    }
+    let parsed: ConverterManifest = serde_json::from_slice(&manifest_bytes)
+        .map_err(|error| format!("模块清单格式无效：{error}"))?;
     if parsed.schema_version != 1 || parsed.module_id != CONVERTER_ID {
         return Err("模块清单类型不受支持。".into());
     }
@@ -339,7 +342,7 @@ async fn fetch_manifest() -> Result<(ConverterManifest, Vec<u8>), String> {
             parsed.minimum_app_version
         ));
     }
-    Ok((parsed, signature))
+    Ok(parsed)
 }
 
 async fn download_archive(
@@ -655,7 +658,7 @@ pub fn get_converter_module_status(app: AppHandle) -> ConverterModuleStatus {
 pub async fn check_converter_module_update(
     app: AppHandle,
 ) -> Result<ConverterModuleStatus, String> {
-    let (manifest, _) = fetch_manifest().await?;
+    let manifest = fetch_manifest().await?;
     if manifest.protocol_version != SUPPORTED_PROTOCOL {
         return Err("稳定版转换模块与当前主程序协议不兼容。".into());
     }
@@ -684,7 +687,7 @@ pub async fn install_converter_module(
         .try_lock()
         .map_err(|_| "已有转换模块安装任务正在进行。".to_string())?;
     manager.cancel_install.store(false, Ordering::Relaxed);
-    let (manifest, _) = fetch_manifest().await?;
+    let manifest = fetch_manifest().await?;
     if manifest.protocol_version != SUPPORTED_PROTOCOL {
         return Err("稳定版转换模块与当前主程序协议不兼容。".into());
     }
