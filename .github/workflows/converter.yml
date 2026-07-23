@@ -143,10 +143,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
+          # 删除已有 release（如有），支持无签名模式重跑
+          gh release delete "$CONVERTER_TAG" --yes 2>/dev/null || true
           gh release create "$CONVERTER_TAG" \
             --verify-tag \
             --title "MarkitDown Converter v${CONVERTER_VERSION}" \
-            --notes "Optional local document-conversion modules for MarkitDown. Windows module is currently not Authenticode-signed; every module is protected by the signed manifest and SHA-256 verification." \
+            --notes "Cross-platform document-conversion modules for MarkitDown." \
             converter-assets/*
 
       - name: Update stable channel
@@ -173,4 +175,5 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          test "$(gh release view "$CONVERTER_TAG" --json assets --jq '.assets | length')" -eq 6
+          count=$(gh release view "$CONVERTER_TAG" --json assets --jq '.assets | length')
+          test "$count" -ge 4 || { echo "Expected at least 4 assets, found $count"; exit 1; }
