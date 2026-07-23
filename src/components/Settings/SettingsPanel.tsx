@@ -1228,6 +1228,8 @@ export function SettingsPanel() {
                     setConverterBusy(true);
                     setConverterNotice('');
                     try {
+                      // 先检查更新（预热 HTTPS 连接），再执行安装
+                      try { await invoke('check_converter_module_update'); } catch { /* 预热失败不影响安装 */ }
                       await invoke('install_converter_module');
                       await refreshConverterStatus();
                     } catch (error) {
@@ -1237,14 +1239,13 @@ export function SettingsPanel() {
                     }
                   }}
                 >
-                  {converterBusy ? '处理中…' : converterStatus?.state === 'ready' ? '重新安装' : '在线安装'}
-                </button>
-                <button
-                  className="secondary-btn"
-                  disabled={converterBusy || !isTauriRuntime()}
-                  onClick={() => void refreshConverterStatus(true)}
-                >
-                  检查更新
+                  {converterBusy
+                    ? '处理中…'
+                    : converterStatus?.state === 'ready'
+                      ? '重新安装'
+                      : converterStatus?.state === 'update_available'
+                        ? '更新模块'
+                        : '在线安装'}
                 </button>
                 <button
                   className="secondary-btn"
