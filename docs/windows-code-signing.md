@@ -6,8 +6,8 @@ The release workflow is ready for SignPath Foundation's GitHub integration. It r
 
 Windows signing is intentionally split into two requests:
 
-1. Build `markitdown.exe` and the hash-locked, CI-generated `document_converter.exe`; upload both as a GitHub Actions artifact; request manual SignPath approval and signing.
-2. Replace the local files with the signed copies, build MSI and NSIS installers, upload the installers as another GitHub Actions artifact, and request manual SignPath approval and signing.
+1. Build `markitdown.exe`; upload it as a GitHub Actions artifact; request manual SignPath approval and signing.
+2. Replace the local application executable with the signed copy, build MSI and NSIS installers, upload the installers as another GitHub Actions artifact, and request manual SignPath approval and signing.
 3. Verify Authenticode signatures and publish only the returned installer files. When SignPath settings are absent, the workflow publishes the generated installers without signatures and emits a prominent warning.
 
 This structure ensures that both the installed executables and their outer installers can be signed. The pre-sign artifacts exist on GitHub before each request, and every build job upstream of the requests uses a GitHub-hosted runner.
@@ -28,22 +28,16 @@ Create these Actions variables:
 
 The two artifact configurations should accept the default ZIP artifact created by `actions/upload-artifact@v7`:
 
-- Executable configuration: `markitdown.exe` and `document_converter.exe`, both Authenticode-signed.
+- Executable configuration: `markitdown.exe`.
 - Installer configuration: one `.msi` and one NSIS `.exe`, both Authenticode-signed.
 
 Do not add placeholder or partial values. The workflow enables signing only when all six values are present; otherwise it takes the unsigned fallback path.
 
 Install the SignPath GitHub App as instructed by SignPath and link the repository to the SignPath project. Configure the signing policy for manual approval, restrict the project to GitHub's trusted build system, and require GitHub-hosted runners.
 
-## Locked converter build
+## Optional converter module
 
-The converter executable is not tracked in Git. On Windows CI, Python 3.12 installs every package from `requirements-converter.lock` using `pip --require-hashes`, then PyInstaller executes `src-tauri/resources/document_converter.spec`. To reproduce the build environment on Windows:
-
-```powershell
-./scripts/build-document-converter.ps1
-```
-
-The lock is target-specific: CPython 3.12 on Windows x64. `requirements-converter.in` records the two direct build inputs. Dependency updates must be resolved for that target, reviewed, and committed with new hashes rather than editing only the top-level version.
+The document converter is no longer bundled into the MSI or NSIS installer. It is built by the separate converter workflow and installed on demand into the application data directory. The Windows converter module is deliberately outside the SignPath flow for now; its signed module metadata and SHA-256 are still mandatory before activation. See [converter-modules.md](converter-modules.md).
 
 ## Verification
 

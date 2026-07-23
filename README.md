@@ -190,7 +190,7 @@ npm run tauri build
 
 ### 文档转换
 
-应用的“文件 → 导入并转换文档…”菜单和文件拖入支持将文档转换为未保存的 Markdown 标签页。发布版安装包和便携版均内置 Microsoft MarkItDown 及 PDF、Word、Excel、PowerPoint 所需依赖，打开即可使用，无需安装 Python。
+应用的“文件 → 导入并转换文档…”菜单和文件拖入支持将文档转换为未保存的 Markdown 标签页。为减小主程序下载体积，Microsoft MarkItDown 及 PDF、Word、Excel、PowerPoint 依赖改为按需安装的本地转换模块；首次使用时可从 GitHub 一键安装，也可导入提前下载的离线模块包，无需安装 Python。
 
 从源码运行时，为开发环境安装依赖：
 
@@ -198,7 +198,9 @@ npm run tauri build
 python -m pip install -r requirements.txt
 ```
 
-如需让应用使用特定 Python 环境，设置 `MARKITDOWN_PYTHON` 为对应 Python 可执行文件的绝对路径。
+转换文件始终在本机处理，不会上传到服务器。Windows 转换模块当前不进行 Authenticode/SignPath 代码签名，但应用会强制验证签名发布清单和模块 SHA-256。
+
+如需让应用显式使用自行维护的 Python 环境，可在启动前设置 `MARKITDOWN_PYTHON` 为对应 Python 可执行文件的绝对路径；应用不会自动探测或安装 Python 依赖。
 
 ---
 

@@ -1,0 +1,176 @@
+name: Build Document Converter Modules
+
+on:
+  push:
+    tags:
+      - 'converter-v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing immutable converter-v* tag
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  CONVERTER_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+  CONVERTER_SIGNING_PRIVATE_KEY: ${{ secrets.CONVERTER_SIGNING_PRIVATE_KEY }}
+
+concurrency:
+  group: converter-${{ github.event.inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: ${{ matrix.label }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: Windows x64
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            executable: converter-dist/document_converter.exe
+          - label: macOS Apple Silicon
+            os: macos-15
+            target: aarch64-apple-darwin
+            executable: converter-dist/document_converter
+          - label: macOS Intel
+            os: macos-15-intel
+            target: x86_64-apple-darwin
+            executable: converter-dist/document_converter
+          - label: Linux x64
+            os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            executable: converter-dist/document_converter
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout converter source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.CONVERTER_TAG }}
+
+      - name: Validate converter tag and source version
+        shell: bash
+        run: |
+          version="${CONVERTER_TAG#converter-v}"
+          test "$version" != "$CONVERTER_TAG"
+          test "$(tr -d '\r\n' < src-tauri/resources/converter_version.txt)" = "$version"
+          test -n "$CONVERTER_SIGNING_PRIVATE_KEY"
+          echo "CONVERTER_VERSION=$version" >> "$GITHUB_ENV"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Setup uv and Python 3.12
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          working-directory: converter
+          python-version: '3.12'
+          enable-cache: true
+
+      - name: Restore locked converter environment
+        run: uv sync --project converter --frozen --group build
+
+      - name: Build converter executable
+        run: uv run --project converter pyinstaller --clean --noconfirm --distpath converter-dist --workpath converter-work src-tauri/resources/document_converter.spec
+
+      - name: Verify converter protocol
+        shell: bash
+        run: |
+          "${{ matrix.executable }}" --version-json > converter-version.json
+          node -e "const v=require('./converter-version.json'); if(v.module_id!=='document-converter'||v.version!==process.env.CONVERTER_VERSION||v.protocol_version!==1||v.target!=='${{ matrix.target }}') process.exit(1)"
+
+      - name: Prepare signed module payload
+        run: node scripts/prepare-converter-package.mjs "${{ matrix.executable }}" "${{ env.CONVERTER_VERSION }}" "${{ matrix.target }}" converter-package
+
+      - name: Create Windows module archive
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Compress-Archive -Path converter-package/* -DestinationPath "markitdown-converter-v${env:CONVERTER_VERSION}-${{ matrix.target }}.zip"
+
+      - name: Create Unix module archive
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          cd converter-package
+          zip -9 -r "../markitdown-converter-v${CONVERTER_VERSION}-${{ matrix.target }}.zip" .
+
+      - name: Upload converter archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: converter-${{ matrix.target }}
+          path: markitdown-converter-v${{ env.CONVERTER_VERSION }}-${{ matrix.target }}.zip
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    name: Publish converter release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout release source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.CONVERTER_TAG }}
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Resolve converter version
+        shell: bash
+        run: |
+          version="${CONVERTER_TAG#converter-v}"
+          test "$version" != "$CONVERTER_TAG"
+          test -n "$CONVERTER_SIGNING_PRIVATE_KEY"
+          echo "CONVERTER_VERSION=$version" >> "$GITHUB_ENV"
+
+      - name: Download native module archives
+        uses: actions/download-artifact@v4
+        with:
+          pattern: converter-*
+          path: converter-assets
+          merge-multiple: true
+
+      - name: Generate signed stable manifest
+        run: node scripts/generate-converter-manifest.mjs converter-assets "${{ env.CONVERTER_VERSION }}" converter-assets
+
+      - name: Publish immutable converter release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh release create "$CONVERTER_TAG" \
+            --verify-tag \
+            --title "MarkitDown Converter v${CONVERTER_VERSION}" \
+            --notes "Optional local document-conversion modules for MarkitDown. Windows module is currently not Authenticode-signed; every module is protected by the signed manifest and SHA-256 verification." \
+            converter-assets/*
+
+      - name: Update signed stable channel
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          git tag -f converter-stable "$CONVERTER_TAG"
+          git push origin refs/tags/converter-stable --force
+          if ! gh release view converter-stable >/dev/null 2>&1; then
+            gh release create converter-stable --verify-tag --title "MarkitDown Converter Stable" --notes "Signed pointer to the current stable converter module."
+          fi
+          gh release upload converter-stable \
+            converter-assets/converter-manifest.json \
+            converter-assets/converter-manifest.sig \
+            --clobber
+
+      - name: Verify published assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          test "$(gh release view "$CONVERTER_TAG" --json assets --jq '.assets | length')" -eq 6
+          test "$(gh release view converter-stable --json assets --jq '.assets | length')" -eq 2

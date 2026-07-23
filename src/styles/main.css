@@ -6766,6 +6766,14 @@ textarea:focus-visible {
 .wechat-export-preview * { box-sizing: border-box; }
 .app .wechat-export-preview :is(strong,em,del) { color: inherit !important; font-family: "Microsoft YaHei", "微软雅黑", sans-serif !important; }
 .secondary-btn { padding: 8px 13px; border: 1px solid var(--border-color); border-radius: 5px; color: var(--text-primary); background: var(--bg-elevated); cursor: pointer; }
+.converter-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.converter-actions .secondary-btn:disabled { cursor: not-allowed; opacity: 0.55; }
+.converter-signing-notice { border-left: 3px solid var(--warning-color); padding-left: 12px; }
+.converter-error { color: var(--danger-color); }
+.converter-remove-button { color: var(--danger-color); }
+.converter-advanced { border-top: 1px solid var(--border-color); padding-top: 12px; color: var(--text-secondary); }
+.converter-advanced summary { cursor: pointer; color: var(--text-primary); margin-bottom: 8px; }
+.converter-advanced code { color: var(--text-primary); }
 .update-toast-error { position: fixed; z-index: 1200; right: 20px; bottom: 20px; max-width: min(420px, calc(100vw - 40px)); padding: 10px 13px; border: 1px solid #d85b5b; border-radius: 7px; color: #7f1d1d; background: #fff1f1; box-shadow: 0 8px 25px rgba(0,0,0,.18); font-size: 12px; line-height: 1.45; }
 [data-theme$="dark"] .update-toast-error { color: #fecaca; background: #481f25; border-color: #b94a57; }
 @media (max-width: 680px) { .wechat-theme-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

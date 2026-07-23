@@ -147,7 +147,7 @@ function App() {
           const selected = await chooseSaveFile({
             title: `保存“${tab.title}”`,
             defaultPath: tab.title === '未命名' ? '未命名.md' : tab.title,
-            filters: [{ name: 'Markdown', extensions: ['md', 'markdown', 'txt'] }],
+            filters: [{ name: 'Markdown', extensions: ['md', 'markdown', 'txt'] }, { name: '文档', extensions: ['pdf', 'docx', 'doc', 'pptx', 'ppt', 'xlsx', 'xls'] }],
           });
           return typeof selected === 'string' ? selected : null;
         },

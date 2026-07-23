@@ -14,11 +14,13 @@ Signed releases will display **SignPath Foundation** as the certificate publishe
 
 Only official MarkitDown release artifacts produced from this public repository by the checked-in GitHub Actions workflow are eligible for signing. All upstream build jobs use GitHub-hosted runners. The Windows converter is built in CI from its public Python source, a reviewed PyInstaller specification, and a complete version-and-hash-locked dependency file; no prebuilt converter executable is committed.
 
-The planned two-stage process is:
+The planned two-stage process covers the main Windows application only:
 
-1. GitHub Actions builds the MarkitDown application executable and the document converter, uploads them to GitHub, and submits them to SignPath.
-2. After those inner executables are signed, GitHub Actions creates the MSI and NSIS installers, uploads them to GitHub, and submits the installers to SignPath.
+1. GitHub Actions builds the MarkitDown application executable, uploads it to GitHub, and submits it to SignPath.
+2. After the application executable is signed, GitHub Actions creates the MSI and NSIS installers, uploads them to GitHub, and submits the installers to SignPath.
 3. Only the returned, verified artifacts are attached to an official release. If SignPath is not configured, the workflow follows the explicitly labelled unsigned fallback.
+
+The optional Windows document-converter module is distributed separately and is not currently submitted to SignPath or Authenticode-signed. Its installer enforces an Ed25519-signed release manifest and SHA-256 verification before activation.
 
 The Git commit and release tag remain the source of truth for every build. Release tags must be immutable; corrections are published under a new version instead of moving an existing tag.
 

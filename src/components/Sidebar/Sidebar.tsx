@@ -62,6 +62,10 @@ const isDirectOpenFile = isTextFileName;
 // Keep this in sync with the desktop command. These are the file types offered
 // by MarkItDown in the workspace, rather than only files the editor can read.
 const isConvertibleFile = (name: string) => /\.(pdf|doc|docx|ppt|pptx|xls|xlsx|html?|csv|json|xml|epub|zip|png|jpe?g|gif|webp|bmp|svg|mp3|wav|m4a|ogg|eml|msg|rss|atom|ipynb)$/i.test(name);
+const replaceNodeChildren = (nodes: FileNode[], path: string, children: FileNode[]): FileNode[] => nodes.map(node => {
+  if (node.path === path) return { ...node, children };
+  return node.children ? { ...node, children: replaceNodeChildren(node.children, path, children) } : node;
+});
 
 const splitTimelineLines = (value: string) => value.split(/\r?\n/);
 
@@ -291,6 +295,7 @@ function ExplorerSidebar({ style }: SidebarProps) {
   const [creating, setCreating] = useState<CreateState>(null);
   const [renameValue, setRenameValue] = useState('');
   const [fsClipboard, setFsClipboard] = useState<FsClipboard>(null);
+  const knownTreeSizeRef = useRef(new Map<string, number>());
   const activeTimeline = activeTabId ? timeline[activeTabId] || [] : [];
   const activeTab = tabs.find((tab) => tab.id === activeTabId);
   const outlineContent = selectActiveDocumentContent(tabs, activeTabId, content);
@@ -347,6 +352,7 @@ function ExplorerSidebar({ style }: SidebarProps) {
       setWorkspaceFolders(previous => previous.some((folder) => folder.path === folderPath)
         ? previous
         : [...previous, { name: browserHandle?.name || getFolderName(folderPath), path: folderPath, tree }]);
+      if (tree.length > 0) knownTreeSizeRef.current.set(folderPath, tree.length);
       if (!folderPath.startsWith('web://')) {
         const roots = readStoredStringArray(WORKSPACE_ROOTS_KEY);
         if (!roots.includes(folderPath)) writeStoredStringArray(WORKSPACE_ROOTS_KEY, [...roots, folderPath]);
@@ -381,13 +387,16 @@ function ExplorerSidebar({ style }: SidebarProps) {
   }, [loadHistory]);
 
   // Load history on mount and when settings change
-  useEffect(() => { setRecentHistory(loadHistory()); }, [loadHistory]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setRecentHistory(loadHistory()), 0);
+    return () => window.clearTimeout(timer);
+  }, [loadHistory]);
 
   useEffect(() => {
     const activeTab = tabs.find(tab => tab.id === activeTabId);
     if (!activeTab?.path) return;
     void invoke('update_recent_file', { path: activeTab.path, title: activeTab.title }).catch(() => undefined);
-    addToHistory(activeTab.path, activeTab.title, 'file');
+    queueMicrotask(() => addToHistory(activeTab.path as string, activeTab.title, 'file'));
   }, [activeTabId, tabs, addToHistory]);
 
   useEffect(() => {
@@ -473,6 +482,7 @@ function ExplorerSidebar({ style }: SidebarProps) {
     try {
       const tree = await invoke<RawFileNode[]>('read_folder', { path: folderPath });
       const normalized = (tree || []).map(normalizeNode);
+      if (normalized.length === 0) return;
       setWorkspaceFolders(previous => previous.map(folder => ({
         ...folder,
         tree: replaceNodeChildren(folder.tree, folderPath, normalized),
@@ -517,6 +527,8 @@ function ExplorerSidebar({ style }: SidebarProps) {
         const tree = await invoke<RawFileNode[]>('read_folder', { path: folderPath }).catch(() => null);
         if (!tree || version !== refreshVersionRef.current) continue;
         const normalized = (tree || []).map(normalizeNode);
+        if (normalized.length === 0 && (knownTreeSizeRef.current.get(folderPath) ?? 0) > 0) continue;
+        if (normalized.length > 0) knownTreeSizeRef.current.set(folderPath, normalized.length);
         setWorkspaceFolders(previous => previous.map(f => f.path === folderPath
           ? { ...f, tree: normalized }
           : f
@@ -524,7 +536,7 @@ function ExplorerSidebar({ style }: SidebarProps) {
       }
     }, intervalMs);
     return () => { if (refreshIntervalRef.current) clearInterval(refreshIntervalRef.current); };
-  }, [settings.explorer.auto_refresh, settings.explorer.refresh_interval_seconds, workspaceFolders.length, expandedNodes]);
+  }, [settings.explorer.auto_refresh, settings.explorer.refresh_interval_seconds, workspaceFolders, expandedNodes]);
 
   // ── 监听 store 刷新事件 ─────────────────────────────────
   useEffect(() => {
@@ -640,11 +652,6 @@ function ExplorerSidebar({ style }: SidebarProps) {
     });
   };
 
-  const replaceNodeChildren = (nodes: FileNode[], path: string, children: FileNode[]): FileNode[] => nodes.map(node => {
-    if (node.path === path) return { ...node, children };
-    return node.children ? { ...node, children: replaceNodeChildren(node.children, path, children) } : node;
-  });
-
   const toggleFolder = async (node: FileNode) => {
     if (expandedNodes.has(node.path)) {
       toggleExpanded(node.path);
@@ -656,6 +663,7 @@ function ExplorerSidebar({ style }: SidebarProps) {
       const children = node.directoryHandle
         ? await readBrowserFolder(node.directoryHandle, node.path)
         : await readFolder(node.path);
+      if (!children || children.length === 0) return;
       setWorkspaceFolders(previous => previous.map((folder) => ({
         ...folder,
         tree: replaceNodeChildren(folder.tree, node.path, children),
@@ -676,7 +684,12 @@ function ExplorerSidebar({ style }: SidebarProps) {
       // desktop application where the bundled MarkItDown sidecar is available.
       window.alert('文件转换仅在桌面应用中可用，请使用桌面版打开此文件夹。');
     } else {
+      try {
       await convertDocument(node.path);
+      } catch {
+        // convertDocument already sets the error status and message via the store.
+        // Nothing else to do here — the folder state remains intact.
+      }
     }
   };
 
@@ -713,7 +726,7 @@ function ExplorerSidebar({ style }: SidebarProps) {
 
   const handleOpenFile = async () => {
     try {
-      const selected = await open({ filters: [{ name: 'Markdown', extensions: ['md', 'markdown', 'txt'] }], multiple: true });
+      const selected = await open({ filters: [{ name: 'Markdown/文档', extensions: ['md', 'markdown', 'txt', 'pdf', 'docx', 'doc', 'pptx', 'ppt', 'xlsx', 'xls', 'html', 'htm', 'csv', 'json', 'xml', 'epub'] }], multiple: true });
       if (!selected) return;
       for (const path of (Array.isArray(selected) ? selected : [selected])) await openFile(path as string);
       setExpandedNodes(previous => new Set(previous).add(OPEN_EDITORS_ID));

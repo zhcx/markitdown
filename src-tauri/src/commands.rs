@@ -712,143 +712,6 @@ pub async fn get_text_attachment_content(path: String) -> Result<String, String>
     read_utf8_text_file(&path, Some(MAX_TEXT_ATTACHMENT_BYTES)).await
 }
 
-fn document_converter_script(app: &AppHandle) -> Result<PathBuf, String> {
-    let bundled = app
-        .path()
-        .resource_dir()
-        .map_err(|e| format!("Unable to locate application resources: {e}"))?
-        .join("resources")
-        .join("document_converter.py");
-    if bundled.is_file() {
-        return Ok(bundled);
-    }
-
-    let development = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("resources")
-        .join("document_converter.py");
-    if development.is_file() {
-        Ok(development)
-    } else {
-        Err("Document converter resource is missing from the application bundle.".into())
-    }
-}
-
-fn document_converter_executable(app: &AppHandle) -> Option<PathBuf> {
-    let resource_dir = app.path().resource_dir().ok()?;
-    let mut candidates = vec![resource_dir
-        .join("resources")
-        .join("document_converter.exe")];
-    if let Ok(current_exe) = std::env::current_exe() {
-        if let Some(exe_dir) = current_exe.parent() {
-            // Supports both the Tauri bundle layout and the portable ZIP layout.
-            candidates.push(exe_dir.join("resources").join("document_converter.exe"));
-            candidates.push(exe_dir.join("document_converter.exe"));
-        }
-    }
-    candidates.into_iter().find(|path| path.is_file())
-}
-
-fn markdown_from_converter_output(
-    output: std::process::Output,
-    markdown_path: &Path,
-    source_size: u64,
-    elapsed: std::time::Duration,
-) -> Result<String, String> {
-    let status = output
-        .status
-        .code()
-        .map_or_else(|| "terminated".to_string(), |code| code.to_string());
-    let stdout_len = output.stdout.len();
-    let stderr_len = output.stderr.len();
-    if !output.status.success() {
-        let error = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        log_to_file(&format!(
-            "document conversion failed: input_bytes={source_size}, elapsed_ms={}, exit={status}, stdout_bytes={stdout_len}, stderr_bytes={stderr_len}, error={error}",
-            elapsed.as_millis()
-        ));
-        return Err(if error.is_empty() {
-            "文档转换失败。".into()
-        } else {
-            error
-        });
-    }
-    let markdown =
-        std::fs::read_to_string(markdown_path).map_err(|e| format!("读取转换结果失败: {e}"));
-    let output_size = std::fs::metadata(markdown_path)
-        .map(|meta| meta.len())
-        .unwrap_or(0);
-    std::fs::remove_file(markdown_path).ok();
-    log_to_file(&format!(
-        "document conversion completed: input_bytes={source_size}, output_bytes={output_size}, elapsed_ms={}, exit={status}, stdout_bytes={stdout_len}, stderr_bytes={stderr_len}",
-        elapsed.as_millis()
-    ));
-    markdown
-}
-
-fn hide_converter_window(command: &mut std::process::Command) {
-    #[cfg(target_os = "windows")]
-    {
-        use std::os::windows::process::CommandExt;
-        // CREATE_NO_WINDOW prevents the console flash when a sidecar starts.
-        command.creation_flags(0x0800_0000);
-    }
-}
-
-fn python_candidates() -> Vec<String> {
-    if let Ok(path) = std::env::var("MARKITDOWN_PYTHON") {
-        if !path.trim().is_empty() {
-            return vec![path];
-        }
-    }
-    if cfg!(target_os = "windows") {
-        vec!["python.exe".into(), "py.exe".into()]
-    } else {
-        vec!["python3".into(), "python".into()]
-    }
-}
-
-#[tauri::command]
-pub async fn convert_document(app: AppHandle, path: String) -> Result<String, String> {
-    let source = PathBuf::from(&path);
-    if !source.is_file() {
-        return Err("请选择一个存在的本地文件。".into());
-    }
-    let source_size = std::fs::metadata(&source)
-        .map(|meta| meta.len())
-        .unwrap_or(0);
-    let markdown_path =
-        std::env::temp_dir().join(format!("markitdown-conversion-{}.md", uuid::Uuid::new_v4()));
-    let bundled_converter = document_converter_executable(&app);
-    let script = if bundled_converter.is_none() {
-        Some(document_converter_script(&app)?)
-    } else {
-        None
-    };
-
-    tokio::task::spawn_blocking(move || {
-        let started_at = std::time::Instant::now();
-        if let Some(converter) = bundled_converter {
-            let mut command = std::process::Command::new(converter);
-            hide_converter_window(&mut command);
-            return command.arg(&source).arg(&markdown_path).output()
-                .map_err(|e| format!("无法启动内置文档转换器: {e}"))
-                .and_then(|output| markdown_from_converter_output(output, &markdown_path, source_size, started_at.elapsed()));
-        }
-
-        let script = script.ok_or_else(|| "文档转换器脚本不可用。".to_string())?;
-        let mut launch_error = None;
-        for python in python_candidates() {
-            let mut command = std::process::Command::new(&python);
-            hide_converter_window(&mut command);
-            match command.arg(&script).arg(&source).arg(&markdown_path).output() {
-                Ok(output) => return markdown_from_converter_output(output, &markdown_path, source_size, started_at.elapsed()),
-                Err(error) => launch_error = Some(format!("{python}: {error}")),
-            }
-        }
-        Err(format!("无法启动 Python。请安装 Python 3.10+，或设置 MARKITDOWN_PYTHON 指向 Python 可执行文件。{}", launch_error.map(|e| format!(" ({e})")).unwrap_or_default()))
-    }).await.map_err(|e| format!("文档转换任务异常结束: {e}"))?
-}
-
 #[tauri::command]
 pub async fn read_file_base64(path: String) -> Result<String, String> {
     const MAX_ATTACHMENT_BYTES: u64 = 20 * 1024 * 1024;
@@ -1250,7 +1113,10 @@ pub async fn update_recent_folder(
 }
 
 #[tauri::command]
-pub async fn remove_recent_folder(app: AppHandle, path: String) -> Result<Vec<RecentFolder>, String> {
+pub async fn remove_recent_folder(
+    app: AppHandle,
+    path: String,
+) -> Result<Vec<RecentFolder>, String> {
     let _guard = RECENT_FOLDERS_LOCK
         .lock()
         .map_err(|_| "最近文件夹记录锁已损坏".to_string())?;

@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import type { EditorController } from '../types/editor';
 import { formatTextStatistics } from '../utils/textStatistics';
 import { DEFAULT_FONT_SIZE, DEFAULT_LINE_HEIGHT } from '../utils/appearanceSettings';
@@ -169,7 +170,28 @@ export interface TimelineEntry {
 
 export type UploadStatus = 'idle' | 'uploading' | 'success' | 'error';
 export type ConversionStatus = 'idle' | 'converting' | 'success' | 'error';
-export type SettingsTab = 'appearance' | 'editor' | 'image' | 'export' | 'ai' | 'web_search' | 'explorer';
+export type SettingsTab = 'appearance' | 'editor' | 'image' | 'export' | 'ai' | 'web_search' | 'explorer' | 'converter';
+
+export interface ConverterModuleStatus {
+  state: 'missing' | 'installing' | 'ready' | 'update_available' | 'incompatible' | 'corrupt' | 'error';
+  target: string;
+  installed_version: string | null;
+  available_version: string | null;
+  protocol_version: number | null;
+  installed_size: number;
+  download_size: number | null;
+  supported_formats: string[];
+  unsigned_windows_module: boolean;
+  error_code: string | null;
+  message: string | null;
+}
+
+interface ConverterInstallProgress {
+  stage: 'downloading' | 'verifying' | 'installing' | 'complete';
+  downloaded: number;
+  total: number;
+  percent: number;
+}
 
 interface AppState {
   content: string;
@@ -607,6 +629,42 @@ export const useAppStore = create<AppState>((set, get) => ({
     const sourceName = path.split(/[\\/]/).pop() || path;
     get().setConversionStatus('converting', `正在转换：${sourceName}`);
     try {
+      if (isTauriRuntime()) {
+        let status = await invoke<ConverterModuleStatus>('get_converter_module_status');
+        if (status.state !== 'ready' && status.state !== 'update_available') {
+          try {
+            status = await invoke<ConverterModuleStatus>('check_converter_module_update');
+          } catch {
+            // Installation will show the actionable network or signature error.
+          }
+          const downloadSize = status.download_size
+            ? `，约 ${(status.download_size / 1024 / 1024).toFixed(1)} MB`
+            : '';
+          const shouldInstall = window.confirm(
+            `文档转换模块尚未安装。\n\n模块仅在本机处理文件，首次使用需要从 GitHub 下载对应平台组件${downloadSize}。是否现在安装？`,
+          );
+          if (!shouldInstall) {
+            throw new Error('已取消安装文档转换模块。可在“设置 → 文档转换”中稍后安装或导入离线包。');
+          }
+          get().setConversionStatus('converting', '正在准备文档转换模块…');
+          const unlisten = await listen<ConverterInstallProgress>('converter-install-progress', ({ payload }) => {
+            const message = payload.stage === 'downloading'
+              ? `正在下载文档转换模块：${payload.percent}%`
+              : payload.stage === 'verifying'
+                ? '正在校验文档转换模块…'
+                : payload.stage === 'installing'
+                  ? '正在安装文档转换模块…'
+                  : '文档转换模块安装完成';
+            get().setConversionStatus('converting', message);
+          });
+          try {
+            await invoke('install_converter_module');
+          } finally {
+            unlisten();
+          }
+          get().setConversionStatus('converting', `正在转换：${sourceName}`);
+        }
+      }
       const markdown = await invoke<string>('convert_document', { path });
       const title = sourceName.replace(/\.[^.]+$/, '') + '.md';
       const newTab: Tab = {

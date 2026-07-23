@@ -18,6 +18,11 @@ src-tauri/target-*
 /target
 src-tauri/resources/document_converter.exe
 .converter-build/
+.converter-keys/
+converter-dist/
+converter-work/
+converter-package/
+converter-package-test.zip
 
 # Local UI verification screenshots
 /*-preview.png
@@ -39,3 +44,6 @@ src-tauri/resources/document_converter.exe
 .workbuddy/
 docs/superpowers/
 *.png.bak
+
+# Python virtual env
+converter/.venv/

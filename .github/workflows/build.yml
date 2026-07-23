@@ -16,6 +16,7 @@ permissions:
 
 env:
   RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+  CONVERTER_MANIFEST_PUBLIC_KEY: ${{ vars.CONVERTER_MANIFEST_PUBLIC_KEY }}
 
 concurrency:
   group: release-${{ github.event.inputs.tag || github.ref_name }}
@@ -57,17 +58,19 @@ jobs:
           npm run build
           npm audit --audit-level=high
 
-      - name: Create converter placeholder for Rust checks
-        shell: pwsh
-        run: |
-          New-Item -ItemType File -Force src-tauri/resources/document_converter.exe | Out-Null
-
       - name: Check Rust quality
         working-directory: src-tauri
         run: |
           cargo fmt --check
           cargo clippy --locked --all-targets -- -D warnings
           cargo test --locked
+
+      - name: Require converter manifest public key
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:CONVERTER_MANIFEST_PUBLIC_KEY)) {
+            throw "Repository variable CONVERTER_MANIFEST_PUBLIC_KEY is required for release builds."
+          }
 
   prepare-release:
     name: Prepare GitHub release
@@ -174,13 +177,6 @@ jobs:
           node-version: '22'
           cache: npm
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-          cache: pip
-          cache-dependency-path: requirements-converter.lock
-
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -202,10 +198,6 @@ jobs:
           "SIGNPATH_ENABLED=false" >> $env:GITHUB_ENV
           Write-Host "Code signing disabled for this build."
 
-      - name: Build hash-locked document converter
-        shell: pwsh
-        run: ./scripts/build-document-converter.ps1
-
       - name: Build unsigned application executable
         run: npm run tauri build -- --target ${{ env.WINDOWS_TARGET }} --no-bundle --no-sign
 
@@ -214,7 +206,6 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force signpath-stage-1 | Out-Null
           Copy-Item "src-tauri/target/$env:WINDOWS_TARGET/release/markitdown.exe" signpath-stage-1/markitdown.exe
-          Copy-Item src-tauri/resources/document_converter.exe signpath-stage-1/document_converter.exe
 
       - name: Upload inner executables for provenance
         id: upload-unsigned-executables
@@ -244,10 +235,8 @@ jobs:
         shell: pwsh
         run: |
           $signedApp = Get-ChildItem signed-stage-1 -Recurse -File -Filter markitdown.exe | Select-Object -First 1
-          $signedConverter = Get-ChildItem signed-stage-1 -Recurse -File -Filter document_converter.exe | Select-Object -First 1
-          if (-not $signedApp -or -not $signedConverter) { throw "SignPath did not return both inner executables." }
+          if (-not $signedApp) { throw "SignPath did not return the application executable." }
           Copy-Item $signedApp.FullName "src-tauri/target/$env:WINDOWS_TARGET/release/markitdown.exe" -Force
-          Copy-Item $signedConverter.FullName src-tauri/resources/document_converter.exe -Force
 
       - name: Verify signed inner executables
         if: steps.signpath.outputs.enabled == 'true'

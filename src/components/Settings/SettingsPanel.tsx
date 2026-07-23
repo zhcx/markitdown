@@ -1,6 +1,7 @@
-import { useState, type CSSProperties } from 'react';
-import { AI_PROVIDER_DEFINITIONS, useAppStore, type AIProviderId, type AIProviderProfile, type SettingsTab } from '../../stores/appStore';
+import { useCallback, useEffect, useState, type CSSProperties } from 'react';
+import { AI_PROVIDER_DEFINITIONS, useAppStore, type AIProviderId, type AIProviderProfile, type ConverterModuleStatus, type SettingsTab } from '../../stores/appStore';
 import { invoke } from '@tauri-apps/api/core';
+import { open } from '@tauri-apps/plugin-dialog';
 import { FontFamilyPicker } from './FontFamilyPicker';
 import {
   DEFAULT_FONT_SIZE,
@@ -13,6 +14,7 @@ import { LANGUAGE_OPTIONS, normalizeLanguage } from '../../i18n';
 import type { AgentBackendId, AgentBackendStatus } from '../../types/agent';
 
 const isTauriRuntime = () => '__TAURI_INTERNALS__' in window;
+const formatModuleSize = (bytes: number) => bytes > 0 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : '—';
 
 const parseEmojiList = (value: string) => {
   const segmenter = typeof Intl.Segmenter === 'function' ? new Intl.Segmenter(undefined, { granularity: 'grapheme' }) : null;
@@ -104,6 +106,9 @@ function SettingsNavIcon({ type }: { type: SettingsTab }) {
   if (type === 'explorer') {
     return <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M1.8 4.5h5.3l1.5 1.5h8.6v9.5H1.8z" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" /><path d="M4.5 13.5h7M4.5 10.5h5" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" /></svg>;
   }
+  if (type === 'converter') {
+    return <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 3h7l3 3v11H5zM12 3v3h3M7.5 10h5M10 8v4M7.5 14h5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg>;
+  }
   return <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.6 11.5 7l4.4 1.5-4.4 1.5-1.5 4.4L8.5 10 4.1 8.5 8.5 7zM15.5 13l.7 2 .8.3-.8.3-.7 2-.7-2-.8-.3.8-.3z" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" /></svg>;
 }
 
@@ -120,6 +125,9 @@ export function SettingsPanel() {
   const [fontNotice, setFontNotice] = useState('可直接输入任意已安装字体名称。');
   const [agentStatuses, setAgentStatuses] = useState<AgentBackendStatus[]>([]);
   const [detectingAgents, setDetectingAgents] = useState(false);
+  const [converterStatus, setConverterStatus] = useState<ConverterModuleStatus | null>(null);
+  const [converterBusy, setConverterBusy] = useState(false);
+  const [converterNotice, setConverterNotice] = useState('');
   const fontSizeGeometry = getRangeMarkerGeometry(
     localSettings.appearance.font_size,
     FONT_SIZE_MIN,
@@ -221,7 +229,28 @@ export function SettingsPanel() {
     window.setTimeout(() => void saveSettings(saveData), 0);
   };
 
+  const refreshConverterStatus = useCallback(async (checkUpdate = false) => {
+    if (!isTauriRuntime()) return;
+    setConverterBusy(true);
+    setConverterNotice('');
+    try {
+      const command = checkUpdate ? 'check_converter_module_update' : 'get_converter_module_status';
+      setConverterStatus(await invoke<ConverterModuleStatus>(command));
+    } catch (error) {
+      setConverterNotice(String(error));
+    } finally {
+      setConverterBusy(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeTab !== 'converter') return;
+    const timer = window.setTimeout(() => void refreshConverterStatus(), 0);
+    return () => window.clearTimeout(timer);
+  }, [activeTab, refreshConverterStatus]);
+
   const tabs = [
+    { id: 'converter', label: '文档转换', description: '按需安装并管理本地转换模块' },
     { id: 'appearance', label: '外观', description: '主题、界面字体与内容显示' },
     { id: 'editor', label: '编辑器', description: '编辑体验与自动保存' },
     { id: 'image', label: '图床', description: '图片上传与存储服务' },
@@ -1141,6 +1170,133 @@ export function SettingsPanel() {
                   </button>
                 </div>
               )}
+            </div>
+          )}
+
+          {activeTab === 'converter' && (
+            <div className="settings-section converter-settings">
+              <div className="setting-item">
+                <label>转换模块状态</label>
+                <small>
+                  {converterStatus?.state === 'ready' && `已安装 ${converterStatus.installed_version ?? ''}`}
+                  {converterStatus?.state === 'update_available' && `可更新：${converterStatus.installed_version} → ${converterStatus.available_version}`}
+                  {converterStatus?.state === 'missing' && '尚未安装，首次转换前需要下载对应平台模块'}
+                  {converterStatus?.state === 'corrupt' && '模块校验失败，请重新安装'}
+                  {converterStatus?.state === 'incompatible' && '当前平台或模块协议不受支持'}
+                  {converterStatus?.state === 'error' && '无法读取模块状态'}
+                  {!converterStatus && (converterBusy ? '正在读取模块状态…' : '尚未读取模块状态')}
+                </small>
+              </div>
+
+              <div className="setting-item">
+                <label>平台与空间</label>
+                <small>
+                  {converterStatus
+                    ? `${converterStatus.target} · ${
+                      converterStatus.installed_size
+                        ? `已占用 ${formatModuleSize(converterStatus.installed_size)}`
+                        : converterStatus.download_size
+                          ? `需下载 ${formatModuleSize(converterStatus.download_size)}`
+                          : '未安装'
+                    }`
+                    : '—'}
+                </small>
+              </div>
+
+              {converterStatus?.supported_formats.length ? (
+                <div className="setting-item">
+                  <label>支持格式</label>
+                  <small>{converterStatus.supported_formats.map((format) => format.toUpperCase()).join('、')}</small>
+                </div>
+              ) : null}
+
+              {converterStatus?.unsigned_windows_module && (
+                <div className="setting-item converter-signing-notice">
+                  <label>Windows 模块签名</label>
+                  <small>当前模块未进行 Authenticode/SignPath 代码签名；安装时仍会强制验证发布清单签名和 SHA-256。</small>
+                </div>
+              )}
+
+              {converterStatus?.message && <div className="setting-item"><small>{converterStatus.message}</small></div>}
+              {converterNotice && <div className="setting-item converter-error"><small>{converterNotice}</small></div>}
+
+              <div className="converter-actions">
+                <button
+                  className="secondary-btn"
+                  disabled={converterBusy || !isTauriRuntime()}
+                  onClick={async () => {
+                    setConverterBusy(true);
+                    setConverterNotice('');
+                    try {
+                      await invoke('install_converter_module');
+                      await refreshConverterStatus();
+                    } catch (error) {
+                      setConverterNotice(String(error));
+                    } finally {
+                      setConverterBusy(false);
+                    }
+                  }}
+                >
+                  {converterBusy ? '处理中…' : converterStatus?.state === 'ready' ? '重新安装' : '在线安装'}
+                </button>
+                <button
+                  className="secondary-btn"
+                  disabled={converterBusy || !isTauriRuntime()}
+                  onClick={() => void refreshConverterStatus(true)}
+                >
+                  检查更新
+                </button>
+                <button
+                  className="secondary-btn"
+                  disabled={converterBusy || !isTauriRuntime()}
+                  onClick={async () => {
+                    const selected = await open({
+                      multiple: false,
+                      filters: [{ name: 'MarkitDown 转换模块', extensions: ['zip'] }],
+                    });
+                    if (typeof selected !== 'string') return;
+                    setConverterBusy(true);
+                    setConverterNotice('');
+                    try {
+                      await invoke('import_converter_module', { path: selected });
+                      await refreshConverterStatus();
+                    } catch (error) {
+                      setConverterNotice(String(error));
+                    } finally {
+                      setConverterBusy(false);
+                    }
+                  }}
+                >
+                  导入离线包
+                </button>
+                <button
+                  className="secondary-btn converter-remove-button"
+                  disabled={converterBusy || !converterStatus?.installed_version}
+                  onClick={async () => {
+                    if (!window.confirm('确定卸载本地文档转换模块吗？以后仍可重新安装。')) return;
+                    setConverterBusy(true);
+                    try {
+                      await invoke('uninstall_converter_module');
+                      await refreshConverterStatus();
+                    } catch (error) {
+                      setConverterNotice(String(error));
+                    } finally {
+                      setConverterBusy(false);
+                    }
+                  }}
+                >
+                  卸载模块
+                </button>
+              </div>
+
+              <details className="converter-advanced">
+                <summary>高级设置</summary>
+                <small>
+                  如需使用自行维护的 Python 环境，请在启动 MarkitDown 前设置
+                  <code> MARKITDOWN_PYTHON </code>
+                  为对应 Python 可执行文件路径。应用不会自动探测或安装 Python 依赖。
+                </small>
+              </details>
             </div>
           )}
 

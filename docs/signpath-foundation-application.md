@@ -35,16 +35,16 @@ MarkitDown distributes Windows MSI and NSIS installers. Because the project curr
 
 The project requests a two-stage signing configuration:
 
-1. **Inner executable stage:** the Tauri application executable (`markitdown.exe`) and the CI-built document converter (`document_converter.exe`).
+1. **Inner executable stage:** the Tauri application executable (`markitdown.exe`).
 2. **Installer stage:** the final Windows x64 MSI package and NSIS setup executable.
 
 Both stages originate from the same GitHub-hosted workflow run and release commit. Each release request will require manual approval.
 
 ## Build and provenance statement
 
-All binaries are verifiably built from public source in GitHub Actions using GitHub-hosted runners. Node dependencies are installed from `package-lock.json`, Rust dependencies from `Cargo.lock`, and the Windows Python converter from a complete Python 3.12/Windows x64 lock file containing exact versions and SHA-256 package hashes. The converter executable is not stored in the repository. A checked-in PyInstaller specification defines its contents.
+All application binaries are verifiably built from public source in GitHub Actions using GitHub-hosted runners. Node dependencies are installed from `package-lock.json` and Rust dependencies from `Cargo.lock`. Optional document-converter modules are published by a separate workflow and are currently outside this SignPath request.
 
-The workflow first builds and uploads the inner executables, submits them to SignPath, and then packages the signed executables into MSI and NSIS installers. The installers are uploaded and submitted in a second SignPath request. Only artifacts returned by SignPath and verified by the workflow are intended for signed releases.
+The workflow first builds and uploads the application executable, submits it to SignPath, and then packages the signed executable into MSI and NSIS installers. The installers are uploaded and submitted in a second SignPath request. Only artifacts returned by SignPath and verified by the workflow are intended for signed releases.
 
 ## Governance and signing controls
 

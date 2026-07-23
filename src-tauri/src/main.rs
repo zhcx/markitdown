@@ -10,6 +10,7 @@ use tauri::{Emitter, Manager, State};
 mod agent;
 mod ai;
 mod commands;
+mod converter;
 mod image;
 mod pdf;
 
@@ -157,7 +158,13 @@ fn main() {
             commands::export_word,
             commands::get_file_content,
             commands::get_text_attachment_content,
-            commands::convert_document,
+            converter::convert_document,
+            converter::get_converter_module_status,
+            converter::check_converter_module_update,
+            converter::install_converter_module,
+            converter::cancel_converter_install,
+            converter::import_converter_module,
+            converter::uninstall_converter_module,
             commands::save_file_content,
             commands::read_file_base64,
             commands::reveal_in_file_manager,
@@ -198,6 +205,7 @@ fn main() {
         .setup(|_app| {
             let agent_storage = _app.path().app_data_dir()?.join("agent-runtime");
             _app.manage(agent::AgentSupervisor::new(agent_storage));
+            _app.manage(converter::ConverterManager::default());
             #[cfg(debug_assertions)]
             {
                 if let Some(window) = _app.get_webview_window("main") {

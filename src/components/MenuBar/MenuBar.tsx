@@ -433,7 +433,7 @@ export function MenuBar() {
   const handleOpenFile = async () => {
     try {
       const selected = await openDialog({
-        filters: [{ name: 'Markdown', extensions: ['md', 'txt'] }],
+        filters: [{ name: 'Markdown/文档', extensions: ['md', 'markdown', 'txt', 'pdf', 'docx', 'doc', 'pptx', 'ppt', 'xlsx', 'xls', 'html', 'htm', 'csv', 'json', 'xml', 'epub'] }],
         multiple: true,
       });
       if (selected) {
