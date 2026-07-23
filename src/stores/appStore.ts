@@ -7,11 +7,13 @@ import { DEFAULT_FONT_SIZE, DEFAULT_LINE_HEIGHT } from '../utils/appearanceSetti
 import { applySavedTab } from '../utils/tabPersistence';
 import { detectSystemLanguage, normalizeLanguage, type AppLanguage } from '../i18n';
 import type { AgentSettings } from '../types/agent';
+import type { ConverterDialogAction } from '../components/ConverterDialog/ConverterDialog';
 
 const isTauriRuntime = () => typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 const browserSettingsKey = 'markitdown.browser.settings';
 let settingsMutationVersion = 0;
 let settingsSaveQueue: Promise<unknown> = Promise.resolve();
+let converterDialogResolve: ((value: boolean) => void) | null = null;
 
 const cacheSettingsForStartup = (settings: Settings) => {
   try {
@@ -216,6 +218,7 @@ interface AppState {
   uploadMessage: string;
   conversionStatus: ConversionStatus;
   conversionMessage: string;
+  converterDialog: ConverterDialogAction | null;
 
   setContent: (content: string) => void;
   setMode: (mode: 'split' | 'immersive' | 'zen') => void;
@@ -248,6 +251,7 @@ interface AppState {
   getActiveTab: () => Tab | undefined;
   setUploadStatus: (status: UploadStatus, progress?: number, message?: string) => void;
   setConversionStatus: (status: ConversionStatus, message?: string) => void;
+  showConverterDialog: (action: ConverterDialogAction | null) => void;
   resetWorkspaceFolders: () => void;
   refreshWorkspaceFolder: (path: string) => Promise<boolean>;
 }
@@ -458,6 +462,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   uploadMessage: '',
   conversionStatus: 'idle',
   conversionMessage: '',
+  converterDialog: null,
 
   setContent: (content) => {
     const { activeTabId, tabs } = get();
@@ -640,11 +645,30 @@ export const useAppStore = create<AppState>((set, get) => ({
           const downloadSize = status.download_size
             ? `，约 ${(status.download_size / 1024 / 1024).toFixed(1)} MB`
             : '';
-          const shouldInstall = window.confirm(
-            `文档转换模块尚未安装。\n\n模块仅在本机处理文件，首次使用需要从 GitHub 下载对应平台组件${downloadSize}。是否现在安装？`,
-          );
+
+          // 使用主题一致的弹窗替代原生 window.confirm
+          const shouldInstall = await new Promise<boolean>((resolve) => {
+            converterDialogResolve = resolve;
+            get().showConverterDialog({
+              kind: 'confirm',
+              title: '需要安装文档转换模块',
+              description: `当前文档需要转换模块才能导入。首次使用需要从 GitHub 下载对应平台组件${downloadSize}，是否继续？`,
+              confirmLabel: '立即安装',
+              cancelLabel: '稍后安装',
+              onConfirm: () => resolve(true),
+              onCancel: () => resolve(false),
+            });
+          });
+
           if (!shouldInstall) {
-            throw new Error('已取消安装文档转换模块。可在“设置 → 文档转换”中稍后安装或导入离线包。');
+            get().showConverterDialog({
+              kind: 'error',
+              title: '已取消安装',
+              description: '可在”设置 → 文档转换”中稍后在线安装或导入离线包。',
+              confirmLabel: '知道了',
+              onConfirm: () => {},
+            });
+            throw new Error('已取消安装文档转换模块。');
           }
           get().setConversionStatus('converting', '正在准备文档转换模块…');
           const unlisten = await listen<ConverterInstallProgress>('converter-install-progress', ({ payload }) => {
@@ -685,7 +709,18 @@ export const useAppStore = create<AppState>((set, get) => ({
       get().updateWordCount();
       get().setConversionStatus('success', `导入成功：${title}`);
     } catch (error) {
-      get().setConversionStatus('error', `导入失败：${String(error)}`);
+      // 转换失败时显示弹窗
+      const errorMsg = String(error);
+      get().setConversionStatus('error', `导入失败：${errorMsg}`);
+      get().showConverterDialog({
+        kind: 'error',
+        title: '文档转换失败',
+        description: errorMsg.startsWith('converter_module_missing')
+          ? '未找到文档转换模块，且未配置 Python 回退方案。请安装转换模块或配置 Python 环境。'
+          : errorMsg,
+        confirmLabel: '知道了',
+        onConfirm: () => {},
+      });
       throw error;
     }
   },
@@ -880,6 +915,14 @@ export const useAppStore = create<AppState>((set, get) => ({
   refreshWorkspaceFolder: async (path) => {
     window.dispatchEvent(new CustomEvent('markitdown-refresh-folder', { detail: { path } }));
     return true;
+  },
+
+  showConverterDialog: (action) => {
+    set({ converterDialog: action });
+    if (!action && converterDialogResolve) {
+      converterDialogResolve(false);
+      converterDialogResolve = null;
+    }
   },
 
   setConversionStatus: (status, message = '') => {

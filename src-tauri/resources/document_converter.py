@@ -43,15 +43,12 @@ def main() -> None:
         }, ensure_ascii=True))
         return
 
-    if len(sys.argv) == 6 and sys.argv[1] == "convert" and sys.argv[2] == "--input" and sys.argv[4] == "--output":
-        source = Path(sys.argv[3])
-        output = Path(sys.argv[5])
-    elif len(sys.argv) in (2, 3):
-        # Explicit Python fallback retains compatibility with older developer setups.
+    if len(sys.argv) in (2, 3):
+        # Positional arguments: <local-file> [markdown-output-file]
         source = Path(sys.argv[1])
         output = Path(sys.argv[2]) if len(sys.argv) == 3 else None
     else:
-        fail("Usage: document_converter convert --input <local-file> --output <markdown-file>")
+        fail("Usage: document_converter <local-file> [markdown-output-file]")
 
     if not source.is_file():
         fail(f"The selected path is not a file: {source}")

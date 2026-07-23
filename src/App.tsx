@@ -16,6 +16,7 @@ import { ImmersiveOutline } from './components/Immersive/ImmersiveOutline';
 import { TitleBar } from './components/TitleBar/TitleBar';
 import { ActivityBar } from './components/ActivityBar/ActivityBar';
 import { UnsavedChangesDialog } from './components/UnsavedChangesDialog/UnsavedChangesDialog';
+import { ConverterDialog } from './components/ConverterDialog/ConverterDialog';
 import { UiLanguageBridge } from './i18n/UiLanguageBridge';
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { getCurrentWindow } from '@tauri-apps/api/window';
@@ -1000,6 +1001,10 @@ function App() {
         }}
       />
       <AIDiffConfirmDialog />
+      <ConverterDialog
+        action={useAppStore(state => state.converterDialog)}
+        onClose={() => useAppStore.getState().showConverterDialog(null)}
+      />
       {closePromptTabs && (
         <UnsavedChangesDialog tabs={closePromptTabs} onAction={resolveClosePrompt} />
       )}

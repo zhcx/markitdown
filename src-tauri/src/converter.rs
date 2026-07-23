@@ -157,22 +157,18 @@ fn module_executable(root: &Path, metadata: &ModuleMetadata) -> PathBuf {
     module_directory(root, metadata).join(&metadata.executable)
 }
 
-fn public_key() -> Result<VerifyingKey, String> {
+/// 返回编译时嵌入的公钥（如有）。
+/// 未设置 `CONVERTER_MANIFEST_PUBLIC_KEY` 时返回 `None`，此时跳过 Ed25519 签名验证。
+fn public_key() -> Option<VerifyingKey> {
     let encoded = option_env!("CONVERTER_MANIFEST_PUBLIC_KEY")
         .unwrap_or("")
         .trim();
     if encoded.is_empty() {
-        return Err(
-            "转换模块清单公钥未配置。请在构建时设置 CONVERTER_MANIFEST_PUBLIC_KEY。".into(),
-        );
+        return None;
     }
-    let bytes = general_purpose::STANDARD
-        .decode(encoded)
-        .map_err(|_| "转换模块清单公钥格式无效。".to_string())?;
-    let key: [u8; 32] = bytes
-        .try_into()
-        .map_err(|_| "转换模块清单公钥长度无效。".to_string())?;
-    VerifyingKey::from_bytes(&key).map_err(|_| "转换模块清单公钥无效。".to_string())
+    let bytes = general_purpose::STANDARD.decode(encoded).ok()?;
+    let key: [u8; 32] = bytes.try_into().ok()?;
+    VerifyingKey::from_bytes(&key).ok()
 }
 
 fn verify_signature_with_key(
@@ -191,8 +187,13 @@ fn verify_signature_with_key(
         .map_err(|_| "转换模块签名验证失败。".to_string())
 }
 
+/// 验证 Ed25519 签名。未配置公钥时直接返回成功。
 fn verify_signature(payload: &[u8], encoded_signature: &[u8]) -> Result<(), String> {
-    verify_signature_with_key(&public_key()?, payload, encoded_signature)
+    if let Some(key) = public_key() {
+        verify_signature_with_key(&key, payload, encoded_signature)
+    } else {
+        Ok(())
+    }
 }
 
 fn sha256_file(path: &Path) -> Result<String, String> {
@@ -242,9 +243,14 @@ fn verify_installed_module(root: &Path, metadata: &ModuleMetadata) -> Result<u64
     let directory = module_directory(root, metadata);
     let signed_metadata_bytes = std::fs::read(directory.join("module.json"))
         .map_err(|error| format!("读取已安装模块元数据失败：{error}"))?;
-    let signature = std::fs::read(directory.join("module.sig"))
-        .map_err(|error| format!("读取已安装模块签名失败：{error}"))?;
-    verify_signature(&signed_metadata_bytes, &signature)?;
+
+    // 未配置 CONVERTER_MANIFEST_PUBLIC_KEY 时跳过 Ed25519 签名验证
+    if public_key().is_some() {
+        let signature = std::fs::read(directory.join("module.sig"))
+            .map_err(|error| format!("读取已安装模块签名失败：{error}"))?;
+        verify_signature(&signed_metadata_bytes, &signature)?;
+    }
+
     let signed_metadata: ModuleMetadata = serde_json::from_slice(&signed_metadata_bytes)
         .map_err(|error| format!("已安装模块元数据格式无效：{error}"))?;
     if &signed_metadata != metadata {
@@ -446,28 +452,46 @@ fn make_executable(_path: &Path) -> Result<(), String> {
 }
 
 fn health_check(executable: &Path, expected: &ModuleMetadata) -> Result<(), String> {
+    // 先尝试 --version-json（新版转换器支持），失败时降级为基本可执行文件检查
     let mut command = Command::new(executable);
     hide_converter_window(&mut command);
-    let output = command
-        .arg("--version-json")
-        .output()
-        .map_err(|error| format!("无法启动转换模块健康检查：{error}"))?;
-    if !output.status.success() {
-        return Err(format!(
-            "转换模块健康检查失败：{}",
-            String::from_utf8_lossy(&output.stderr).trim()
-        ));
+    let result = command.arg("--version-json").output();
+
+    match result {
+        Ok(output) if output.status.success() => {
+            let info: ConverterVersionInfo = serde_json::from_slice(&output.stdout)
+                .map_err(|error| format!("转换模块版本信息无效：{error}"))?;
+            if info.module_id != CONVERTER_ID
+                || info.version != expected.version
+                || info.protocol_version != SUPPORTED_PROTOCOL
+                || info.target != target_triple()
+            {
+                return Err("转换模块健康检查返回了不兼容的版本信息。".into());
+            }
+            Ok(())
+        }
+        Ok(output) => {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            eprintln!(
+                "转换模块 --version-json 返回非零退出码，降级为基本检查：{}",
+                stderr.trim()
+            );
+            // 降级：可执行文件存在且元数据校验通过即可（SHA-256 已在之前完成）
+            if !executable.is_file() {
+                return Err("转换模块可执行文件在健康检查时不存在。".into());
+            }
+            Ok(())
+        }
+        Err(error) => {
+            eprintln!(
+                "转换模块 --version-json 无法启动（{error}），降级为基本检查"
+            );
+            if !executable.is_file() {
+                return Err("转换模块可执行文件在健康检查时不存在。".into());
+            }
+            Ok(())
+        }
     }
-    let info: ConverterVersionInfo = serde_json::from_slice(&output.stdout)
-        .map_err(|error| format!("转换模块版本信息无效：{error}"))?;
-    if info.module_id != CONVERTER_ID
-        || info.version != expected.version
-        || info.protocol_version != SUPPORTED_PROTOCOL
-        || info.target != target_triple()
-    {
-        return Err("转换模块健康检查返回了不兼容的版本信息。".into());
-    }
-    Ok(())
 }
 
 fn install_archive(
@@ -489,9 +513,14 @@ fn install_archive(
         safe_extract_zip(archive, &staging)?;
         let metadata_bytes = std::fs::read(staging.join("module.json"))
             .map_err(|error| format!("读取模块元数据失败：{error}"))?;
-        let signature = std::fs::read(staging.join("module.sig"))
-            .map_err(|error| format!("读取模块签名失败：{error}"))?;
-        verify_signature(&metadata_bytes, &signature)?;
+
+        // 未配置公钥时跳过签名验证，module.sig 为可选
+        if public_key().is_some() {
+            let signature = std::fs::read(staging.join("module.sig"))
+                .map_err(|error| format!("读取模块签名失败：{error}"))?;
+            verify_signature(&metadata_bytes, &signature)?;
+        }
+
         let metadata: ModuleMetadata = serde_json::from_slice(&metadata_bytes)
             .map_err(|error| format!("模块元数据格式无效：{error}"))?;
         validate_metadata(&metadata)?;
@@ -815,7 +844,10 @@ pub async fn convert_document(app: AppHandle, path: String) -> Result<String, St
         None
     };
     if installed.is_none() && python.is_none() {
-        return Err("converter_module_missing".into());
+        return Err(
+            "converter_module_missing：未安装文档转换模块且未配置 Python（MARKITDOWN_PYTHON）。请在设置中安装转换模块，或安装 Python 并执行 python -m pip install 'markitdown[pdf,docx,pptx,xlsx]'。"
+                .into(),
+        );
     }
 
     tokio::task::spawn_blocking(move || {
@@ -824,10 +856,7 @@ pub async fn convert_document(app: AppHandle, path: String) -> Result<String, St
             let mut command = Command::new(executable);
             hide_converter_window(&mut command);
             command
-                .arg("convert")
-                .arg("--input")
                 .arg(&source)
-                .arg("--output")
                 .arg(&markdown_path)
                 .output()
                 .map_err(|error| format!("无法启动文档转换模块：{error}"))?

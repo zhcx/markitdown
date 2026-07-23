@@ -1273,7 +1273,18 @@ export function SettingsPanel() {
                   className="secondary-btn converter-remove-button"
                   disabled={converterBusy || !converterStatus?.installed_version}
                   onClick={async () => {
-                    if (!window.confirm('确定卸载本地文档转换模块吗？以后仍可重新安装。')) return;
+                    const confirmed = await new Promise<boolean>((resolve) => {
+                      useAppStore.getState().showConverterDialog({
+                        kind: 'confirm',
+                        title: '卸载文档转换模块',
+                        description: '确定卸载本地文档转换模块吗？以后仍可重新安装或导入。',
+                        confirmLabel: '确认卸载',
+                        cancelLabel: '取消',
+                        onConfirm: () => resolve(true),
+                        onCancel: () => resolve(false),
+                      });
+                    });
+                    if (!confirmed) return;
                     setConverterBusy(true);
                     try {
                       await invoke('uninstall_converter_module');
