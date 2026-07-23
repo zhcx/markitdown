@@ -62,6 +62,16 @@
 ### 🖼️ 图片上传
 - **多图床支持** - Cloudinary、PicGo、S3、本地存储
 
+### 📄 文档转换
+
+MarkitDown 支持将 **PDF、DOCX、XLSX、PPTX** 等文档一键转换为 Markdown 格式，以新标签页打开编辑。提供三种使用方式：
+
+- **在线安装** — 首次转换时自动弹出主题弹窗引导安装，从 GitHub Release 下载对应平台模块
+- **导入离线包** — 在无网络环境中导入提前下载的 ZIP 包
+- **Python 回退** — 安装 `markitdown` 库后自动调用，无需下载转换模块
+
+文件转换**始终在本机处理**，不会上传到任何服务器。详情见下方[文档转换模块使用指南](#文档转换模块使用指南)。
+
 ### 🤖 AI 智能助手
 - **AI 对话面板** — 侧边栏自由对话，支持流式输出与思维链展示
 - **智能校对** - 自动检测错别字、语法错误、标点问题
@@ -184,25 +194,41 @@ npm run tauri build
 
 ### 文档转换模块使用指南
 
-MarkitDown 支持将 **PDF、DOCX、XLSX、PPTX** 等文档转换为 Markdown 格式，并在新标签页中打开编辑。转换模块有三种使用方式：
+MarkitDown 支持将 **PDF、DOCX、XLSX、PPTX** 等文档转换为 Markdown 格式，并在新标签页中打开编辑。转换模块为按需下载的独立组件，主安装包不包含转换依赖，仅在需要时下载。
+
+#### 转换流程示意
+
+```text
+用户拖入/右键 PDF 文件
+  → 检测模块状态（本机）
+  → 已安装          → 直接转换，结果以标签页打开
+  → 未安装 + 有网络 → 弹出主题弹窗 → 点击”在线安装”
+                      → 检查清单 → 下载平台模块 → 校验 → 安装 → 转换
+  → 未安装 + 无网络 → 弹出主题弹窗 → 点击”稍后安装”
+                      → 在设置中导入离线 ZIP 包
+```
 
 #### 方式一：在线安装（推荐）
 
-首次转换非 Markdown 文件时，应用会自动弹出**主题弹窗**引导安装：
+首次转换非 Markdown 文件时自动弹出安装引导，也可在设置中手动操作：
 
-1. 右键 PDF/DOCX 文件 → “转换为 Markdown”，或在设置 → 文档转换中点击”在线安装”
-2. 应用从 GitHub Release 下载对应平台的转换模块
-3. 安装完成后自动执行转换
+1. **触发安装**：
+   - 右键 PDF/DOCX 文件 → “转换为 Markdown”
+   - 或打开 **设置 → 文档转换** → 点击”在线安装”
+2. 应用自动从 GitHub Release 拉取清单，下载对应平台的转换模块
+3. 下载完成后执行 SHA-256 校验和健康检查，自动安装
+4. 安装成功后自动执行转换，结果以新标签页打开
 
 #### 方式二：导入离线包
 
-在无网络环境中使用：
+在无网络或内网环境中使用：
 
-1. 从本机或有网络的机器下载对应平台 ZIP 包
-2. 在”设置 → 文档转换”中点击”导入离线包”，选择下载的 ZIP
-3. 模块导入后即可使用
+1. 从可联网的机器下载对应平台的转换模块 ZIP 包（见下方对照表）
+2. 将 ZIP 包复制到目标机器
+3. 打开 **设置 → 文档转换** → 点击”导入离线包”
+4. 选择下载好的 ZIP 包，导入后即可使用
 
-各平台转换模块包名：
+**各平台转换模块包：**
 
 | 平台 | 模块包 |
 | --- | --- |
@@ -211,29 +237,54 @@ MarkitDown 支持将 **PDF、DOCX、XLSX、PPTX** 等文档转换为 Markdown �
 | macOS Intel | `document-converter-v1.0.0_x86_64-apple-darwin.zip` |
 | Linux x86_64 | `document-converter-v1.0.0_x86_64-unknown-linux-gnu.zip` |
 
-#### 方式三：Python 回退（适合开发环境）
+模块包已在各平台 CI 构建后随 Release 发布，可从 [Releases](https://github.com/zhcx/markitdown/releases/tag/converter-v1.0.0) 页面下载。
+
+#### 方式三：Python 回退（开发/轻量环境）
+
+如果本机已安装 Python，直接安装依赖即可使用，无需下载转换模块：
 
 ```bash
 python -m pip install 'markitdown[pdf,docx,pptx,xlsx]'
 ```
 
-安装后无需下载转换模块，应用自动识别并调用 Python。如需指定 Python 路径：
+安装后应用自动识别并调用 Python 回退。如需指定特定 Python 路径：
 
 ```bash
 # Windows (PowerShell)
-$env:MARKITDOWN_PYTHON = “C:\path\to\python.exe”
+$env:MARKITDOWN_PYTHON = “C:\Users\xxx\.conda\envs\myenv\python.exe”
 markitdown
 
 # macOS / Linux
-MARKITDOWN_PYTHON=”/usr/local/bin/python3” ./markitdown
+MARKITDOWN_PYTHON=”/opt/homebrew/bin/python3” ./markitdown
 ```
+
+#### 支持的格式
+
+| 格式 | 说明 | 依赖 |
+| --- | --- | --- |
+| PDF | 可携带文本的 PDF 文档 | pdfminer / pdfplumber |
+| DOCX | Word 文档 | mammoth |
+| XLSX | Excel 工作簿 | openpyxl / markitdown |
+| PPTX | PowerPoint 演示文稿 | python-pptx |
 
 #### 安全说明
 
 - 文件转换**始终在本机处理**，不会上传到任何服务器
 - 发布清单使用 Ed25519 签名验证（公钥编译期嵌入）
 - 模块可执行文件经过 SHA-256 完整性校验
-- 未配置公钥时自动跳过 Ed25519 验证，适合自建测试
+- 未配置公钥时自动跳过 Ed25519 验证
+- Windows 模块未进行 Authenticode 代码签名，但仍强制验证模块哈希
+
+#### 故障排除
+
+| 问题 | 可能原因 | 解决方法 |
+| --- | --- | --- |
+| 提示”converter_module_missing” | 未安装模块且未配置 Python | 安装 Python 回退或在设置中在线安装 |
+| 下载转换模块失败 | 网络问题 | 检查网络连接，或使用离线包导入 |
+| 健康检查失败 | 模块文件损坏 | 重新安装或导入模块 |
+| Python 回退不生效 | 未安装 markitdown 库 | 执行 `pip install 'markitdown[pdf,docx,pptx,xlsx]'` |
+| 转换结果为空 | 源文件为扫描件/图片 | 确认源文件包含可提取的文本内容 |
+| SmartScreen 警告 | 安装包未代码签名 | 点击”更多信息 → 仍要运行” |
 
 ---
 
