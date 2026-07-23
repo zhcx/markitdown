@@ -483,22 +483,17 @@ function ExplorerSidebar({ style }: SidebarProps) {
       const tree = await invoke<RawFileNode[]>('read_folder', { path: folderPath });
       const normalized = (tree || []).map(normalizeNode);
       if (normalized.length === 0) return;
-      setWorkspaceFolders(previous => previous.map(folder => ({
-        ...folder,
-        tree: replaceNodeChildren(folder.tree, folderPath, normalized),
-      })));
-      // Also update sub-trees: find the parent workspace folder that contains this path
       setWorkspaceFolders(previous => {
-        const containing = previous.find(f => folderPath.startsWith(f.path) || f.path.startsWith(folderPath));
-        if (containing) {
-          return previous.map(f => f.path === containing.path
-            ? { ...f, tree: replaceNodeChildren(f.tree, folderPath, normalized) }
-            : f
-          );
+        // 如果 folderPath 直接匹配某个工作区根路径，直接替换整棵树
+        const rootMatch = previous.find(f => f.path === folderPath);
+        if (rootMatch) {
+          return previous.map(f => f.path === folderPath ? { ...f, tree: normalized } : f);
         }
-        return previous.map(f => f.path === folderPath
-          ? { ...f, tree: normalized }
-          : f
+        // 否则作为子目录刷新，找到包含该路径的工作区根，替换其子孙节点
+        return previous.map(folder =>
+          folder.path === folderPath || folderPath.startsWith(folder.path + '/') || folderPath.startsWith(folder.path + '\\')
+            ? { ...folder, tree: replaceNodeChildren(folder.tree, folderPath, normalized) }
+            : folder
         );
       });
     } catch (error) {
@@ -663,10 +658,9 @@ function ExplorerSidebar({ style }: SidebarProps) {
       const children = node.directoryHandle
         ? await readBrowserFolder(node.directoryHandle, node.path)
         : await readFolder(node.path);
-      if (!children || children.length === 0) return;
       setWorkspaceFolders(previous => previous.map((folder) => ({
         ...folder,
-        tree: replaceNodeChildren(folder.tree, node.path, children),
+        tree: replaceNodeChildren(folder.tree, node.path, children || []),
       })));
       setLoadedFolders(previous => new Set(previous).add(node.path));
     } catch (error) {
