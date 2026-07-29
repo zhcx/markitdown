@@ -846,7 +846,7 @@ pub async fn convert_document(app: AppHandle, path: String) -> Result<String, St
     };
     if installed.is_none() && python.is_none() {
         return Err(
-            "converter_module_missing：未安装文档转换模块且未配置 Python（MARKITDOWN_PYTHON）。请在设置中安装转换模块，或安装 Python 并执行 python -m pip install 'markitdown[pdf,docx,pptx,xlsx]'。"
+            "converter_module_missing：未安装文档转换模块且未配置 Python（MARKITDOWN_PYTHON）。请在设置中安装转换模块，或安装 Python 并执行 python -m pip install 'markitdown[audio-transcription,docx,outlook,pdf,pptx,xls,xlsx]'。"
                 .into(),
         );
     }
@@ -890,7 +890,7 @@ mod tests {
         ModuleMetadata {
             schema_version: 1,
             module_id: "document-converter".into(),
-            version: "1.0.0".into(),
+            version: "1.1.0".into(),
             protocol_version: SUPPORTED_PROTOCOL,
             target: target.into(),
             executable: if cfg!(windows) {

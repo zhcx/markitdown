@@ -12,6 +12,10 @@ import { WeChatExportDialog } from '../Export/WeChatExportDialog';
 import { applyExportTemplate, loadExportTemplate } from '../Export/exportTemplates';
 import { MarkdownSyntaxGuide } from '../Help/MarkdownSyntaxGuide';
 import { sanitizeRenderedHtml } from '../../utils/safeHtml';
+import {
+  CONVERTIBLE_DOCUMENT_EXTENSIONS,
+  OPENABLE_FILE_EXTENSIONS,
+} from '../../utils/documentFormats';
 
 interface MenuItem {
   label: string;
@@ -149,7 +153,7 @@ graph TD
     about: {
       title: '关于 MarkitDown',
       body: `
-**MarkitDown v0.3.4**
+**MarkitDown v0.3.6**
 
 一款现代化的 Markdown 编辑器
 
@@ -363,6 +367,7 @@ export function MenuBar() {
     setSettings,
     setSettingsOpen,
     addTab,
+    openFile,
     convertDocument,
     saveFile,
     getActiveTab
@@ -433,14 +438,13 @@ export function MenuBar() {
   const handleOpenFile = async () => {
     try {
       const selected = await openDialog({
-        filters: [{ name: 'Markdown/文档', extensions: ['md', 'markdown', 'txt', 'pdf', 'docx', 'doc', 'pptx', 'ppt', 'xlsx', 'xls', 'html', 'htm', 'csv', 'json', 'xml', 'epub'] }],
+        filters: [{ name: '可编辑文本与可转换文档', extensions: OPENABLE_FILE_EXTENSIONS }],
         multiple: true,
       });
       if (selected) {
         const files = Array.isArray(selected) ? selected : [selected];
         for (const file of files) {
-          const fileContent = await invoke<string>('get_file_content', { path: file });
-          addTab({ path: file as string, content: fileContent, title: (file as string).split(/[\\/]/).pop() || '未命名' });
+          await openFile(file as string);
         }
       }
     } catch (error) {
@@ -454,7 +458,7 @@ export function MenuBar() {
       const selected = await openDialog({
         filters: [{
           name: 'Documents',
-          extensions: ['pdf', 'docx', 'doc', 'pptx', 'ppt', 'xlsx', 'xls', 'html', 'htm', 'csv', 'json', 'xml', 'epub', 'zip', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg', 'wav', 'mp3', 'm4a', 'ogg', 'eml', 'msg', 'rss', 'atom', 'ipynb'],
+          extensions: [...CONVERTIBLE_DOCUMENT_EXTENSIONS],
         }],
         multiple: true,
       });

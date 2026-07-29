@@ -19,7 +19,12 @@ const metadata = {
   target,
   executable: executableName,
   executable_sha256: createHash('sha256').update(executableBytes).digest('hex'),
-  supported_formats: ['pdf', 'docx', 'xlsx', 'pptx'],
+  supported_formats: [
+    'pdf', 'docx', 'pptx', 'xlsx', 'xls',
+    'html', 'htm', 'xhtml', 'csv', 'json', 'jsonl', 'xml', 'rss', 'atom',
+    'zip', 'epub', 'jpg', 'jpeg', 'png', 'wav', 'mp3', 'm4a', 'mp4',
+    'msg', 'ipynb', 'txt', 'text', 'md', 'markdown',
+  ],
 };
 const metadataBytes = Buffer.from(`${JSON.stringify(metadata, null, 2)}\n`, 'utf8');
 

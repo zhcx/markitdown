@@ -20,6 +20,11 @@ for package in (
     "pdfplumber",
     "pptx",
     "openpyxl",
+    "pandas",
+    "xlrd",
+    "olefile",
+    "pydub",
+    "speech_recognition",
     "PIL",
 ):
     package_datas, package_binaries, package_hiddenimports = collect_all(package)

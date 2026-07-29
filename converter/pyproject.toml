@@ -1,9 +1,9 @@
 [project]
 name = "markitdown-document-converter"
-version = "1.0.0"
+version = "1.1.0"
 requires-python = "==3.12.*"
 dependencies = [
-  "markitdown[docx,pdf,pptx,xlsx]==0.1.6",
+  "markitdown[audio-transcription,docx,outlook,pdf,pptx,xls,xlsx]==0.1.6",
 ]
 
 [dependency-groups]

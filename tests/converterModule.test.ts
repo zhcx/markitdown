@@ -34,6 +34,23 @@ test('converter protocol is versioned and keeps large Markdown out of stdout', (
   assert.match(converter, /"--version-json"/)
   assert.match(converter, /os\.replace\(temporary_output, output\)/)
   assert.match(converter, /ensure_ascii=True/)
+  assert.match(converter, /image_fallback/)
+  for (const format of ['xls', 'msg', 'mp4', 'jsonl', 'epub', 'ipynb']) {
+    assert.match(converter, new RegExp(`"${format}"`))
+  }
+})
+
+test('open dialogs and converter metadata share the expanded format catalog', () => {
+  const formats = read('src/utils/documentFormats.ts')
+  const packager = read('scripts/prepare-converter-package.mjs')
+  const store = read('src/stores/appStore.ts')
+
+  for (const format of ['pdf', 'docx', 'pptx', 'xlsx', 'xls', 'html', 'jsonl', 'zip', 'epub', 'jpg', 'wav', 'mp4', 'msg', 'ipynb']) {
+    assert.match(formats, new RegExp(`'${format}'`))
+    assert.match(packager, new RegExp(`'${format}'`))
+  }
+  assert.match(store, /isConvertibleDocumentName/)
+  assert.match(store, /convertDocument\(path\)/)
 })
 
 test('converter workflow builds four unsigned native modules from the frozen uv lock', () => {

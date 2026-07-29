@@ -4,6 +4,20 @@ import { test } from 'node:test'
 
 const read = (path: string) => readFileSync(path, 'utf8')
 
+test('application and converter version sources stay synchronized', () => {
+  const packageJson = JSON.parse(read('package.json'))
+  const tauriConfig = JSON.parse(read('src-tauri/tauri.conf.json'))
+  const cargoVersion = read('src-tauri/Cargo.toml').match(/^version = "([^"]+)"/m)?.[1]
+  const converterProjectVersion = read('converter/pyproject.toml').match(/^version = "([^"]+)"/m)?.[1]
+  const converterResourceVersion = read('src-tauri/resources/converter_version.txt').trim()
+
+  assert.equal(packageJson.version, '0.3.6')
+  assert.equal(tauriConfig.version, packageJson.version)
+  assert.equal(cargoVersion, packageJson.version)
+  assert.equal(converterProjectVersion, '1.1.0')
+  assert.equal(converterResourceVersion, converterProjectVersion)
+})
+
 test('repository publishes an actual MIT license and privacy policy', () => {
   const license = read('LICENSE')
   const privacy = read('PRIVACY.md')
@@ -40,7 +54,7 @@ test('document converter is an optional cross-platform module with a frozen depe
   const baseConfig = JSON.parse(read('src-tauri/tauri.conf.json'))
   const windowsConfig = JSON.parse(read('src-tauri/tauri.windows.conf.json'))
 
-  assert.match(project, /markitdown\[docx,pdf,pptx,xlsx\]==[\d.]+/i)
+  assert.match(project, /markitdown\[audio-transcription,docx,outlook,pdf,pptx,xls,xlsx\]==0\.1\.6/i)
   assert.match(project, /pyinstaller==[\d.]+/i)
   assert.match(lock, /sdist = \{ url = .*hash = "sha256:/)
   assert.match(workflow, /uv sync --project converter --frozen/)

@@ -8,6 +8,8 @@ import { applySavedTab } from '../utils/tabPersistence';
 import { detectSystemLanguage, normalizeLanguage, type AppLanguage } from '../i18n';
 import type { AgentSettings } from '../types/agent';
 import type { ConverterDialogAction } from '../components/ConverterDialog/ConverterDialog';
+import { isConvertibleDocumentName } from '../utils/documentFormats';
+import { isTextFileName } from '../utils/fileIcon';
 
 const isTauriRuntime = () => typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 const browserSettingsKey = 'markitdown.browser.settings';
@@ -583,6 +585,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   openFile: async (path) => {
+    if (!isTextFileName(path) && isConvertibleDocumentName(path)) {
+      await get().convertDocument(path);
+      return;
+    }
     try {
       const fileContent = await invoke<string>('get_file_content', { path });
       const { tabs, activeTabId } = get();

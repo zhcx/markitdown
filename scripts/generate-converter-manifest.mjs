@@ -35,7 +35,7 @@ const manifest = {
   module_id: 'document-converter',
   version,
   protocol_version: 1,
-  minimum_app_version: '0.3.4',
+  minimum_app_version: '0.3.6',
   artifacts,
 };
 const manifestBytes = Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`, 'utf8');

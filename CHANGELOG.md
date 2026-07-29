@@ -1,5 +1,20 @@
 # 更新日志
 
+## v0.3.6（2026-07-29）
+
+完整说明见 [`docs/releases/v0.3.6.md`](docs/releases/v0.3.6.md)。
+
+### 文档转换
+
+- 将可选转换模块升级至 v1.1.0，并保持 Microsoft MarkItDown 依赖为最新稳定版 0.1.6。
+- 新增 XLS、Outlook MSG、音频转写依赖，以及 HTML、CSV、JSON/JSONL、XML/RSS/Atom、ZIP、EPUB、图片和 Jupyter Notebook 等格式入口。
+- JPG/JPEG/PNG 在没有 LLM 或 ExifTool 输出时，会生成本地图片引用和基础图像/EXIF 元数据。
+- 统一菜单、资源管理器、拖放和系统文件打开的格式路由，避免把二进制文档当作文本读取。
+
+### 版本
+
+- 应用版本统一更新为 0.3.6，转换模块版本统一更新为 1.1.0。
+
 ## v0.3.4（2026-07-22）
 
 完整发布说明、平台安装包对照与安装提示见 [`docs/releases/v0.3.4.md`](docs/releases/v0.3.4.md)。

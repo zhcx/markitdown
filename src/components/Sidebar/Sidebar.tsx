@@ -10,6 +10,10 @@ import {
 } from '../../utils/markdownOutline';
 import { readStoredStringArray, writeStoredStringArray } from '../../utils/storage';
 import { isTextFileName } from '../../utils/fileIcon';
+import {
+  OPENABLE_FILE_EXTENSIONS,
+  isConvertibleDocumentName,
+} from '../../utils/documentFormats';
 import { FileTypeIcon } from './FileTypeIcon';
 
 interface FileNode {
@@ -61,7 +65,7 @@ const isTauriRuntime = () => '__TAURI_INTERNALS__' in window;
 const isDirectOpenFile = isTextFileName;
 // Keep this in sync with the desktop command. These are the file types offered
 // by MarkItDown in the workspace, rather than only files the editor can read.
-const isConvertibleFile = (name: string) => /\.(pdf|doc|docx|ppt|pptx|xls|xlsx|html?|csv|json|xml|epub|zip|png|jpe?g|gif|webp|bmp|svg|mp3|wav|m4a|ogg|eml|msg|rss|atom|ipynb)$/i.test(name);
+const isConvertibleFile = isConvertibleDocumentName;
 const replaceNodeChildren = (nodes: FileNode[], path: string, children: FileNode[]): FileNode[] => nodes.map(node => {
   if (node.path === path) return { ...node, children };
   return node.children ? { ...node, children: replaceNodeChildren(node.children, path, children) } : node;
@@ -720,7 +724,10 @@ function ExplorerSidebar({ style }: SidebarProps) {
 
   const handleOpenFile = async () => {
     try {
-      const selected = await open({ filters: [{ name: 'Markdown/文档', extensions: ['md', 'markdown', 'txt', 'pdf', 'docx', 'doc', 'pptx', 'ppt', 'xlsx', 'xls', 'html', 'htm', 'csv', 'json', 'xml', 'epub'] }], multiple: true });
+      const selected = await open({
+        filters: [{ name: '可编辑文本与可转换文档', extensions: OPENABLE_FILE_EXTENSIONS }],
+        multiple: true,
+      });
       if (!selected) return;
       for (const path of (Array.isArray(selected) ? selected : [selected])) await openFile(path as string);
       setExpandedNodes(previous => new Set(previous).add(OPEN_EDITORS_ID));

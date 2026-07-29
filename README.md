@@ -127,32 +127,34 @@ Agent 默认关闭，需要先在“设置 → AI 助手”中启用。MarkitDow
 
 ## 🚀 快速开始
 
-## v0.3.5 更新
+## v0.3.6 更新
 
 ### 更新日志
 
-- **文档转换模块**：新增按需安装的本地转换模块，支持 PDF、DOCX、XLSX、PPTX → Markdown 转换。提供在线安装、离线导入、Python 回退三种使用方式。
+- **转换格式扩展**：文档转换模块升级至 v1.1.0，在 Microsoft MarkItDown 0.1.6 基础上补齐 XLS、Outlook MSG 和音频转写依赖，并支持 HTML、CSV、JSON/JSONL、XML/RSS/Atom、ZIP、EPUB、图片和 Jupyter Notebook 等格式。
+- **打开入口统一**：菜单、资源管理器、拖放和系统启动参数共用同一套格式识别；二进制文档会自动进入转换流程，可编辑文本直接打开。
+- **图片降级转换**：未配置 LLM 或 ExifTool 时，JPG/JPEG/PNG 仍可生成包含本地图片引用、尺寸、颜色模式和可用 EXIF 信息的 Markdown。
 - **主题弹窗**：安装确认、错误提示、卸载确认全部改用主题弹窗，自动适配明暗主题。
 - **资源管理器增强**：右键菜单、近期记录面板、文件树自动刷新（v0.3.4 延续）。
 - **编辑预览联动**：双向高亮定位、统一滚动条（v0.3.4 延续）。
 
-### v0.3.5 平台安装包对照
+### v0.3.6 平台安装包对照
 
-> 以下链接指向 v0.3.5 Release 资产；安装包由 GitHub Actions 根据本版本源码构建。
+> 以下链接指向 v0.3.6 Release 资产；安装包由 GitHub Actions 根据 v0.3.6 标签源码构建。
 
 | 操作系统 | 架构 | 最低系统版本 | 推荐安装包 | 适用场景 |
 | --- | --- | --- | --- | --- |
-| Windows | x86_64 | Windows 10 1809+ | [NSIS `.exe`](https://github.com/zhcx/markitdown/releases/download/v0.3.5/MarkitDown_0.3.5_x64-setup.exe) | 推荐大多数用户使用，按向导安装 |
-| Windows | x86_64 | Windows 10 1809+ | [MSI](https://github.com/zhcx/markitdown/releases/download/v0.3.5/MarkitDown_0.3.5_x64_en-US.msi) | 企业部署、系统管理或静默安装 |
-| macOS Apple Silicon | arm64 | macOS 12+ | [DMG](https://github.com/zhcx/markitdown/releases/download/v0.3.5/MarkitDown_0.3.5_aarch64.dmg) | M1、M2、M3、M4 等 Apple 芯片 |
-| macOS Apple Silicon | arm64 | macOS 12+ | [APP 压缩包](https://github.com/zhcx/markitdown/releases/download/v0.3.5/MarkitDown_aarch64.app.tar.gz) | 手动解压或更新 |
-| macOS Intel | x86_64 | macOS 12+ | [DMG](https://github.com/zhcx/markitdown/releases/download/v0.3.5/MarkitDown_0.3.5_x64.dmg) | Intel 芯片 Mac |
-| macOS Intel | x86_64 | macOS 12+ | [APP 压缩包](https://github.com/zhcx/markitdown/releases/download/v0.3.5/MarkitDown_x64.app.tar.gz) | 手动解压或更新 |
-| Ubuntu / Debian | x86_64 | Ubuntu 20.04+ / Debian 11+ | [DEB](https://github.com/zhcx/markitdown/releases/download/v0.3.5/MarkitDown_0.3.5_amd64.deb) | Ubuntu、Debian、Linux Mint 等 |
-| Fedora / RHEL / openSUSE | x86_64 | Fedora 38+ / RHEL 9+ | [RPM](https://github.com/zhcx/markitdown/releases/download/v0.3.5/MarkitDown-0.3.5-1.x86_64.rpm) | RPM 系发行版 |
-| 通用 Linux | x86_64 | 需 webkit2gtk-4.1 | [AppImage](https://github.com/zhcx/markitdown/releases/download/v0.3.5/MarkitDown_0.3.5_amd64.AppImage) | 无需安装，赋予执行权限后运行 |
+| Windows | x86_64 | Windows 10 1809+ | [NSIS `.exe`](https://github.com/zhcx/markitdown/releases/download/v0.3.6/MarkitDown_0.3.6_x64-setup.exe) | 推荐大多数用户使用，按向导安装 |
+| Windows | x86_64 | Windows 10 1809+ | [MSI](https://github.com/zhcx/markitdown/releases/download/v0.3.6/MarkitDown_0.3.6_x64_en-US.msi) | 企业部署、系统管理或静默安装 |
+| macOS Apple Silicon | arm64 | macOS 12+ | [DMG](https://github.com/zhcx/markitdown/releases/download/v0.3.6/MarkitDown_0.3.6_aarch64.dmg) | M1、M2、M3、M4 等 Apple 芯片 |
+| macOS Apple Silicon | arm64 | macOS 12+ | [APP 压缩包](https://github.com/zhcx/markitdown/releases/download/v0.3.6/MarkitDown_aarch64.app.tar.gz) | 手动解压或更新 |
+| macOS Intel | x86_64 | macOS 12+ | [DMG](https://github.com/zhcx/markitdown/releases/download/v0.3.6/MarkitDown_0.3.6_x64.dmg) | Intel 芯片 Mac |
+| macOS Intel | x86_64 | macOS 12+ | [APP 压缩包](https://github.com/zhcx/markitdown/releases/download/v0.3.6/MarkitDown_x64.app.tar.gz) | 手动解压或更新 |
+| Ubuntu / Debian | x86_64 | Ubuntu 20.04+ / Debian 11+ | [DEB](https://github.com/zhcx/markitdown/releases/download/v0.3.6/MarkitDown_0.3.6_amd64.deb) | Ubuntu、Debian、Linux Mint 等 |
+| Fedora / RHEL / openSUSE | x86_64 | Fedora 38+ / RHEL 9+ | [RPM](https://github.com/zhcx/markitdown/releases/download/v0.3.6/MarkitDown-0.3.6-1.x86_64.rpm) | RPM 系发行版 |
+| 通用 Linux | x86_64 | 需 webkit2gtk-4.1 | [AppImage](https://github.com/zhcx/markitdown/releases/download/v0.3.6/MarkitDown_0.3.6_amd64.AppImage) | 无需安装，赋予执行权限后运行 |
 
-完整更新说明与安装提示见 [`docs/releases/v0.3.5.md`](docs/releases/v0.3.5.md)。
+完整更新说明、转换模块下载与安装提示见 [`docs/releases/v0.3.6.md`](docs/releases/v0.3.6.md)。
 
 ## Contributors
 
@@ -194,7 +196,7 @@ npm run tauri build
 
 ### 文档转换模块使用指南
 
-MarkitDown 支持将 **PDF、DOCX、XLSX、PPTX** 等文档转换为 Markdown 格式，并在新标签页中打开编辑。转换模块为按需下载的独立组件，主安装包不包含转换依赖，仅在需要时下载。
+MarkitDown 支持将 **PDF、DOCX、PPTX、XLS/XLSX、HTML、ZIP、EPUB、图片、音频、MSG、IPYNB** 等文件转换为 Markdown 格式，并在新标签页中打开编辑。转换模块为按需下载的独立组件，主安装包不包含转换依赖，仅在需要时下载。
 
 #### 转换流程示意
 
@@ -232,19 +234,19 @@ MarkitDown 支持将 **PDF、DOCX、XLSX、PPTX** 等文档转换为 Markdown �
 
 | 平台 | 模块包 |
 | --- | --- |
-| Windows x86_64 | `document-converter-v1.0.0_x86_64-pc-windows-msvc.zip` |
-| macOS Apple Silicon | `document-converter-v1.0.0_aarch64-apple-darwin.zip` |
-| macOS Intel | `document-converter-v1.0.0_x86_64-apple-darwin.zip` |
-| Linux x86_64 | `document-converter-v1.0.0_x86_64-unknown-linux-gnu.zip` |
+| Windows x86_64 | `markitdown-converter-v1.1.0-x86_64-pc-windows-msvc.zip` |
+| macOS Apple Silicon | `markitdown-converter-v1.1.0-aarch64-apple-darwin.zip` |
+| macOS Intel | `markitdown-converter-v1.1.0-x86_64-apple-darwin.zip` |
+| Linux x86_64 | `markitdown-converter-v1.1.0-x86_64-unknown-linux-gnu.zip` |
 
-模块包已在各平台 CI 构建后随 Release 发布，可从 [Releases](https://github.com/zhcx/markitdown/releases/tag/converter-v1.0.0) 页面下载。
+模块可从 [converter-v1.1.0 Release](https://github.com/zhcx/markitdown/releases/tag/converter-v1.1.0) 页面下载。
 
 #### 方式三：Python 回退（开发/轻量环境）
 
 如果本机已安装 Python，直接安装依赖即可使用，无需下载转换模块：
 
 ```bash
-python -m pip install 'markitdown[pdf,docx,pptx,xlsx]'
+python -m pip install 'markitdown[audio-transcription,docx,outlook,pdf,pptx,xls,xlsx]==0.1.6'
 ```
 
 安装后应用自动识别并调用 Python 回退。如需指定特定 Python 路径：
@@ -260,16 +262,20 @@ MARKITDOWN_PYTHON=”/opt/homebrew/bin/python3” ./markitdown
 
 #### 支持的格式
 
-| 格式 | 说明 | 依赖 |
+| 类别 | 格式 | 说明 |
 | --- | --- | --- |
-| PDF | 可携带文本的 PDF 文档 | pdfminer / pdfplumber |
-| DOCX | Word 文档 | mammoth |
-| XLSX | Excel 工作簿 | openpyxl / markitdown |
-| PPTX | PowerPoint 演示文稿 | python-pptx |
+| Office / 文档 | PDF、DOCX、PPTX、XLSX、XLS | 保留标题、列表、表格等可提取结构 |
+| 网页 / 结构化文本 | HTML/HTM/XHTML、CSV、JSON/JSONL、XML、RSS、Atom | 转为 Markdown 正文、表格或信息流 |
+| 压缩包 / 电子书 | ZIP、EPUB | ZIP 会递归转换包内受支持文件 |
+| 图片 | JPG/JPEG、PNG | 提取可用元数据；无外部工具时生成本地引用和基础图像信息 |
+| 音频 / 媒体 | WAV、MP3、M4A、MP4 | 使用上游音频转换器提取元数据和语音文本；压缩媒体可能需要 FFmpeg |
+| 邮件 / Notebook | Outlook MSG、Jupyter IPYNB | 提取邮件正文、元数据或 Notebook 单元格 |
+| 纯文本 | TXT/TEXT、Markdown | 保留文本内容 |
 
 #### 安全说明
 
-- 文件转换**始终在本机处理**，不会上传到任何服务器
+- 文档、表格、网页、压缩包、电子书、图片元数据和 Notebook 转换在本机处理
+- 音频转写沿用 Microsoft MarkItDown 的 SpeechRecognition 实现，可能把提取的音频发送至 Google Speech Recognition；敏感录音请勿使用该功能
 - 发布清单使用 Ed25519 签名验证（公钥编译期嵌入）
 - 模块可执行文件经过 SHA-256 完整性校验
 - 未配置公钥时自动跳过 Ed25519 验证
@@ -282,7 +288,7 @@ MARKITDOWN_PYTHON=”/opt/homebrew/bin/python3” ./markitdown
 | 提示”converter_module_missing” | 未安装模块且未配置 Python | 安装 Python 回退或在设置中在线安装 |
 | 下载转换模块失败 | 网络问题 | 检查网络连接，或使用离线包导入 |
 | 健康检查失败 | 模块文件损坏 | 重新安装或导入模块 |
-| Python 回退不生效 | 未安装 markitdown 库 | 执行 `pip install 'markitdown[pdf,docx,pptx,xlsx]'` |
+| Python 回退不生效 | 未安装 markitdown 库 | 执行 `pip install 'markitdown[audio-transcription,docx,outlook,pdf,pptx,xls,xlsx]==0.1.6'` |
 | 转换结果为空 | 源文件为扫描件/图片 | 确认源文件包含可提取的文本内容 |
 | SmartScreen 警告 | 安装包未代码签名 | 点击”更多信息 → 仍要运行” |
 
