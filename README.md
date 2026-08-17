@@ -41,7 +41,7 @@
 
 ### 2. 文档转换引擎：markitdown（Python）→ **AnyDoc（Rust）**
 
-文档转换能力已从 **微软 markitdown（Python 依赖）** 全面替换为自研的 **AnyDoc 原生 Rust 转换引擎**：
+文档转换能力已从 **微软 markitdown（Python 依赖）** 全面替换为 **AnyDoc 原生 Rust 转换引擎**：
 
 | 对比项 | 旧版（markitdown / Python） | 新版（AnyDoc / Rust） |
 | --- | --- | --- |
