@@ -1,3 +1,0 @@
-# Runtime dependency for the source/dev document conversion fallback.
-# Release CI restores the cross-platform converter/uv.lock instead.
-markitdown[pdf,docx,pptx,xlsx]==0.1.6

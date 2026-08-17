@@ -1,30 +1,31 @@
 # Privacy Policy
 
-Last updated: July 21, 2026
+Last updated: July 29, 2026
 
-MarkitDown is a local-first desktop Markdown editor. The project maintainers do not operate an analytics, advertising, telemetry, or user-account service for the application. Your documents stay on your device unless you deliberately use a feature that sends selected data to a service you configure.
+Zeditor is a local-first desktop Markdown editor. The project maintainers do not operate an analytics, advertising, telemetry, or user-account service for the application. Your documents stay on your device unless you deliberately use a feature that sends selected data to a service you configure.
 
 ## Data processed locally
 
-MarkitDown reads and writes files that you open, create, convert, export, or select as workspace context. When Local Agent Beta is enabled, it also creates temporary Git worktrees and stores local session metadata and event history so that changes can be reviewed or resumed. Unapplied Agent worktrees remain until you apply or discard the session. Recent-file history, application preferences, and credentials entered in Settings are stored in the application's local configuration directory. Diagnostic crash messages may be appended to `markitdown_crash.log` in the operating system's temporary directory.
+Zeditor reads and writes files that you open, create, convert, export, or select as workspace context. When Local Agent Beta is enabled, it also creates temporary Git worktrees and stores local session metadata and event history so that changes can be reviewed or resumed. Unapplied Agent worktrees remain until you apply or discard the session. Recent-file history, application preferences, and credentials entered in Settings are stored in the application's local configuration directory. Diagnostic crash messages may be appended to `zeditor_crash.log` in the operating system's temporary directory.
 
 The application does not encrypt its settings file. Anyone or any software with access to your operating-system account may be able to read credentials saved there. Use restricted API keys and remove them from Settings when they are no longer needed.
 
 ## Optional third-party transfers
 
-MarkitDown contacts third parties only when you invoke or enable the corresponding feature:
+Zeditor contacts third parties only when you invoke or enable the corresponding feature:
 
 - **AI providers:** prompts, selected text, document context, attached text or images, and model settings may be sent to the AI endpoint and provider selected by you. Supported providers and custom endpoints have their own privacy and retention terms.
-- **Local Agent backends:** when you deliberately start an Agent task, MarkitDown launches your locally installed Claude Code, Codex, or OpenCode CLI. The selected CLI may send prompts, workspace content, command output, and tool results to the model provider configured in that CLI, and may access the network when you approve it. MarkitDown reuses the CLI's authentication and does not copy its login credentials into MarkitDown settings.
+- **Local Agent backends:** when you deliberately start an Agent task, Zeditor launches your locally installed Claude Code, Codex, or OpenCode CLI. The selected CLI may send prompts, workspace content, command output, and tool results to the model provider configured in that CLI, and may access the network when you approve it. Zeditor reuses the CLI's authentication and does not copy its login credentials into Zeditor settings.
 - **Web search:** search queries and the configured credentials are sent to Tavily or to the SearXNG instance selected by you.
 - **Image hosting:** images selected for upload and the required credentials or metadata are sent to Cloudinary, PicGo, an S3-compatible service, or another destination configured by you. Local image storage does not send the image to a remote hosting provider.
+- **Document conversion:** AnyDoc conversion runs locally and does not upload document contents. Scanned-PDF OCR, image, audio, MSG, and Notebook conversion are not provided by the current module.
 - **Update checks and downloads:** when you check for updates or download one, the application contacts GitHub Releases. GitHub receives normal connection information such as your IP address and user agent.
 
-The MarkitDown maintainers do not receive the content transferred directly between your installation and these user-selected services. Those services process data under their own policies. Review their terms before sending confidential or personal information.
+The Zeditor maintainers do not receive the content transferred directly between your installation and these user-selected services. Those services process data under their own policies. Review their terms before sending confidential or personal information.
 
 ## Collection, sale, and retention
 
-The project maintainers do not collect or sell personal information through MarkitDown and therefore do not retain application content on a maintainer-controlled server. Locally stored data remains until you edit or delete it, uninstall the application and remove its data directory, or the operating system removes temporary files. Third-party retention is controlled by the provider you selected.
+The project maintainers do not collect or sell personal information through Zeditor and therefore do not retain application content on a maintainer-controlled server. Locally stored data remains until you edit or delete it, uninstall the application and remove its data directory, or the operating system removes temporary files. Third-party retention is controlled by the provider you selected.
 
 ## Security and choices
 

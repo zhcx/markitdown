@@ -1,5 +1,5 @@
 /* ================================================================
-   MarkitDown – Modern Clean Theme
+   Zeditor – Modern Clean Theme
    Single-source-of-truth design tokens + component styles
    ================================================================ */
 
@@ -19,7 +19,7 @@
   --bg-primary: var(--bg-app);
   --bg-secondary: var(--bg-panel);
   --bg-tertiary: #EEEADF;
-  --bg-hover: rgba(119, 111, 102, 0.06);
+  --bg-hover: var(--hover);
   --surface-raised: rgba(255, 255, 255, 0.9);
   --surface-subtle: #FDFBF7;
   --surface-muted: #F3EFE7;
@@ -35,12 +35,14 @@
   --hairline: var(--border-soft);
 
   --accent-color: #C96B52;
-  --accent: #C96B52;
+  /* 别名变量统一以 var() 链接到源变量：主题块只需覆盖源变量，
+     所有别名自动跟随，无需逐主题重复维护。 */
+  --accent: var(--accent-color);
   --accent-hover: #B55D46;
   --accent-soft: rgba(201, 107, 82, 0.12);
-  --accent-light: rgba(201, 107, 82, 0.1);
-  --accent-warm: #C96B52;
-  --accent-warm-light: rgba(201, 107, 82, 0.12);
+  --accent-light: var(--accent-soft);
+  --accent-warm: var(--accent-color);
+  --accent-warm-light: var(--accent-soft);
 
   --success-color: #4A8B69;
   --warning-color: #B8802A;
@@ -58,6 +60,7 @@
   --code-keyword: #C96B52;
   --code-string: #8B5B3E;
   --code-title: #4D8A7C;
+  --code-number: #B0716B;
 
   --shadow-xs: 0 1px 1px rgba(55, 50, 44, 0.04);
   --shadow-sm: 0 2px 8px rgba(55, 50, 44, 0.06);
@@ -109,7 +112,7 @@
   --bg-primary: var(--bg-app);
   --bg-secondary: var(--bg-panel);
   --bg-tertiary: #222422;
-  --bg-hover: rgba(255, 248, 235, 0.06);
+  --bg-hover: var(--hover);
   --surface-raised: rgba(46, 48, 46, 0.94);
   --surface-subtle: #212321;
   --surface-muted: #2C2E2C;
@@ -125,12 +128,12 @@
   --hairline: var(--border-soft);
 
   --accent-color: #DC846A;
-  --accent: #DC846A;
+  --accent: var(--accent-color);
   --accent-hover: #E8977E;
   --accent-soft: rgba(220, 132, 106, 0.16);
-  --accent-light: rgba(220, 132, 106, 0.16);
-  --accent-warm: #DC846A;
-  --accent-warm-light: rgba(220, 132, 106, 0.16);
+  --accent-light: var(--accent-soft);
+  --accent-warm: var(--accent-color);
+  --accent-warm-light: var(--accent-soft);
 
   --success-color: #7BBF94;
   --warning-color: #D6A05A;
@@ -148,6 +151,7 @@
   --code-keyword: #DC846A;
   --code-string: #E0A984;
   --code-title: #8CC6C4;
+  --code-number: #D99A7E;
 
   --shadow-xs: 0 1px 1px rgba(0, 0, 0, 0.2);
   --shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.22);
@@ -310,14 +314,32 @@ select:focus-visible {
   color: var(--text-color);
 }
 
+/* 注意：不要把 .submenu-dropdown 加进这组选择器——
+   `top: calc(100% + 4px)` 会以其更高特异性覆盖 .submenu-dropdown 的
+   `top: -8px; left: calc(100% - 2px)`，导致子菜单被挤到触发行下方
+   而非右侧弹出，hover 边界随之破碎（二级菜单难以至达）。 */
 .titlebar .menu-dropdown,
-.titlebar .more-dropdown,
-.titlebar .submenu-dropdown {
+.titlebar .more-dropdown {
   top: calc(100% + 4px);
   background: var(--surface-raised);
   border-color: var(--border);
   border-radius: 10px;
   box-shadow: var(--shadow-lg);
+}
+
+/* 菜单栏行与下拉面板之间有 4px 布局间隙，鼠标斜向穿过时会短暂离开
+   menubar 的 hover 范围而触发收回。用透明桥接带覆盖该间隙，使指针
+   在进入面板前始终停留在下拉元素的命中区域内。 */
+.menu-dropdown::before,
+.more-dropdown::before {
+  content: '';
+  position: absolute;
+  top: -8px;
+  left: 0;
+  right: 0;
+  height: 8px;
+  /* 仅作命中区域扩展，不产生任何可见内容 */
+  background: transparent;
 }
 
 /* ── App Layout ────────────────────────────────────────────────── */
@@ -517,6 +539,31 @@ html.panel-resizing .chatbot-side-panel {
   box-shadow: var(--shadow-lg);
   backdrop-filter: blur(18px);
   z-index: 100000;
+}
+
+/* 子菜单左侧桥接带：覆盖主下拉右缘与子菜单之间的斜向移动路径，
+   鼠标从触发行滑向子菜单任一项时不脱离 wrapper 的 hover 区域，
+   避免 CSS :hover 瞬间隐藏导致的“点不到二级菜单”。 */
+.submenu-dropdown::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -10px;
+  width: 10px;
+  background: transparent;
+}
+
+/* 子菜单顶部/底部桥接：子菜单比触发行高（top:-8px），从触发行
+   斜向移动到子菜单远端项时可能短暂时出 wrapper 上下边界。 */
+.submenu-dropdown::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -8px;
+  height: 8px;
+  background: transparent;
 }
 
 .menu-option-wrapper:hover > .submenu-dropdown,
@@ -4300,7 +4347,18 @@ textarea {
 .preview-document .hljs-type { color: var(--code-title) !important; }
 .preview-document .hljs-number,
 .preview-document .hljs-symbol,
-.preview-document .hljs-bullet { color: var(--accent-warm) !important; }
+.preview-document .hljs-bullet { color: var(--code-number) !important; }
+/* HTML/XML 标签名与 CSS 属性名归入类型层，保持结构元素可辨识 */
+.preview-document .hljs-name,
+.preview-document .hljs-tag,
+.preview-document .hljs-attr { color: var(--code-title) !important; }
+/* 变量与属性名使用正文色但保持柔和，不与字符串层混淆 */
+.preview-document .hljs-variable,
+.preview-document .hljs-attribute,
+.preview-document .hljs-property { color: var(--code-text) !important; }
+/* 运算符/标点弱化为次要色，突出内容主体 */
+.preview-document .hljs-operator,
+.preview-document .hljs-punctuation { color: var(--text-secondary) !important; }
 
 .preview-document table {
   display: block;
@@ -6440,76 +6498,10 @@ textarea:focus-visible {
 
 .preview-container pre { background: var(--code-bg); color: var(--code-text); border-color: var(--border-color); box-shadow: none; }
 .preview-container pre code { color: var(--code-text); }
-[data-theme="dark"] .preview-container pre code { color: var(--code-text); }
 .preview-container blockquote { border-left: 3px solid var(--border-strong); background: transparent; }
 .preview-container table { box-shadow: none; border-radius: 0; }
 .preview-container th { background: transparent; }
 .preview-container td { background: transparent; }
-
-/* Notion themes: neutral workspace surfaces, compact sans-serif UI, and
-   restrained semantic colors inspired by Notion's editor. */
-[data-theme="light"] {
-  --bg-app: #f7f7f5;
-  --bg-shell: #f1f1ef;
-  --bg-panel: #fbfbfa;
-  --bg-document: #ffffff;
-  --bg-elevated: #ffffff;
-  --text-color: #37352f;
-  --text-primary: #37352f;
-  --text-secondary: #6b6b67;
-  --text-muted: #9b9b97;
-  --border: #e9e9e7;
-  --border-color: #e9e9e7;
-  --border-soft: rgba(55, 53, 47, .08);
-  --border-strong: rgba(55, 53, 47, .18);
-  --accent-color: #2383e2;
-  --accent: #2383e2;
-  --accent-hover: #0b6ecb;
-  --accent-light: rgba(35, 131, 226, .10);
-  --toolbar-bg: rgba(251, 251, 250, .96);
-  --menubar-bg: rgba(251, 251, 250, .98);
-  --surface-raised: #ffffff;
-  --surface-subtle: #f7f7f5;
-  --surface-muted: #efefed;
-  --code-bg: #f7f6f3;
-  --code-text: #37352f;
-  --font-reading: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
-}
-
-[data-theme="dark"] {
-  --bg-app: #191919;
-  --bg-shell: #161616;
-  --bg-panel: #202020;
-  --bg-document: #191919;
-  --bg-elevated: #252525;
-  --text-color: #e6e6e4;
-  --text-primary: #e6e6e4;
-  --text-secondary: #aaa9a4;
-  --text-muted: #777671;
-  --border: #333331;
-  --border-color: #333331;
-  --border-soft: rgba(255, 255, 255, .09);
-  --border-strong: rgba(255, 255, 255, .18);
-  --accent-color: #529cca;
-  --accent: #529cca;
-  --accent-hover: #73b4df;
-  --accent-light: rgba(82, 156, 202, .18);
-  --toolbar-bg: rgba(32, 32, 32, .98);
-  --menubar-bg: rgba(25, 25, 25, .98);
-  --surface-raised: #252525;
-  --surface-subtle: #222222;
-  --surface-muted: #30302f;
-  --code-bg: #252525;
-  --code-text: #dededb;
-  --font-reading: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
-}
-
-[data-theme="light"] .preview-container,
-[data-theme="dark"] .preview-container {
-  font-family: var(--font-reading) !important;
-  max-width: 880px;
-  letter-spacing: 0;
-}
 
 .preview-container h1,
 .preview-container h2,
@@ -6529,106 +6521,66 @@ textarea:focus-visible {
 .preview-container a { color: var(--accent-color); }
 .preview-container a:hover { color: var(--accent-hover); }
 
-/* Theme aliases are intentionally separate so users can switch among all
-   four named themes without one palette overwriting another. */
-[data-theme="claude-light"] {
-  --bg-app: #f4f1ec; --bg-shell: #efebe5; --bg-panel: #f6f3ee; --bg-document: #faf8f4; --bg-elevated: #fcfaf7;
-  --text-color: #514a44; --text-primary: #443e38; --text-secondary: #766f67; --text-muted: #9c958c;
-  --border: #e3ddd4; --border-color: #e3ddd4; --border-soft: rgba(76,68,60,.08); --border-strong: rgba(76,68,60,.16); --hairline: var(--border-soft);
-  --hover: rgba(91,80,70,.05); --active: rgba(91,80,70,.085); --selected: rgba(174,117,100,.11); --bg-hover: var(--hover);
-  --bg-primary: var(--bg-app); --bg-secondary: var(--bg-panel); --bg-tertiary: #ebe6df;
-  --accent-color: #ae7564; --accent: #ae7564; --accent-hover: #9a6758; --accent-soft: rgba(174,117,100,.11); --accent-light: rgba(174,117,100,.11);
-  --accent-warm: #ae7564; --accent-warm-light: rgba(174,117,100,.11);
-  --success-color: #66846f; --warning-color: #967a4e; --danger-color: #a66d70;
-  --toolbar-bg: #f4f1ec; --menubar-bg: #efebe5; --tab-bg: #f2eee8; --tab-active-bg: #faf8f4; --statusbar-bg: #f2eee8;
-  --surface-raised: #fcfaf7; --surface-subtle: #f6f3ee; --surface-muted: #ece7e0;
-  --code-bg: #f1ede7; --code-text: #554e47; --code-comment: #918a82; --code-keyword: #a76f5f; --code-string: #8e735d; --code-title: #65847e;
-  --shadow-xs: 0 1px 1px rgba(65,57,50,.035); --shadow-sm: 0 2px 8px rgba(65,57,50,.055); --shadow: 0 10px 26px rgba(65,57,50,.08); --shadow-lg: 0 20px 48px rgba(65,57,50,.13); --shadow-card: 0 8px 22px rgba(65,57,50,.07); --shadow-soft: 0 3px 12px rgba(65,57,50,.055);
-  --overlay-bg: rgba(58,52,47,.28);
-  --font-reading: "Iowan Old Style", "Noto Serif SC", "Source Han Serif SC", Georgia, serif;
-}
-[data-theme="claude-dark"] {
-  --bg-app: #242522; --bg-shell: #21221f; --bg-panel: #232522; --bg-document: #272925; --bg-elevated: #2d2f2b;
-  --text-color: #cbc6bd; --text-primary: #d7d2c9; --text-secondary: #a6a097; --text-muted: #7d7871;
-  --border: #373a35; --border-color: #373a35; --border-soft: rgba(211,204,193,.075); --border-strong: rgba(211,204,193,.15); --hairline: var(--border-soft);
-  --hover: rgba(224,216,202,.05); --active: rgba(224,216,202,.085); --selected: rgba(180,128,110,.18); --bg-hover: var(--hover);
-  --bg-primary: var(--bg-app); --bg-secondary: var(--bg-panel); --bg-tertiary: #2b2d29;
-  --accent-color: #b4806e; --accent: #b4806e; --accent-hover: #c08c79; --accent-soft: rgba(180,128,110,.13); --accent-light: rgba(180,128,110,.13);
-  --accent-warm: #b4806e; --accent-warm-light: rgba(180,128,110,.13);
-  --success-color: #789581; --warning-color: #a58a5d; --danger-color: #b47a7d;
-  --toolbar-bg: #232522; --menubar-bg: #21221f; --tab-bg: #232522; --tab-active-bg: #272925; --statusbar-bg: #232522;
-  --surface-raised: #2d2f2b; --surface-subtle: #272925; --surface-muted: #30322e;
-  --code-bg: #222420; --code-text: #c9c3ba; --code-comment: #817d76; --code-keyword: #b47d6b; --code-string: #aa8d72; --code-title: #789a94;
-  --shadow-xs: 0 1px 1px rgba(0,0,0,.15); --shadow-sm: 0 2px 8px rgba(0,0,0,.18); --shadow: 0 10px 26px rgba(0,0,0,.24); --shadow-lg: 0 20px 50px rgba(0,0,0,.36); --shadow-card: 0 8px 24px rgba(0,0,0,.22); --shadow-soft: 0 3px 12px rgba(0,0,0,.18);
-  --overlay-bg: rgba(0,0,0,.45);
-  --font-reading: "Iowan Old Style", "Noto Serif SC", "Source Han Serif SC", Georgia, serif;
-}
-[data-theme="notion-light"] {
-  --bg-app: #f6f6f4; --bg-shell: #f1f1ef; --bg-panel: #f5f5f3; --bg-document: #fafaf8; --bg-elevated: #fcfcfb;
-  --text-color: #52504a; --text-primary: #47453f; --text-secondary: #74736e; --text-muted: #999893;
-  --border: #e2e2df; --border-color: #e2e2df; --border-soft: rgba(70,68,62,.075); --border-strong: rgba(70,68,62,.15); --hairline: var(--border-soft);
-  --hover: rgba(68,67,62,.05); --active: rgba(68,67,62,.085); --selected: rgba(103,136,160,.11); --bg-hover: var(--hover);
-  --bg-primary: var(--bg-app); --bg-secondary: var(--bg-panel); --bg-tertiary: #e9e9e6;
-  --accent-color: #6788a0; --accent: #6788a0; --accent-hover: #58778f; --accent-soft: rgba(103,136,160,.11); --accent-light: rgba(103,136,160,.11);
-  --accent-warm: #6788a0; --accent-warm-light: rgba(103,136,160,.11);
-  --success-color: #68866f; --warning-color: #947b50; --danger-color: #a56e70;
-  --toolbar-bg: #f5f5f3; --menubar-bg: #f1f1ef; --tab-bg: #f3f3f1; --tab-active-bg: #fafaf8; --statusbar-bg: #f3f3f1;
-  --surface-raised: #fcfcfb; --surface-subtle: #f5f5f3; --surface-muted: #eaeae7;
-  --code-bg: #f0f0ed; --code-text: #514f49; --code-comment: #8b8a85; --code-keyword: #8d7187; --code-string: #8d7364; --code-title: #5f8580;
-  --shadow-xs: 0 1px 1px rgba(45,44,41,.03); --shadow-sm: 0 2px 8px rgba(45,44,41,.05); --shadow: 0 10px 26px rgba(45,44,41,.075); --shadow-lg: 0 20px 48px rgba(45,44,41,.12); --shadow-card: 0 8px 22px rgba(45,44,41,.065); --shadow-soft: 0 3px 12px rgba(45,44,41,.05);
-  --overlay-bg: rgba(43,42,39,.26);
-  --font-reading: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
-}
-[data-theme="notion-dark"] {
-  --bg-app: #252525; --bg-shell: #222222; --bg-panel: #242424; --bg-document: #272727; --bg-elevated: #2c2c2b;
-  --text-color: #c4c3bf; --text-primary: #d2d1ce; --text-secondary: #a2a19c; --text-muted: #777671;
-  --border: #383836; --border-color: #383836; --border-soft: rgba(230,230,225,.065); --border-strong: rgba(230,230,225,.13); --hairline: var(--border-soft);
-  --hover: rgba(235,235,230,.045); --active: rgba(235,235,230,.08); --selected: rgba(120,152,170,.17); --bg-hover: var(--hover);
-  --bg-primary: var(--bg-app); --bg-secondary: var(--bg-panel); --bg-tertiary: #2b2b2a;
-  --accent-color: #7898aa; --accent: #7898aa; --accent-hover: #86a6b8; --accent-soft: rgba(120,152,170,.13); --accent-light: rgba(120,152,170,.13);
-  --accent-warm: #7898aa; --accent-warm-light: rgba(120,152,170,.13);
-  --success-color: #78967f; --warning-color: #a38b61; --danger-color: #ae7779;
-  --toolbar-bg: #242424; --menubar-bg: #222222; --tab-bg: #242424; --tab-active-bg: #272727; --statusbar-bg: #242424;
-  --surface-raised: #2c2c2b; --surface-subtle: #282827; --surface-muted: #30302f;
-  --code-bg: #222221; --code-text: #c7c6c2; --code-comment: #7f7e79; --code-keyword: #a4869c; --code-string: #a38777; --code-title: #759893;
-  --shadow-xs: 0 1px 1px rgba(0,0,0,.14); --shadow-sm: 0 2px 8px rgba(0,0,0,.17); --shadow: 0 10px 26px rgba(0,0,0,.23); --shadow-lg: 0 20px 50px rgba(0,0,0,.35); --shadow-card: 0 8px 24px rgba(0,0,0,.21); --shadow-soft: 0 3px 12px rgba(0,0,0,.17);
-  --overlay-bg: rgba(0,0,0,.43);
-  --font-reading: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
-}
+/* ── 主题：深色主题 / 浅色主题 ─────────────────────────────────
+   设计原则：
+   1. 单一色相轴（蓝灰）+ 统一饱和度梯度，明度分层来自同一亮度标尺；
+   2. 别名变量（accent-warm、bg-primary 等）在 :root 中以 var() 链接到
+      源变量，主题块只定义源变量，避免逐主题重复维护 12 个别名；
+   3. 语法高亮只保留 6 个语义层级：正文 / 注释 / 关键字 / 字符串 /
+      类型函数 / 数字，全部从同一饱和度基准（约 30–45%）派生，
+      保证层级区分度且不刺眼。 */
+
+/* 浅色主题：冷灰蓝基调，靛蓝强调 */
 [data-theme="vscode-light"] {
-  --bg-app: #f6f7f8; --bg-shell: #eef1f3; --bg-panel: #f1f3f5; --bg-document: #f8f9fa; --bg-elevated: #fbfcfd;
-  --text-color: #4b5561; --text-primary: #35404b; --text-secondary: #687381; --text-muted: #8b96a3;
-  --border: #dce1e6; --border-color: #dce1e6; --border-soft: rgba(72,84,96,.075); --border-strong: rgba(72,84,96,.16); --hairline: var(--border-soft);
-  --hover: rgba(61,76,91,.05); --active: rgba(61,76,91,.085); --selected: rgba(78,127,159,.11); --bg-hover: var(--hover);
-  --bg-primary: var(--bg-app); --bg-secondary: var(--bg-panel); --bg-tertiary: #e7ebef;
-  --surface-raised: #fbfcfd; --surface-subtle: #f3f5f7; --surface-muted: #e9edf1;
-  --accent-color: #4e7f9f; --accent: #4e7f9f; --accent-hover: #426f8c; --accent-soft: rgba(78,127,159,.11); --accent-light: rgba(78,127,159,.11);
-  --accent-warm: #4e7f9f; --accent-warm-light: rgba(78,127,159,.11);
-  --success-color: #5d876b; --warning-color: #927848; --danger-color: #a96769;
-  --toolbar-bg: #f1f3f5; --menubar-bg: #eef1f3; --tab-bg: #f1f3f5; --tab-active-bg: #f8f9fa; --statusbar-bg: #eef1f3;
-  --code-bg: #f3f5f7; --code-text: #46515c; --code-comment: #748674; --code-keyword: #876f8f; --code-string: #8e7568; --code-title: #5c8580;
-  --shadow-xs: 0 1px 1px rgba(33,45,55,.03); --shadow-sm: 0 2px 8px rgba(33,45,55,.05); --shadow: 0 10px 26px rgba(33,45,55,.075); --shadow-lg: 0 20px 48px rgba(33,45,55,.12); --shadow-card: 0 8px 22px rgba(33,45,55,.065); --shadow-soft: 0 3px 12px rgba(33,45,55,.05);
-  --overlay-bg: rgba(29,39,48,.26); --font-reading: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+  /* 表面层级：shell(最暗) → panel → app → document → elevated(最亮) */
+  --bg-app: #f6f7f9; --bg-shell: #eceef2; --bg-panel: #f2f4f6; --bg-document: #f9fafb; --bg-elevated: #fcfcfd;
+  --bg-tertiary: #eaeef2;
+  --surface-raised: #fcfcfd; --surface-subtle: #f3f5f7; --surface-muted: #eaeef2;
+  /* 文本：同色相（蓝灰）三级明度，次要信息对比度 ≥ 4.5:1 */
+  --text-color: #3d4754; --text-primary: #2e3947; --text-secondary: #64707e; --text-muted: #8b95a1;
+  /* 边框：同一基色的三种透明度，视觉粗细一致 */
+  --border: #dfe3e9; --border-soft: rgba(46, 57, 71, .06); --border-strong: rgba(46, 57, 71, .16);
+  /* 交互态：中性基色，选中态注入强调色 */
+  --hover: rgba(46, 57, 71, .045); --active: rgba(46, 57, 71, .08); --selected: rgba(58, 104, 144, .10);
+  /* 强调：靛蓝（饱和度约 42%），hover 加深而非变亮，浅色下更清晰 */
+  --accent-color: #3a6890; --accent-hover: #2f5779; --accent-soft: rgba(58, 104, 144, .10);
+  /* 语义色：统一中等饱和度，全部可作 14px 文本前景 */
+  --success-color: #4c7d5f; --warning-color: #92703c; --danger-color: #ac5d62;
+  /* 区域背景：侧边栏/菜单栏/标签栏/状态栏同用 shell/panel 层，风格统一 */
+  --toolbar-bg: #f2f4f6; --menubar-bg: #eceef2; --tab-bg: #eceef2; --tab-active-bg: #f9fafb; --statusbar-bg: #eceef2;
+  /* 语法高亮：紫(关键字)/棕(字符串)/青(类型)/玫(数字)同饱和度层级 */
+  --code-bg: #f1f3f6; --code-text: #3f4a56;
+  --code-comment: #697780; --code-keyword: #7c5cb0; --code-string: #a06a4f; --code-title: #2f7e8f; --code-number: #a8646e;
+  --shadow-xs: 0 1px 1px rgba(33, 45, 55, .03); --shadow-sm: 0 2px 8px rgba(33, 45, 55, .05);
+  --shadow: 0 10px 26px rgba(33, 45, 55, .075); --shadow-lg: 0 20px 48px rgba(33, 45, 55, .12);
+  --shadow-card: 0 8px 22px rgba(33, 45, 55, .065); --shadow-soft: 0 3px 12px rgba(33, 45, 55, .05);
+  --overlay-bg: rgba(29, 39, 48, .24);
+  --font-reading: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
 }
+
+/* 深色主题：深蓝灰基调，天蓝强调 */
 [data-theme="vscode-dark"] {
-  --bg-app: #252b33; --bg-shell: #232931; --bg-panel: #222830; --bg-document: #252c34; --bg-elevated: #2a323c;
-  --text-color: #c5cdd6; --text-primary: #d2d9e1; --text-secondary: #a1acb8; --text-muted: #7d8997;
-  --border: #343d48; --border-color: #343d48; --border-soft: rgba(190,202,215,.07); --border-strong: rgba(190,202,215,.14); --hairline: var(--border-soft);
-  --hover: rgba(205,218,232,.05); --active: rgba(205,218,232,.085); --selected: rgba(93,136,168,.18); --bg-hover: var(--hover);
-  --bg-primary: var(--bg-app); --bg-secondary: var(--bg-panel); --bg-tertiary: #2a323c;
-  --surface-raised: #2a323c; --surface-subtle: #272f38; --surface-muted: #303a45;
-  --accent-color: #5d88a8; --accent: #5d88a8; --accent-hover: #6f99b8; --accent-soft: rgba(93,136,168,.13); --accent-light: rgba(93,136,168,.13);
-  --accent-warm: #5d88a8; --accent-warm-light: rgba(93,136,168,.13);
-  --success-color: #79a282; --warning-color: #a48c63; --danger-color: #b8797a;
-  --toolbar-bg: #222830; --menubar-bg: #232931; --tab-bg: #222830; --tab-active-bg: #252c34; --statusbar-bg: #222830;
-  --code-bg: #222a32; --code-text: #c2cbd5; --code-comment: #74866f; --code-keyword: #a98fa8; --code-string: #af9282; --code-title: #78a39d;
-  --shadow-xs: 0 1px 1px rgba(0,0,0,.14); --shadow-sm: 0 2px 8px rgba(0,0,0,.17); --shadow: 0 10px 26px rgba(0,0,0,.23); --shadow-lg: 0 20px 50px rgba(0,0,0,.35); --shadow-card: 0 8px 24px rgba(0,0,0,.21); --shadow-soft: 0 3px 12px rgba(0,0,0,.17);
-  --overlay-bg: rgba(0,0,0,.43); --font-reading: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+  /* 表面层级与浅色同构，暗端收窄（明度差 ≤ 6%），长时间阅读更舒适 */
+  --bg-app: #232930; --bg-shell: #1f242b; --bg-panel: #21262e; --bg-document: #252b33; --bg-elevated: #2a313a;
+  --bg-tertiary: #2a313a;
+  --surface-raised: #2a313a; --surface-subtle: #262d35; --surface-muted: #2e3742;
+  --text-color: #c3ccd6; --text-primary: #d4dce4; --text-secondary: #9daab8; --text-muted: #76828f;
+  --border: #333c47; --border-soft: rgba(197, 210, 224, .06); --border-strong: rgba(197, 210, 224, .14);
+  --hover: rgba(203, 217, 231, .05); --active: rgba(203, 217, 231, .085); --selected: rgba(100, 150, 184, .18);
+  /* 强调：天蓝（与浅色同色系），hover 提亮一档 */
+  --accent-color: #6496b8; --accent-hover: #7aabc9; --accent-soft: rgba(100, 150, 184, .13);
+  --success-color: #74a37f; --warning-color: #b09160; --danger-color: #c17f83;
+  --toolbar-bg: #21262e; --menubar-bg: #1f242b; --tab-bg: #1f242b; --tab-active-bg: #252b33; --statusbar-bg: #1f242b;
+  /* 语法高亮：与浅色同一套色相，提亮至暗底可读区间 */
+  --code-bg: #20262e; --code-text: #c6cfd9;
+  --code-comment: #6c7a89; --code-keyword: #b195d6; --code-string: #d0986f; --code-title: #5fbec4; --code-number: #d99a7e;
+  --shadow-xs: 0 1px 1px rgba(0, 0, 0, .14); --shadow-sm: 0 2px 8px rgba(0, 0, 0, .17);
+  --shadow: 0 10px 26px rgba(0, 0, 0, .23); --shadow-lg: 0 20px 50px rgba(0, 0, 0, .35);
+  --shadow-card: 0 8px 24px rgba(0, 0, 0, .21); --shadow-soft: 0 3px 12px rgba(0, 0, 0, .17);
+  --overlay-bg: rgba(10, 14, 18, .5);
+  --font-reading: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
 }
-[data-theme="claude-light"] .preview-container,
-[data-theme="claude-dark"] .preview-container,
-[data-theme="notion-light"] .preview-container,
-[data-theme="notion-dark"] .preview-container { font-family: var(--font-reading) !important; }
+
 [data-theme="vscode-light"] .preview-container,
 [data-theme="vscode-dark"] .preview-container { font-family: var(--font-reading) !important; }
 

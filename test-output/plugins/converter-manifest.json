@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "module_id": "document-converter",
+  "version": "1.0.0",
+  "protocol_version": 1,
+  "minimum_app_version": "0.3.4",
+  "artifacts": [
+    {
+      "target": "x86_64-pc-windows-msvc",
+      "url": "https://github.com/zhcx/markitdown/releases/download/converter-stable/document-converter-v1.0.0_x86_64-pc-windows-msvc.zip",
+      "size": 75257661,
+      "sha256": "6df39489749f427e7ec7d17ad4377dbfb2ade9086fb1fe236012a96e407fce1b"
+    }
+  ]
+}

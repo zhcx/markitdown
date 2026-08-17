@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "MarkitDown",
-  "version": "0.3.5",
-  "identifier": "com.markitdown.desktop",
+  "productName": "Zeditor",
+  "version": "0.3.8",
+  "identifier": "com.zeditor.desktop",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:5173",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "MarkitDown",
+        "title": "Zeditor",
         "width": 1200,
         "height": 800,
         "minWidth": 800,
@@ -28,19 +28,17 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self'; script-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' asset: http://asset.localhost data: blob: https:; font-src 'self' data:; connect-src 'self' https: ws://localhost:5173 ws://127.0.0.1:5173; media-src 'self' blob: https:; frame-src https://www.youtube-nocookie.com https://player.bilibili.com https://player.vimeo.com; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'none'"
     }
   },
   "bundle": {
     "active": true,
     "targets": "all",
-    "resources": [
-      "resources/document_converter.py"
-    ],
+    "resources": [],
     "fileAssociations": [
       {
         "ext": ["md", "markdown"],
-        "name": "MarkitDown.Markdown",
+        "name": "Zeditor.Markdown",
         "description": "Markdown Document",
         "mimeType": "text/markdown",
         "role": "Editor"

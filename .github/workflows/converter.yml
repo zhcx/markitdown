@@ -30,19 +30,19 @@ jobs:
           - label: Windows x64
             os: windows-latest
             target: x86_64-pc-windows-msvc
-            executable: converter-dist/document_converter.exe
+            executable: converter/target/release/document_converter.exe
           - label: macOS Apple Silicon
             os: macos-15
             target: aarch64-apple-darwin
-            executable: converter-dist/document_converter
+            executable: converter/target/release/document_converter
           - label: macOS Intel
             os: macos-15-intel
             target: x86_64-apple-darwin
-            executable: converter-dist/document_converter
+            executable: converter/target/release/document_converter
           - label: Linux x64
             os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
-            executable: converter-dist/document_converter
+            executable: converter/target/release/document_converter
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout converter source
@@ -63,24 +63,20 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Setup uv and Python 3.12
-        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
-        with:
-          working-directory: converter
-          python-version: '3.12'
-          enable-cache: true
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
 
       - name: Restore locked converter environment
-        run: uv sync --project converter --frozen --group build
+        run: cargo fetch --manifest-path converter/Cargo.toml --locked
 
       - name: Build converter executable
-        run: uv run --project converter pyinstaller --clean --noconfirm --distpath converter-dist --workpath converter-work src-tauri/resources/document_converter.spec
+        run: cargo build --manifest-path converter/Cargo.toml --release --locked
 
       - name: Verify converter protocol
         shell: bash
         run: |
           "${{ matrix.executable }}" --version-json > converter-version.json
-          node -e "const v=require('./converter-version.json'); if(v.module_id!=='document-converter'||v.version!==process.env.CONVERTER_VERSION||v.protocol_version!==1||v.target!=='${{ matrix.target }}') process.exit(1)"
+          node -e "const v=require('./converter-version.json'); if(v.module_id!=='document-converter'||v.engine!=='anydoc'||v.version!==process.env.CONVERTER_VERSION||v.protocol_version!==1||v.target!=='${{ matrix.target }}') process.exit(1)"
 
       - name: Prepare module payload
         run: node scripts/prepare-converter-package.mjs "${{ matrix.executable }}" "${{ env.CONVERTER_VERSION }}" "${{ matrix.target }}" converter-package
@@ -88,20 +84,20 @@ jobs:
       - name: Create Windows module archive
         if: runner.os == 'Windows'
         shell: pwsh
-        run: Compress-Archive -Path converter-package/* -DestinationPath "markitdown-converter-v${env:CONVERTER_VERSION}-${{ matrix.target }}.zip"
+        run: Compress-Archive -Path converter-package/* -DestinationPath "zeditor-converter-v${env:CONVERTER_VERSION}-${{ matrix.target }}.zip"
 
       - name: Create Unix module archive
         if: runner.os != 'Windows'
         shell: bash
         run: |
           cd converter-package
-          zip -9 -r "../markitdown-converter-v${CONVERTER_VERSION}-${{ matrix.target }}.zip" .
+          zip -9 -r "../zeditor-converter-v${CONVERTER_VERSION}-${{ matrix.target }}.zip" .
 
       - name: Upload converter archive
         uses: actions/upload-artifact@v4
         with:
           name: converter-${{ matrix.target }}
-          path: markitdown-converter-v${{ env.CONVERTER_VERSION }}-${{ matrix.target }}.zip
+          path: zeditor-converter-v${{ env.CONVERTER_VERSION }}-${{ matrix.target }}.zip
           if-no-files-found: error
           retention-days: 14
 
@@ -147,8 +143,8 @@ jobs:
           gh release delete "$CONVERTER_TAG" --yes 2>/dev/null || true
           gh release create "$CONVERTER_TAG" \
             --verify-tag \
-            --title "MarkitDown Converter v${CONVERTER_VERSION}" \
-            --notes "Cross-platform document-conversion modules for MarkitDown." \
+            --title "Zeditor AnyDoc Converter v${CONVERTER_VERSION}" \
+            --notes "Cross-platform AnyDoc document-conversion modules for Zeditor." \
             converter-assets/*
 
       - name: Update stable channel
@@ -159,7 +155,7 @@ jobs:
           git tag -f converter-stable "$CONVERTER_TAG"
           git push origin refs/tags/converter-stable --force
           if ! gh release view converter-stable >/dev/null 2>&1; then
-            gh release create converter-stable --verify-tag --title "MarkitDown Converter Stable" --notes "Pointer to the current stable converter module."
+            gh release create converter-stable --verify-tag --title "Zeditor AnyDoc Converter Stable" --notes "Pointer to the current stable AnyDoc converter module."
           fi
           gh release upload converter-stable \
             converter-assets/converter-manifest.json \

@@ -242,30 +242,12 @@ fn prompt_with_editor_context(
     ))
 }
 
-fn strip_ansi(input: &str) -> String {
-    let mut output = String::with_capacity(input.len());
-    let mut characters = input.chars();
-    while let Some(character) = characters.next() {
-        if character != '\u{1b}' {
-            output.push(character);
-            continue;
-        }
-        if characters.next() == Some('[') {
-            for next in characters.by_ref() {
-                if ('@'..='~').contains(&next) {
-                    break;
-                }
-            }
-        }
-    }
-    output
-}
-
 fn visible_agent_stderr(backend: AgentBackendId, line: &str) -> Option<String> {
     if backend == AgentBackendId::Codex {
         return None;
     }
-    let line = strip_ansi(line);
+    // 与 models.rs 共用同一实现（处理 CSI/OSC 序列），避免两份漂移。
+    let line = models::strip_ansi(line);
     let line = line.trim();
     (!line.is_empty()).then(|| format!("{line}\n"))
 }
@@ -307,7 +289,7 @@ fn probe_capabilities(path: &Path, backend: AgentBackendId) -> Result<(), String
     };
     if !output.status.success() || required.iter().any(|needle| !help.contains(needle)) {
         return Err(format!(
-            "当前 {} 版本缺少 MarkitDown 所需的流式或审批接口，请升级 CLI",
+            "当前 {} 版本缺少 Zeditor 所需的流式或审批接口，请升级 CLI",
             backend.label()
         ));
     }
@@ -415,7 +397,13 @@ pub async fn agent_start_turn(
     }
     let root = fs::canonicalize(&request.workspace_root)
         .map_err(|error| format!("无法访问工作区：{error}"))?;
-    let direct_write = git::ensure_git_workspace(&root).is_err();
+    // git 子进程调用放入阻塞线程池，避免长时间占用 tokio worker。
+    let direct_write = {
+        let probe_root = root.clone();
+        tokio::task::spawn_blocking(move || git::ensure_git_workspace(&probe_root).is_err())
+            .await
+            .map_err(|error| format!("工作区检查失败：{error}"))?
+    };
     let context_paths = validate_context_paths(&root, &request.context_paths)?;
     let executable = request
         .executable_path
@@ -455,7 +443,13 @@ pub async fn agent_start_turn(
         let (base_commit, baseline_hashes) = if direct_write {
             (String::new(), HashMap::new())
         } else {
-            git::create_isolated_worktree(&root, &worktree)?
+            let worktree_root = root.clone();
+            let worktree_arg = worktree.clone();
+            tokio::task::spawn_blocking(move || {
+                git::create_isolated_worktree(&worktree_root, &worktree_arg)
+            })
+            .await
+            .map_err(|error| format!("创建隔离工作区失败：{error}"))??
         };
         let timestamp = now();
         let session = AgentSession {
@@ -625,6 +619,10 @@ async fn spawn_turn(
     let output_storage = storage_root.clone();
     tokio::spawn(async move {
         let mut lines = BufReader::new(stdout).lines();
+        // 持久化节流：此前每收到一行输出就全量序列化并重写 events.json，
+        // 长会话产生 O(n²) IO。这里改为至多每 500ms 持久化一次，
+        // 循环结束（进程输出 EOF）后再落盘最后一次。
+        let mut last_persist: Option<std::time::Instant> = None;
         while let Ok(Some(line)) = lines.next_line().await {
             let Ok(value) = serde_json::from_str::<Value>(&line) else {
                 continue;
@@ -663,8 +661,14 @@ async fn spawn_turn(
             for raw in adapters::line_events(protocol, &value) {
                 process_raw_event(&output_runtime, &output_app, raw, protocol).await;
             }
-            let _ = persist_runtime(&output_storage, &output_runtime).await;
+            let due = last_persist
+                .is_none_or(|stamp| stamp.elapsed() >= Duration::from_millis(500));
+            if due {
+                let _ = persist_runtime(&output_storage, &output_runtime).await;
+                last_persist = Some(std::time::Instant::now());
+            }
         }
+        let _ = persist_runtime(&output_storage, &output_runtime).await;
     });
 
     let error_runtime = runtime.clone();
@@ -834,7 +838,7 @@ async fn spawn_opencode_turn(
     } else {
         let response = client
             .post(format!("{base_url}/session"))
-            .json(&json!({"title": "MarkitDown Agent"}))
+            .json(&json!({"title": "Zeditor Agent"}))
             .send()
             .await
             .map_err(|error| error.to_string())?;
@@ -867,15 +871,18 @@ async fn spawn_opencode_turn(
     tokio::spawn(async move {
         let mut stream = event_response.bytes_stream();
         let mut buffer = String::new();
+        // 持久化节流：与 stdout 读循环一致，避免每个事件全量重写 events.json。
+        let mut last_persist: Option<std::time::Instant> = None;
         while let Some(chunk) = stream.next().await {
             let Ok(chunk) = chunk else { break };
             buffer.push_str(&String::from_utf8_lossy(&chunk));
-            while let Some(position) = buffer.find("\n\n").or_else(|| buffer.find("\r\n\r\n")) {
-                let separator_len = if buffer[position..].starts_with("\r\n") {
-                    4
-                } else {
-                    2
-                };
+            // 分隔符优先匹配 \r\n\r\n：若先找 \n\n，在 "\r\n\r\n" 分隔且
+            // 数据行以 \r 结尾的流中会切在错误位置，让事件块尾部残留 \r。
+            while let Some((position, separator_len)) = buffer
+                .find("\r\n\r\n")
+                .map(|position| (position, 4))
+                .or_else(|| buffer.find("\n\n").map(|position| (position, 2)))
+            {
                 let block = buffer[..position].to_string();
                 buffer.drain(..position + separator_len);
                 let data = block
@@ -905,9 +912,15 @@ async fn spawn_opencode_turn(
                     )
                     .await;
                 }
-                let _ = persist_runtime(&event_storage, &event_runtime).await;
+                let due = last_persist
+                    .is_none_or(|stamp| stamp.elapsed() >= Duration::from_millis(500));
+                if due {
+                    let _ = persist_runtime(&event_storage, &event_runtime).await;
+                    last_persist = Some(std::time::Instant::now());
+                }
             }
         }
+        let _ = persist_runtime(&event_storage, &event_runtime).await;
     });
 
     let mut body = json!({"parts": [{"type": "text", "text": prompt}]});
@@ -1089,6 +1102,8 @@ async fn handle_approval(
 }
 
 fn is_hard_denied(command: Option<&str>, cwd: Option<&str>, session: &AgentSession) -> bool {
+    // 说明：这是纵深防御（defense in depth），并非安全边界——
+    // 真正的隔离来自 worktree 与后端自身的沙箱策略。
     if let Some(command) = command {
         let lowered = command.to_ascii_lowercase();
         if lowered.contains("git push") || lowered.contains("--no-verify push") {
@@ -1106,6 +1121,9 @@ fn is_hard_denied(command: Option<&str>, cwd: Option<&str>, session: &AgentSessi
         }
         if let Some(worktree) = session.worktree_path.as_deref() {
             let allowed = worktree.replace('\\', "/").to_ascii_lowercase();
+            // 规范化后的 worktree 用于组件级比较，可识别 8.3 短路径
+            // （C:\PROGRA~1\...）与符号链接等字符串前缀绕过。
+            let worktree_canonical = fs::canonicalize(worktree).ok();
             for token in lowered
                 .split_whitespace()
                 .map(|item| item.trim_matches(['\'', '"', ';', ',', '(', ')']))
@@ -1113,7 +1131,17 @@ fn is_hard_denied(command: Option<&str>, cwd: Option<&str>, session: &AgentSessi
                 let normalized = token.replace('\\', "/");
                 let looks_absolute = (cfg!(not(windows)) && normalized.starts_with('/'))
                     || normalized.as_bytes().get(1) == Some(&b':');
-                if looks_absolute && !normalized.starts_with(&allowed) {
+                if !looks_absolute {
+                    continue;
+                }
+                // 已存在的路径：canonicalize 后按组件比较（堵住短路径绕过）。
+                let inside = match (&worktree_canonical, fs::canonicalize(token)) {
+                    (Some(root), Ok(resolved)) => resolved.starts_with(root),
+                    // 尚不存在的路径（如 Agent 计划新建的文件）：退回前缀
+                    // 匹配，保持“worktree 内的新路径可用”的原有行为。
+                    _ => normalized.starts_with(&allowed),
+                };
+                if !inside {
                     return true;
                 }
             }
@@ -1219,7 +1247,13 @@ async fn respond_channel(
         }
         PendingChannel::Bridge(path) => {
             let allowed = decision != "deny";
-            fs::write(path, serde_json::to_vec(&json!({"behavior": if allowed { "allow" } else { "deny" }, "message": if allowed { Value::Null } else { json!("用户拒绝了此操作") }})).map_err(|error| error.to_string())?).map_err(|error| error.to_string())
+            // 原子写：先写临时文件再 rename。此前直接写 .response，
+            // 轮询方可能读到半截 JSON 而解析失败，导致 Agent 误判为拒绝。
+            let payload = serde_json::to_vec(&json!({"behavior": if allowed { "allow" } else { "deny" }, "message": if allowed { Value::Null } else { json!("用户拒绝了此操作") }})).map_err(|error| error.to_string())?;
+            let temp_path = path.with_extension("response.tmp");
+            fs::write(&temp_path, &payload).map_err(|error| error.to_string())?;
+            fs::rename(&temp_path, path).map_err(|error| error.to_string())?;
+            Ok(())
         }
         PendingChannel::OpenCode {
             base_url,
@@ -1343,7 +1377,7 @@ pub async fn agent_get_changes(
     supervisor: State<'_, AgentSupervisor>,
 ) -> Result<AgentChangeSet, String> {
     let runtime = supervisor.runtime(&session_id).await?;
-    let mut session = runtime.session.lock().await;
+    let session = runtime.session.lock().await.clone();
     if session.read_only || session.direct_write {
         return Ok(AgentChangeSet {
             session_id,
@@ -1351,8 +1385,13 @@ pub async fn agent_get_changes(
             base_commit: String::new(),
         });
     }
-    let changes = git::get_changes(&session)?;
-    session.has_changes = !changes.files.is_empty();
+    // git 进程调用放入阻塞线程池；不再持有 session 锁执行 git，
+    // 避免与 list_sessions 等命令互相阻塞。
+    let snapshot = session;
+    let changes = tokio::task::spawn_blocking(move || git::get_changes(&snapshot))
+        .await
+        .map_err(|error| format!("读取变更失败：{error}"))??;
+    runtime.session.lock().await.has_changes = !changes.files.is_empty();
     Ok(changes)
 }
 
@@ -1363,17 +1402,34 @@ pub async fn agent_apply_changes(
     supervisor: State<'_, AgentSupervisor>,
 ) -> Result<(), String> {
     let runtime = supervisor.runtime(&session_id).await?;
-    let mut session = runtime.session.lock().await;
-    if session.read_only {
-        return Err("此会话仅支持只读分析".into());
+    {
+        let session = runtime.session.lock().await;
+        if session.read_only {
+            return Err("此会话仅支持只读分析".into());
+        }
+        if session.direct_write {
+            return Err("当前目录授权会话的变更已直接写入，无需再次应用".into());
+        }
     }
-    if session.direct_write {
-        return Err("当前目录授权会话的变更已直接写入，无需再次应用".into());
-    }
-    git::apply_changes(&mut session, paths.as_deref())?;
-    let remaining = git::get_changes(&session)?;
+    let mut session = runtime.session.lock().await.clone();
+    let session = tokio::task::spawn_blocking(move || {
+        let result = git::apply_changes(&mut session, paths.as_deref());
+        (session, result)
+    })
+    .await
+    .map_err(|error| format!("应用变更失败：{error}"))?;
+    let apply_result = session.1;
+    let mut session = session.0;
+    apply_result?;
+    let remaining = {
+        // 复用 apply 后的快照计算剩余变更（含 git add -A 语义）。
+        let snapshot = session.clone();
+        tokio::task::spawn_blocking(move || git::get_changes(&snapshot))
+            .await
+            .map_err(|error| format!("读取变更失败：{error}"))??
+    };
     session.has_changes = !remaining.files.is_empty();
-    drop(session);
+    *runtime.session.lock().await = session;
     supervisor.persist(&runtime).await
 }
 
@@ -1388,7 +1444,9 @@ pub async fn agent_discard_session(
     }
     let session = runtime.session.lock().await.clone();
     if !session.read_only && !session.direct_write {
-        git::remove_worktree(&session)?;
+        tokio::task::spawn_blocking(move || git::remove_worktree(&session))
+            .await
+            .map_err(|error| format!("清理工作区失败：{error}"))??;
     }
     supervisor.sessions.lock().await.remove(&session_id);
     let _ = fs::remove_dir_all(supervisor.storage_root.join("sessions").join(&session_id));
@@ -1418,8 +1476,18 @@ async fn emit_simple(
     .await;
 }
 
+/// 单会话事件内存/落盘上限：事件同时保存在内存与 events.json 中，
+/// 无限增长会让长会话（数千事件）越聊越卡。超出后丢弃最旧事件。
+const MAX_EVENTS: usize = 5000;
+
 async fn emit_event(runtime: &SessionRuntime, app: &AppHandle, event: AgentEvent) {
-    runtime.events.lock().await.push(event.clone());
+    let mut events = runtime.events.lock().await;
+    events.push(event.clone());
+    if events.len() > MAX_EVENTS {
+        let overflow = events.len() - MAX_EVENTS;
+        events.drain(..overflow);
+    }
+    drop(events);
     let _ = app.emit("agent-event", &event);
 }
 
@@ -1429,16 +1497,28 @@ async fn finish_session(
     status: AgentSessionStatus,
     error: Option<String>,
 ) {
+    // 先在锁外计算 has_changes（git 子进程调用，放入阻塞线程池），
+    // 避免持有 session 锁执行多次 git 命令而阻塞其它命令。
+    let has_changes = {
+        let snapshot = runtime.session.lock().await.clone();
+        if snapshot.read_only || snapshot.direct_write {
+            false
+        } else {
+            tokio::task::spawn_blocking(move || {
+                git::get_changes(&snapshot)
+                    .map(|changes| !changes.files.is_empty())
+                    .unwrap_or(false)
+            })
+            .await
+            .unwrap_or(false)
+        }
+    };
     {
         let mut session = runtime.session.lock().await;
         session.status = status;
         session.updated_at = now();
         session.last_error = error.clone();
-        session.has_changes = !session.read_only
-            && !session.direct_write
-            && git::get_changes(&session)
-                .map(|changes| !changes.files.is_empty())
-                .unwrap_or(false);
+        session.has_changes = has_changes;
     }
     if let Some(child) = runtime.child.lock().await.as_mut() {
         let _ = child.start_kill();
@@ -1485,17 +1565,26 @@ pub fn run_permission_hook(request_dir: &Path) -> Result<(), String> {
         serde_json::to_vec(&request).map_err(|error| error.to_string())?,
     )
     .map_err(|error| error.to_string())?;
-    let response = loop {
-        if response_path.exists() {
-            let value = serde_json::from_slice::<Value>(
-                &fs::read(&response_path).map_err(|error| error.to_string())?,
-            )
-            .map_err(|error| error.to_string())?;
-            let _ = fs::remove_file(&request_path);
-            let _ = fs::remove_file(&response_path);
-            break value;
+    let response = {
+        // 轮询响应文件，最多等待 10 分钟：GUI 崩溃/重启后不会再有进程
+        // 写入响应，无限轮询会让 hook 进程永久挂起并卡住 Claude Code。
+        let deadline = std::time::Instant::now() + Duration::from_secs(600);
+        loop {
+            if response_path.exists() {
+                let value = serde_json::from_slice::<Value>(
+                    &fs::read(&response_path).map_err(|error| error.to_string())?,
+                )
+                .map_err(|error| error.to_string())?;
+                let _ = fs::remove_file(&request_path);
+                let _ = fs::remove_file(&response_path);
+                break value;
+            }
+            if std::time::Instant::now() >= deadline {
+                let _ = fs::remove_file(&request_path);
+                break json!({"behavior": "deny", "message": "等待 GUI 审批超时，已默认拒绝"});
+            }
+            std::thread::sleep(Duration::from_millis(100));
         }
-        std::thread::sleep(Duration::from_millis(100));
     };
     let behavior = response
         .get("behavior")
@@ -1507,7 +1596,7 @@ pub fn run_permission_hook(request_dir: &Path) -> Result<(), String> {
         json!({"behavior": "deny", "message": response.get("message").and_then(Value::as_str).unwrap_or("用户拒绝了此操作")})
     };
     let mut stdout = std::io::stdout();
-    writeln!(stdout, "{}", json!({"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": decision.get("behavior").and_then(Value::as_str).unwrap_or("deny"), "permissionDecisionReason": decision.get("message").and_then(Value::as_str).unwrap_or("MarkitDown Agent approval"), "updatedInput": decision.get("updatedInput").cloned().unwrap_or(Value::Null)}})).map_err(|error| error.to_string())?;
+    writeln!(stdout, "{}", json!({"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": decision.get("behavior").and_then(Value::as_str).unwrap_or("deny"), "permissionDecisionReason": decision.get("message").and_then(Value::as_str).unwrap_or("Zeditor Agent approval"), "updatedInput": decision.get("updatedInput").cloned().unwrap_or(Value::Null)}})).map_err(|error| error.to_string())?;
     stdout.flush().map_err(|error| error.to_string())?;
     Ok(())
 }
@@ -1705,8 +1794,7 @@ mod tests {
 
     #[tokio::test]
     async fn allow_all_is_memory_only_when_session_is_persisted() {
-        let storage =
-            std::env::temp_dir().join(format!("markitdown-session-test-{}", Uuid::new_v4()));
+        let storage = std::env::temp_dir().join(format!("zeditor-session-test-{}", Uuid::new_v4()));
         let session = AgentSession {
             id: "session".into(),
             backend: AgentBackendId::ClaudeCode,

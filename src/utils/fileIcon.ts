@@ -1,3 +1,5 @@
+import { DIRECTLY_EDITABLE_EXTENSIONS } from './documentFormats.ts';
+
 export type FileIconShape =
   | 'archive' | 'audio' | 'binary' | 'book' | 'brace' | 'code' | 'config'
   | 'database' | 'docker' | 'document' | 'font' | 'git' | 'image'
@@ -10,13 +12,12 @@ export interface FileIconDescriptor {
   label?: string;
 }
 
-const textFileExtensions = new Set([
-  'bash', 'bat', 'c', 'cc', 'cfg', 'cjs', 'cmd', 'conf', 'cpp', 'cs', 'css', 'cts', 'cxx',
-  'dart', 'diff', 'env', 'ex', 'exs', 'fish', 'fs', 'fsx', 'go', 'groovy', 'h', 'hpp',
-  'htm', 'html', 'ini', 'java', 'jl', 'js', 'json', 'jsonc', 'jsonl', 'jsx', 'kt', 'kts',
-  'less', 'log', 'lua', 'markdown', 'md', 'mdx', 'mjs', 'mts', 'patch', 'php', 'properties',
-  'ps1', 'py', 'rb', 'rs', 'sass', 'scala', 'scss', 'sh', 'sql', 'svelte', 'swift', 'toml',
-  'ts', 'tsv', 'tsx', 'txt', 'vb', 'vue', 'xml', 'xsl', 'yaml', 'yml', 'zsh',
+const textFileExtensions = new Set<string>([
+  ...DIRECTLY_EDITABLE_EXTENSIONS,
+  'htm',
+  'html',
+  'jsonc',
+  'xhtml',
 ]);
 
 export function isTextFileName(filename: string): boolean {

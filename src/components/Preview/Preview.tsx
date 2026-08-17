@@ -123,7 +123,7 @@ function renderVideoExtensions(source: string) {
     if (!match) return line;
     const embed = videoEmbedUrl(match[1]);
     if (!embed) return line;
-    return `<figure class="video-embed" data-markitdown-video-src="${md.utils.escapeHtml(embed.src)}" data-markitdown-video-title="${embed.title}"><figcaption><a href="${md.utils.escapeHtml(match[1])}" target="_blank" rel="noreferrer">${embed.title}</a></figcaption></figure>`;
+    return `<figure class="video-embed" data-zeditor-video-src="${md.utils.escapeHtml(embed.src)}" data-zeditor-video-title="${embed.title}"><figcaption><a href="${md.utils.escapeHtml(match[1])}" target="_blank" rel="noreferrer">${embed.title}</a></figcaption></figure>`;
   }).join('\n');
 }
 
@@ -188,8 +188,8 @@ export function Preview({ className, style, onScrollContainerReady, onContentRen
       }
     };
 
-    window.addEventListener('markitdown-theme-change', handleThemeChange);
-    return () => window.removeEventListener('markitdown-theme-change', handleThemeChange);
+    window.addEventListener('zeditor-theme-change', handleThemeChange);
+    return () => window.removeEventListener('zeditor-theme-change', handleThemeChange);
   }, []);
 
   useEffect(() => {

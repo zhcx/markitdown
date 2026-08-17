@@ -5,7 +5,7 @@
       <Component Id="MarkdownFileAssociationIcon" Guid="*">
         <RegistryKey
           Root="HKCR"
-          Key="MarkitDown.Markdown\DefaultIcon"
+          Key="Zeditor.Markdown\DefaultIcon"
           Action="createAndRemoveOnUninstall"
         >
           <RegistryValue

@@ -4,6 +4,23 @@ import { test } from 'node:test'
 
 const read = (path: string) => readFileSync(path, 'utf8')
 
+test('application and converter version sources stay synchronized', () => {
+  const packageJson = JSON.parse(read('package.json'))
+  const tauriConfig = JSON.parse(read('src-tauri/tauri.conf.json'))
+  const cargoVersion = read('src-tauri/Cargo.toml').match(/^version = "([^"]+)"/m)?.[1]
+  const converterProjectVersion = read('converter/Cargo.toml').match(/^version = "([^"]+)"/m)?.[1]
+  const converterResourceVersion = read('src-tauri/resources/converter_version.txt').trim()
+
+  assert.equal(packageJson.name, 'zeditor')
+  assert.equal(packageJson.version, '0.3.7')
+  assert.equal(tauriConfig.version, packageJson.version)
+  assert.equal(tauriConfig.productName, 'Zeditor')
+  assert.equal(tauriConfig.identifier, 'com.zeditor.desktop')
+  assert.equal(cargoVersion, packageJson.version)
+  assert.equal(converterProjectVersion, '1.2.0')
+  assert.equal(converterResourceVersion, converterProjectVersion)
+})
+
 test('repository publishes an actual MIT license and privacy policy', () => {
   const license = read('LICENSE')
   const privacy = read('PRIVACY.md')
@@ -33,17 +50,17 @@ test('code signing policy contains SignPath attribution, roles, privacy, and bui
 })
 
 test('document converter is an optional cross-platform module with a frozen dependency set', () => {
-  const lock = read('converter/uv.lock')
-  const project = read('converter/pyproject.toml')
+  const lock = read('converter/Cargo.lock')
+  const project = read('converter/Cargo.toml')
   const workflow = read('.github/workflows/converter.yml')
   const ignore = read('.gitignore')
   const baseConfig = JSON.parse(read('src-tauri/tauri.conf.json'))
   const windowsConfig = JSON.parse(read('src-tauri/tauri.windows.conf.json'))
 
-  assert.match(project, /markitdown\[docx,pdf,pptx,xlsx\]==[\d.]+/i)
-  assert.match(project, /pyinstaller==[\d.]+/i)
-  assert.match(lock, /sdist = \{ url = .*hash = "sha256:/)
-  assert.match(workflow, /uv sync --project converter --frozen/)
+  assert.match(project, /name = "zeditor-document-converter"/i)
+  assert.match(project, /anydoc/i)
+  assert.match(lock, /name = "anydoc"/i)
+  assert.match(workflow, /cargo build --manifest-path converter\/Cargo.toml --release --locked/)
   assert.match(workflow, /x86_64-pc-windows-msvc/)
   assert.match(workflow, /x86_64-apple-darwin/)
   assert.match(workflow, /aarch64-apple-darwin/)
@@ -52,7 +69,8 @@ test('document converter is an optional cross-platform module with a frozen depe
   assert.match(ignore, /src-tauri\/resources\/document_converter\.exe/)
   assert.ok(!baseConfig.bundle.resources.includes('resources/document_converter.exe'))
   assert.ok(!windowsConfig.bundle.resources.includes('resources/document_converter.exe'))
-  assert.ok(existsSync('src-tauri/resources/document_converter.spec'))
+  assert.ok(existsSync('converter/src/main.rs'))
+  assert.ok(!existsSync('src-tauri/resources/document_converter.py'))
 })
 
 test('Windows release workflow reserves both SignPath signing stages', () => {

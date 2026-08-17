@@ -8,9 +8,11 @@ import { applySavedTab } from '../utils/tabPersistence';
 import { detectSystemLanguage, normalizeLanguage, type AppLanguage } from '../i18n';
 import type { AgentSettings } from '../types/agent';
 import type { ConverterDialogAction } from '../components/ConverterDialog/ConverterDialog';
+import { isConvertibleDocumentName } from '../utils/documentFormats';
+import { isTextFileName } from '../utils/fileIcon';
 
 const isTauriRuntime = () => typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
-const browserSettingsKey = 'markitdown.browser.settings';
+  const browserSettingsKey = 'zeditor.browser.settings';
 let settingsMutationVersion = 0;
 let settingsSaveQueue: Promise<unknown> = Promise.resolve();
 let converterDialogResolve: ((value: boolean) => void) | null = null;
@@ -583,6 +585,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   openFile: async (path) => {
+    if (!isTextFileName(path) && isConvertibleDocumentName(path)) {
+      await get().convertDocument(path);
+      return;
+    }
     try {
       const fileContent = await invoke<string>('get_file_content', { path });
       const { tabs, activeTabId } = get();
@@ -909,11 +915,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   resetWorkspaceFolders: () => {
     // Placeholder — the Sidebar component manages workspaceFolders state.
     // This signals the component to reload by dispatching a custom event.
-    window.dispatchEvent(new CustomEvent('markitdown-reset-explorer'));
+    window.dispatchEvent(new CustomEvent('zeditor-reset-explorer'));
   },
 
   refreshWorkspaceFolder: async (path) => {
-    window.dispatchEvent(new CustomEvent('markitdown-refresh-folder', { detail: { path } }));
+    window.dispatchEvent(new CustomEvent('zeditor-refresh-folder', { detail: { path } }));
     return true;
   },
 

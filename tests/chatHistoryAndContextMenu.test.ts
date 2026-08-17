@@ -7,7 +7,7 @@ const read = (path: string) => readFileSync(new URL(`../${path}`, import.meta.ur
 test('AI chat can create, persist, and reopen conversations from the history button', () => {
   const store = read('src/stores/aiStore.ts');
   const panel = read('src/components/Chatbot/AIChatbotPanel.tsx');
-  assert.match(store, /markitdown\.ai-chat-history/);
+  assert.match(store, /zeditor\.ai-chat-history/);
   assert.match(store, /newChatConversation:/);
   assert.match(store, /selectChatConversation:/);
   assert.match(store, /chatbotConversations:/);
@@ -43,7 +43,7 @@ test('editor context menu exposes grouped editing, export, image, and file actio
   assert.match(editor, /导出 HTML/);
   assert.match(editor, /插入图片/);
   assert.match(editor, /在文件夹中显示/);
-  assert.match(menu, /markitdown-export-request/);
+  assert.match(menu, /zeditor-export-request/);
   assert.match(commands, /pub fn reveal_in_file_manager/);
   assert.match(styles, /\.editor-context-submenu[\s\S]*left: calc\(100% - 2px\)/);
   assert.match(styles, /data-submenu-direction="left"[\s\S]*right: calc\(100% - 2px\)/);

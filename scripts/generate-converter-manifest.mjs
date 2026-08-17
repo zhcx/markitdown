@@ -9,7 +9,7 @@ if (!assetDirectoryArgument || !version || !outputArgument) {
 
 const assetDirectory = resolve(assetDirectoryArgument);
 const outputDirectory = resolve(outputArgument);
-const prefix = `markitdown-converter-v${version}-`;
+const prefix = `zeditor-converter-v${version}-`;
 const files = (await readdir(assetDirectory))
   .filter((name) => name.startsWith(prefix) && name.endsWith('.zip'))
   .sort();
@@ -24,7 +24,7 @@ for (const name of files) {
   const bytes = await readFile(path);
   artifacts.push({
     target,
-    url: `https://github.com/zhcx/markitdown/releases/download/converter-v${version}/${name}`,
+    url: `https://github.com/zhcx/zeditor/releases/download/converter-v${version}/${name}`,
     size: (await stat(path)).size,
     sha256: createHash('sha256').update(bytes).digest('hex'),
   });
@@ -33,9 +33,10 @@ for (const name of files) {
 const manifest = {
   schema_version: 1,
   module_id: 'document-converter',
+  engine: 'anydoc',
   version,
   protocol_version: 1,
-  minimum_app_version: '0.3.4',
+  minimum_app_version: '0.3.7',
   artifacts,
 };
 const manifestBytes = Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`, 'utf8');

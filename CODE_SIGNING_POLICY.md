@@ -8,15 +8,15 @@ After enrollment is enabled, the required attribution will be:
 
 > Free code signing provided by SignPath.io, certificate by SignPath Foundation
 
-Signed releases will display **SignPath Foundation** as the certificate publisher. This does not imply endorsement of MarkitDown by SignPath Foundation.
+Signed releases will display **SignPath Foundation** as the certificate publisher. This does not imply endorsement of Zeditor by SignPath Foundation.
 
 ## Scope and provenance
 
-Only official MarkitDown release artifacts produced from this public repository by the checked-in GitHub Actions workflow are eligible for signing. All upstream build jobs use GitHub-hosted runners. The Windows converter is built in CI from its public Python source, a reviewed PyInstaller specification, and a complete version-and-hash-locked dependency file; no prebuilt converter executable is committed.
+Only official Zeditor release artifacts produced from this public repository by the checked-in GitHub Actions workflow are eligible for signing. All upstream build jobs use GitHub-hosted runners. The Windows AnyDoc converter is built in CI from its public Rust source and Cargo.lock; no prebuilt converter executable is committed.
 
 The planned two-stage process covers the main Windows application only:
 
-1. GitHub Actions builds the MarkitDown application executable, uploads it to GitHub, and submits it to SignPath.
+1. GitHub Actions builds the Zeditor application executable, uploads it to GitHub, and submits it to SignPath.
 2. After the application executable is signed, GitHub Actions creates the MSI and NSIS installers, uploads them to GitHub, and submits the installers to SignPath.
 3. Only the returned, verified artifacts are attached to an official release. If SignPath is not configured, the workflow follows the explicitly labelled unsigned fallback.
 
@@ -29,7 +29,7 @@ The Git commit and release tag remain the source of truth for every build. Relea
 - **Committers and reviewers:** [zhcx](https://github.com/zhcx)
 - **Approvers:** [zhcx](https://github.com/zhcx)
 
-Every signed release requires manual approval in SignPath. The approver checks that the request comes from the official GitHub Actions workflow, refers to the intended immutable release tag and commit, and contains only expected MarkitDown artifacts. Repository and SignPath accounts used for these roles must have multi-factor authentication enabled.
+Every signed release requires manual approval in SignPath. The approver checks that the request comes from the official GitHub Actions workflow, refers to the intended immutable release tag and commit, and contains only expected Zeditor artifacts. Repository and SignPath accounts used for these roles must have multi-factor authentication enabled.
 
 Role assignments will be updated here before additional maintainers receive signing authority. A person must not approve an unexplained or unexpected signing request.
 
@@ -38,7 +38,7 @@ Role assignments will be updated here before additional maintainers receive sign
 Users can verify a downloaded Windows file in PowerShell:
 
 ```powershell
-Get-AuthenticodeSignature .\MarkitDown_0.3.0_x64-setup.exe |
+Get-AuthenticodeSignature .\Zeditor_0.3.7_x64-setup.exe |
   Format-List Status,SignerCertificate,TimeStamperCertificate
 ```
 

@@ -13,12 +13,13 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::sync::Mutex;
 
 const CONVERTER_ID: &str = "document-converter";
+const CONVERTER_ENGINE: &str = "anydoc";
 const SUPPORTED_PROTOCOL: u32 = 1;
 const MAX_ARCHIVE_BYTES: u64 = 256 * 1024 * 1024;
 const MANIFEST_URL: &str =
-    "https://github.com/zhcx/markitdown/releases/download/converter-stable/converter-manifest.json";
+    "https://github.com/zhcx/zeditor/releases/download/converter-stable/converter-manifest.json";
 const MANIFEST_SIGNATURE_URL: &str =
-    "https://github.com/zhcx/markitdown/releases/download/converter-stable/converter-manifest.sig";
+    "https://github.com/zhcx/zeditor/releases/download/converter-stable/converter-manifest.sig";
 
 #[derive(Default)]
 pub struct ConverterManager {
@@ -38,6 +39,8 @@ pub struct ConverterArtifact {
 pub struct ConverterManifest {
     pub schema_version: u32,
     pub module_id: String,
+    #[serde(default)]
+    pub engine: Option<String>,
     pub version: String,
     pub protocol_version: u32,
     pub minimum_app_version: String,
@@ -48,6 +51,8 @@ pub struct ConverterManifest {
 pub struct ModuleMetadata {
     pub schema_version: u32,
     pub module_id: String,
+    #[serde(default)]
+    pub engine: Option<String>,
     pub version: String,
     pub protocol_version: u32,
     pub target: String,
@@ -59,6 +64,8 @@ pub struct ModuleMetadata {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConverterVersionInfo {
     pub module_id: String,
+    #[serde(default)]
+    pub engine: Option<String>,
     pub version: String,
     pub protocol_version: u32,
     pub target: String,
@@ -192,6 +199,14 @@ fn verify_signature(payload: &[u8], encoded_signature: &[u8]) -> Result<(), Stri
     if let Some(key) = public_key() {
         verify_signature_with_key(&key, payload, encoded_signature)
     } else {
+        // 未配置公钥时仅在首次跳过时告警一次：完整性完全依赖 HTTPS，
+        // 发布构建应通过 CONVERTER_MANIFEST_PUBLIC_KEY 启用签名验证。
+        static WARNED: std::sync::Once = std::sync::Once::new();
+        WARNED.call_once(|| {
+            eprintln!(
+                "WARN: CONVERTER_MANIFEST_PUBLIC_KEY 未设置，跳过转换模块签名验证（仅依赖 HTTPS 传输完整性）"
+            );
+        });
         Ok(())
     }
 }
@@ -212,9 +227,62 @@ fn sha256_file(path: &Path) -> Result<String, String> {
     Ok(hex::encode(hasher.finalize()))
 }
 
+/// 已验证文件的哈希缓存：以 (路径, 长度, 修改时间) 为键。
+/// 仅用于反复校验同一个已安装的可执行文件；下载安装等一次性校验
+/// 仍直接使用 `sha256_file` 实算。
+fn sha256_file_cached(path: &Path) -> Result<String, String> {
+    use std::collections::HashMap;
+    use std::time::SystemTime;
+
+    struct CacheKey {
+        path: PathBuf,
+        len: u64,
+        modified: SystemTime,
+    }
+    impl PartialEq for CacheKey {
+        fn eq(&self, other: &Self) -> bool {
+            self.path == other.path && self.len == other.len && self.modified == other.modified
+        }
+    }
+    impl Eq for CacheKey {}
+    impl std::hash::Hash for CacheKey {
+        fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+            self.path.hash(state);
+            self.len.hash(state);
+            self.modified.hash(state);
+        }
+    }
+
+    static CACHE: std::sync::Mutex<Option<HashMap<CacheKey, String>>> =
+        std::sync::Mutex::new(None);
+    let metadata = std::fs::metadata(path).map_err(|error| error.to_string())?;
+    let key = CacheKey {
+        path: path.to_path_buf(),
+        len: metadata.len(),
+        modified: metadata.modified().unwrap_or(SystemTime::UNIX_EPOCH),
+    };
+    let mut cache = CACHE
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if let Some(cached) = cache.as_ref().and_then(|map| map.get(&key)) {
+        return Ok(cached.clone());
+    }
+    let digest = sha256_file(path)?;
+    let entry = cache.get_or_insert_with(HashMap::new);
+    // 防御性上限：正常情况只有一个模块可执行文件，多个版本并存也不多。
+    if entry.len() > 16 {
+        entry.clear();
+    }
+    entry.insert(key, digest.clone());
+    Ok(digest)
+}
+
 fn validate_metadata(metadata: &ModuleMetadata) -> Result<(), String> {
     if metadata.schema_version != 1 || metadata.module_id != CONVERTER_ID {
         return Err("模块元数据类型不受支持。".into());
+    }
+    if metadata.engine.as_deref() != Some(CONVERTER_ENGINE) {
+        return Err("incompatible_converter_engine".into());
     }
     if metadata.protocol_version != SUPPORTED_PROTOCOL {
         return Err(format!(
@@ -260,7 +328,10 @@ fn verify_installed_module(root: &Path, metadata: &ModuleMetadata) -> Result<u64
     if !executable.is_file() {
         return Err("转换模块可执行文件不存在。".into());
     }
-    let digest = sha256_file(&executable)?;
+    // 使用缓存哈希：转换器是几十 MB 的可执行文件，而本函数在每次文档
+    // 转换与前端状态轮询时都会调用，全量重算 SHA-256 开销显著。
+    // 缓存键为 (路径, 长度, mtime)，文件被替换（长度/mtime 变化）时重算。
+    let digest = sha256_file_cached(&executable)?;
     if !digest.eq_ignore_ascii_case(&metadata.executable_sha256) {
         return Err("转换模块 SHA-256 校验失败。".into());
     }
@@ -318,7 +389,7 @@ async fn download_bytes(
 async fn fetch_manifest() -> Result<ConverterManifest, String> {
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(30))
-        .user_agent(format!("MarkitDown/{}", env!("CARGO_PKG_VERSION")))
+        .user_agent(format!("Zeditor/{}", env!("CARGO_PKG_VERSION")))
         .build()
         .map_err(|error| format!("创建模块下载客户端失败：{error}"))?;
     let manifest_bytes = download_bytes(&client, MANIFEST_URL, 1024 * 1024).await?;
@@ -332,13 +403,16 @@ async fn fetch_manifest() -> Result<ConverterManifest, String> {
     if parsed.schema_version != 1 || parsed.module_id != CONVERTER_ID {
         return Err("模块清单类型不受支持。".into());
     }
+    if parsed.engine.as_deref() != Some(CONVERTER_ENGINE) {
+        return Err("incompatible_converter_engine".into());
+    }
     let minimum = semver::Version::parse(parsed.minimum_app_version.trim_start_matches('v'))
         .map_err(|_| "模块清单中的最低主程序版本无效。".to_string())?;
     let current = semver::Version::parse(env!("CARGO_PKG_VERSION"))
         .map_err(|_| "当前主程序版本格式无效。".to_string())?;
     if current < minimum {
         return Err(format!(
-            "该转换模块要求 MarkitDown {} 或更高版本。",
+            "该转换模块要求 Zeditor {} 或更高版本。",
             parsed.minimum_app_version
         ));
     }
@@ -357,7 +431,7 @@ async fn download_archive(
         || parsed.host_str() != Some("github.com")
         || !parsed
             .path()
-            .starts_with("/zhcx/markitdown/releases/download/")
+            .starts_with("/zhcx/zeditor/releases/download/")
     {
         return Err("转换模块下载地址不在允许的 GitHub Release 范围中。".into());
     }
@@ -366,7 +440,7 @@ async fn download_archive(
     }
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(20 * 60))
-        .user_agent(format!("MarkitDown/{}", env!("CARGO_PKG_VERSION")))
+        .user_agent(format!("Zeditor/{}", env!("CARGO_PKG_VERSION")))
         .build()
         .map_err(|error| format!("创建模块下载客户端失败：{error}"))?;
     let response = client
@@ -465,6 +539,7 @@ fn health_check(executable: &Path, expected: &ModuleMetadata) -> Result<(), Stri
             let info: ConverterVersionInfo = serde_json::from_slice(&output.stdout)
                 .map_err(|error| format!("转换模块版本信息无效：{error}"))?;
             if info.module_id != CONVERTER_ID
+                || info.engine.as_deref() != Some(CONVERTER_ENGINE)
                 || info.version != expected.version
                 || info.protocol_version != SUPPORTED_PROTOCOL
                 || info.target != target_triple()
@@ -650,6 +725,11 @@ pub fn get_converter_module_status(app: AppHandle) -> ConverterModuleStatus {
             error_code: None,
             message: None,
         },
+        Err(error) if error == "incompatible_converter_engine" => empty(
+            "incompatible",
+            Some("incompatible_converter_engine"),
+            Some(error),
+        ),
         Err(error) => empty("corrupt", Some("module_verification_failed"), Some(error)),
     }
 }
@@ -794,33 +874,6 @@ fn hide_converter_window(command: &mut Command) {
     }
 }
 
-fn python_candidates() -> Vec<String> {
-    std::env::var("MARKITDOWN_PYTHON")
-        .ok()
-        .filter(|path| !path.trim().is_empty())
-        .into_iter()
-        .collect()
-}
-
-fn converter_script(app: &AppHandle) -> Result<PathBuf, String> {
-    let bundled = app
-        .path()
-        .resource_dir()
-        .map_err(|error| format!("无法定位应用资源目录：{error}"))?
-        .join("resources")
-        .join("document_converter.py");
-    if bundled.is_file() {
-        return Ok(bundled);
-    }
-    let development = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("resources")
-        .join("document_converter.py");
-    development
-        .is_file()
-        .then_some(development)
-        .ok_or_else(|| "文档转换适配脚本不存在。".into())
-}
-
 #[tauri::command]
 pub async fn convert_document(app: AppHandle, path: String) -> Result<String, String> {
     let source = PathBuf::from(&path);
@@ -831,46 +884,45 @@ pub async fn convert_document(app: AppHandle, path: String) -> Result<String, St
         .map(|metadata| metadata.len())
         .unwrap_or(0);
     let markdown_path =
-        std::env::temp_dir().join(format!("markitdown-conversion-{}.md", uuid::Uuid::new_v4()));
+        std::env::temp_dir().join(format!("zeditor-conversion-{}.md", uuid::Uuid::new_v4()));
     let root = modules_root(&app)?;
     let installed = active_metadata(&root)
         .ok()
         .flatten()
         .filter(|metadata| verify_installed_module(&root, metadata).is_ok())
         .map(|metadata| module_executable(&root, &metadata));
-    let python = python_candidates().into_iter().next();
-    let script = if installed.is_none() && python.is_some() {
-        Some(converter_script(&app)?)
-    } else {
-        None
-    };
-    if installed.is_none() && python.is_none() {
+    let executable = installed.or_else(|| {
+        std::env::var_os("ANYDOC_CONVERTER_PATH")
+            .filter(|path| !path.is_empty())
+            .map(PathBuf::from)
+            .filter(|path| path.is_file())
+    });
+    if executable.is_none() {
         return Err(
-            "converter_module_missing：未安装文档转换模块且未配置 Python（MARKITDOWN_PYTHON）。请在设置中安装转换模块，或安装 Python 并执行 python -m pip install 'markitdown[pdf,docx,pptx,xlsx]'。"
+            "converter_module_missing：未安装 Zeditor AnyDoc 转换模块。请在设置中安装对应平台模块；开发调试可设置 ANYDOC_CONVERTER_PATH。"
                 .into(),
         );
     }
 
+    let executable = executable.expect("converter checked above");
     tokio::task::spawn_blocking(move || {
         let started = Instant::now();
-        let output = if let Some(executable) = installed {
-            let mut command = Command::new(executable);
-            hide_converter_window(&mut command);
-            command
-                .arg(&source)
-                .arg(&markdown_path)
-                .output()
-                .map_err(|error| format!("无法启动文档转换模块：{error}"))?
-        } else {
-            let mut command = Command::new(python.expect("python checked above"));
-            hide_converter_window(&mut command);
-            command
-                .arg(script.expect("script checked above"))
-                .arg(&source)
-                .arg(&markdown_path)
-                .output()
-                .map_err(|error| format!("无法启动自定义 Python 转换器：{error}"))?
-        };
+        // 失败路径（进程退出非零/启动失败）也会清理临时 markdown 文件，
+        // 避免临时目录累积残留。
+        struct TempCleanup<'a>(&'a Path);
+        impl Drop for TempCleanup<'_> {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_file(self.0);
+            }
+        }
+        let _cleanup = TempCleanup(&markdown_path);
+        let mut command = Command::new(executable);
+        hide_converter_window(&mut command);
+        let output = command
+            .arg(&source)
+            .arg(&markdown_path)
+            .output()
+            .map_err(|error| format!("无法启动 Zeditor AnyDoc 转换模块：{error}"))?;
         markdown_from_converter_output(output, &markdown_path, source_size, started.elapsed())
     })
     .await
@@ -890,7 +942,8 @@ mod tests {
         ModuleMetadata {
             schema_version: 1,
             module_id: "document-converter".into(),
-            version: "1.0.0".into(),
+            engine: Some("anydoc".into()),
+            version: "1.2.0".into(),
             protocol_version: SUPPORTED_PROTOCOL,
             target: target.into(),
             executable: if cfg!(windows) {
@@ -916,6 +969,16 @@ mod tests {
         assert!(validate_metadata(&value).is_err());
         value.executable = "nested/converter".into();
         assert!(validate_metadata(&value).is_err());
+    }
+
+    #[test]
+    fn rejects_legacy_markitdown_modules_by_engine_marker() {
+        let mut value = metadata(target_triple());
+        value.engine = None;
+        assert_eq!(
+            validate_metadata(&value),
+            Err("incompatible_converter_engine".into())
+        );
     }
 
     #[test]

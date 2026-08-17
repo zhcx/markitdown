@@ -58,7 +58,7 @@ async fn list_codex_models(
                     "id": 1,
                     "method": "initialize",
                     "params": {
-                        "clientInfo": {"name": "markitdown", "title": "MarkitDown", "version": env!("CARGO_PKG_VERSION")},
+                        "clientInfo": {"name": "zeditor", "title": "Zeditor", "version": env!("CARGO_PKG_VERSION")},
                         "capabilities": {"experimentalApi": true}
                     }
                 })
@@ -291,13 +291,16 @@ async fn run_output(
 
 fn configured_model(backend: AgentBackendId, workspace_root: Option<&Path>) -> Option<String> {
     let mut paths = Vec::new();
+    // 跨平台家目录：Windows 用 USERPROFILE，Unix 用 HOME。
+    // 此前仅读取 Windows 环境变量，macOS/Linux 上全局配置永远找不到。
+    let home = std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME"));
     match backend {
         AgentBackendId::ClaudeCode => {
             if let Some(root) = workspace_root {
                 paths.push(root.join(".claude").join("settings.local.json"));
                 paths.push(root.join(".claude").join("settings.json"));
             }
-            if let Some(profile) = std::env::var_os("USERPROFILE") {
+            if let Some(profile) = home {
                 paths.push(PathBuf::from(profile).join(".claude").join("settings.json"));
             }
         }
@@ -305,10 +308,18 @@ fn configured_model(backend: AgentBackendId, workspace_root: Option<&Path>) -> O
             if let Some(root) = workspace_root {
                 paths.push(root.join("opencode.json"));
             }
-            if let Some(profile) = std::env::var_os("USERPROFILE") {
+            if let Some(profile) = home {
                 paths.push(
                     PathBuf::from(profile)
                         .join(".config")
+                        .join("opencode")
+                        .join("opencode.json"),
+                );
+            }
+            // XDG 配置目录（Linux 桌面常见）。
+            if let Some(config) = std::env::var_os("XDG_CONFIG_HOME") {
+                paths.push(
+                    PathBuf::from(config)
                         .join("opencode")
                         .join("opencode.json"),
                 );
@@ -356,7 +367,10 @@ fn collect_model_ids(value: &Value, output: &mut Vec<String>) {
     }
 }
 
-fn strip_ansi(input: &str) -> String {
+/// 清除 ANSI 转义序列（CSI 与 OSC 序列）。
+/// agent 模块共用此实现（mod.rs 的 visible_agent_stderr 同样使用），
+/// 避免两份实现漂移。
+pub(crate) fn strip_ansi(input: &str) -> String {
     let mut output = String::with_capacity(input.len());
     let mut chars = input.chars();
     while let Some(character) = chars.next() {

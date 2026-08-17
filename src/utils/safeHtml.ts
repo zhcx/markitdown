@@ -34,19 +34,19 @@ export function sanitizeRenderedHtml(unsafeHtml: string): string {
     link.rel = 'noopener noreferrer';
   });
 
-  template.content.querySelectorAll<HTMLElement>('figure[data-markitdown-video-src]').forEach((figure) => {
-    const src = figure.dataset.markitdownVideoSrc || '';
-    figure.removeAttribute('data-markitdown-video-src');
+  template.content.querySelectorAll<HTMLElement>('figure[data-zeditor-video-src]').forEach((figure) => {
+    const src = figure.dataset.zeditorVideoSrc || '';
+    figure.removeAttribute('data-zeditor-video-src');
     if (!isAllowedVideoEmbedUrl(src)) return;
 
     const iframe = document.createElement('iframe');
     iframe.src = src;
-    iframe.title = figure.dataset.markitdownVideoTitle || 'Video';
+    iframe.title = figure.dataset.zeditorVideoTitle || 'Video';
     iframe.loading = 'lazy';
     iframe.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share';
     iframe.allowFullscreen = true;
     iframe.referrerPolicy = 'strict-origin-when-cross-origin';
-    figure.removeAttribute('data-markitdown-video-title');
+    figure.removeAttribute('data-zeditor-video-title');
     figure.prepend(iframe);
   });
 

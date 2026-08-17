@@ -1,9 +1,6 @@
 {
   "bundle": {
-    "resources": [
-      "resources/document_converter.py",
-      "icons/markdown-file.ico"
-    ],
+    "resources": ["icons/markdown-file.ico"],
     "windows": {
       "nsis": {
         "installerHooks": "windows/markdown-file-association.nsh"

@@ -3,7 +3,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import { MenuBar } from '../MenuBar/MenuBar';
 import { useAppStore } from '../../stores/appStore';
 
-const APP_NAME = 'MarkitDown';
+const APP_NAME = 'Zeditor';
 
 interface TitleBarProps {
   onRequestClose: () => void | Promise<void>;

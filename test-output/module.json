@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "module_id": "document-converter",
+  "version": "1.0.0",
+  "protocol_version": 1,
+  "target": "x86_64-pc-windows-msvc",
+  "executable": "document_converter.exe",
+  "executable_sha256": "8695a544bddb42c503ba3add411a852e4c449329dc1c4ceee1221635bb224012",
+  "supported_formats": [
+    "pdf",
+    "docx",
+    "xlsx",
+    "pptx"
+  ]
+}

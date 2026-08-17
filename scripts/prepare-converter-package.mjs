@@ -14,12 +14,16 @@ const executableBytes = await readFile(executable);
 const metadata = {
   schema_version: 1,
   module_id: 'document-converter',
+  engine: 'anydoc',
   version,
   protocol_version: 1,
   target,
   executable: executableName,
   executable_sha256: createHash('sha256').update(executableBytes).digest('hex'),
-  supported_formats: ['pdf', 'docx', 'xlsx', 'pptx'],
+  supported_formats: [
+    'doc', 'docx', 'docm', 'ppt', 'pps', 'pot', 'pptx', 'pptm', 'ppsx', 'ppsm',
+    'xls', 'xlsx', 'xlsm', 'xlsb', 'odt', 'ods', 'odp', 'rtf', 'epub', 'csv', 'pdf',
+  ],
 };
 const metadataBytes = Buffer.from(`${JSON.stringify(metadata, null, 2)}\n`, 'utf8');
 

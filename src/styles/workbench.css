@@ -1,5 +1,5 @@
 /* ======================================================================
-   MarkitDown workbench design system
+   Zeditor workbench design system
 
    The named themes in main.css remain the palette source. This file turns
    that palette into one semantic UI contract and applies it consistently to
@@ -146,7 +146,7 @@ body {
 }
 
 /* Keep Monaco's native find/replace behavior while making the widget part of
-   the active MarkitDown workbench theme. */
+   the active Zeditor workbench theme. */
 .app .monaco-editor .find-widget {
   border: 1px solid var(--ui-border-default);
   border-top: 0;

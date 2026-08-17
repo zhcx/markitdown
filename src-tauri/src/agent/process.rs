@@ -1,7 +1,10 @@
 use std::{
+    collections::HashMap,
     ffi::OsStr,
     path::{Path, PathBuf},
     process::Command,
+    sync::Mutex,
+    time::{Duration, Instant},
 };
 
 #[cfg(windows)]
@@ -21,7 +24,34 @@ pub fn system_command(program: impl AsRef<OsStr>) -> Command {
     command
 }
 
+/// 可执行文件发现结果缓存：该函数会扫描 PATH、npm/WinGet 目录与 VSCode
+/// 扩展目录，而状态面板等调用方高频轮询。缓存 30 秒，新安装的 CLI 最迟
+/// 在下一次 TTL 过期后可见（或重启应用）。
+const DISCOVERY_CACHE_TTL: Duration = Duration::from_secs(30);
+static DISCOVERY_CACHE: Mutex<Option<(Instant, HashMap<String, Option<PathBuf>>)>> =
+    Mutex::new(None);
+
 pub fn discover_executable(name: &str) -> Option<PathBuf> {
+    let mut cache = DISCOVERY_CACHE
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if let Some((stamp, entries)) = cache.as_ref() {
+        if stamp.elapsed() < DISCOVERY_CACHE_TTL {
+            if let Some(hit) = entries.get(name) {
+                return hit.clone();
+            }
+        }
+    }
+    let discovered = discover_executable_uncached(name);
+    let entry = cache.get_or_insert_with(|| (Instant::now(), HashMap::new()));
+    if entry.0.elapsed() >= DISCOVERY_CACHE_TTL {
+        *entry = (Instant::now(), HashMap::new());
+    }
+    entry.1.insert(name.to_string(), discovered.clone());
+    discovered
+}
+
+fn discover_executable_uncached(name: &str) -> Option<PathBuf> {
     let mut preferred = Vec::new();
     #[cfg(windows)]
     {
@@ -124,6 +154,14 @@ fn official_codex_extension_candidates() -> Vec<PathBuf> {
 }
 
 #[cfg(windows)]
+fn extension_dir_version(path: &Path) -> Option<semver::Version> {
+    let name = path.file_name()?.to_str()?;
+    let after_prefix = name.strip_prefix("openai.chatgpt-")?;
+    let version = after_prefix.split('-').next()?;
+    semver::Version::parse(version).ok()
+}
+
+#[cfg(windows)]
 fn official_codex_candidates_from_roots(roots: impl IntoIterator<Item = PathBuf>) -> Vec<PathBuf> {
     let architecture = match std::env::consts::ARCH {
         "aarch64" => "windows-aarch64",
@@ -139,7 +177,18 @@ fn official_codex_candidates_from_roots(roots: impl IntoIterator<Item = PathBuf>
                 .is_some_and(|name| name.starts_with("openai.chatgpt-"))
         })
         .collect::<Vec<_>>();
-    extension_dirs.sort_by(|left, right| right.file_name().cmp(&left.file_name()));
+    // 按 semver 降序取最新版本。此前按文件名字符串排序，
+    // "10.0.0" < "9.0.0" 会选错旧版本。
+    extension_dirs.sort_by(|left, right| {
+        let left_version = extension_dir_version(left);
+        let right_version = extension_dir_version(right);
+        match (left_version, right_version) {
+            (Some(l), Some(r)) => r.cmp(&l),
+            (Some(_), None) => std::cmp::Ordering::Less,
+            (None, Some(_)) => std::cmp::Ordering::Greater,
+            (None, None) => right.file_name().cmp(&left.file_name()),
+        }
+    });
     extension_dirs
         .into_iter()
         .map(|root| root.join("bin").join(architecture).join("codex.exe"))
@@ -242,7 +291,7 @@ mod tests {
     #[test]
     fn discovery_prefers_native_exe_over_npm_shims() {
         let root =
-            std::env::temp_dir().join(format!("markitdown-process-test-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("zeditor-process-test-{}", uuid::Uuid::new_v4()));
         fs::create_dir_all(&root).unwrap();
         let shell_shim = root.join("codex");
         let cmd_shim = root.join("codex.cmd");
@@ -261,10 +310,8 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn path_discovery_does_not_need_a_shell_process() {
-        let root = std::env::temp_dir().join(format!(
-            "markitdown-discovery-test-{}",
-            uuid::Uuid::new_v4()
-        ));
+        let root =
+            std::env::temp_dir().join(format!("zeditor-discovery-test-{}", uuid::Uuid::new_v4()));
         fs::create_dir_all(&root).unwrap();
         let shim = root.join("opencode.cmd");
         fs::write(&shim, "@echo off").unwrap();
@@ -280,7 +327,7 @@ mod tests {
     #[test]
     fn official_extension_discovery_prefers_the_newest_codex_binary() {
         let root = std::env::temp_dir().join(format!(
-            "markitdown-codex-extension-test-{}",
+            "zeditor-codex-extension-test-{}",
             uuid::Uuid::new_v4()
         ));
         let older = root
@@ -307,9 +354,39 @@ mod tests {
 
     #[cfg(windows)]
     #[test]
+    fn extension_version_sorting_is_numeric_not_lexicographic() {
+        // 回归测试：字符串排序会把 "10.0.0" 排在 "9.0.0" 之前（即认为更旧）。
+        let root = std::env::temp_dir().join(format!(
+            "zeditor-codex-semver-test-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let nine = root
+            .join("openai.chatgpt-9.0.0-win32-x64")
+            .join("bin")
+            .join("windows-x86_64")
+            .join("codex.exe");
+        let ten = root
+            .join("openai.chatgpt-10.0.0-win32-x64")
+            .join("bin")
+            .join("windows-x86_64")
+            .join("codex.exe");
+        fs::create_dir_all(nine.parent().unwrap()).unwrap();
+        fs::create_dir_all(ten.parent().unwrap()).unwrap();
+        fs::write(&nine, []).unwrap();
+        fs::write(&ten, []).unwrap();
+
+        assert_eq!(
+            official_codex_candidates_from_roots([root.clone()]),
+            vec![ten, nine]
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(windows)]
+    #[test]
     fn claude_discovery_uses_native_npm_binary_before_cmd_shim() {
         let root = std::env::temp_dir().join(format!(
-            "markitdown-claude-discovery-test-{}",
+            "zeditor-claude-discovery-test-{}",
             uuid::Uuid::new_v4()
         ));
         let native = root
@@ -332,7 +409,7 @@ mod tests {
     #[test]
     fn cmd_shims_run_without_a_console_window() {
         let root =
-            std::env::temp_dir().join(format!("markitdown command test {}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("zeditor command test {}", uuid::Uuid::new_v4()));
         fs::create_dir_all(&root).unwrap();
         let shim = root.join("agent.cmd");
         fs::write(&shim, "@echo off\r\necho %1").unwrap();

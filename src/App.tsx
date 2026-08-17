@@ -36,11 +36,7 @@ interface DragDropPayload {
 }
 
 const DEFAULT_EDITOR_RATIO = 0.5;
-const SUPPORTED_THEMES = new Set([
-  'vscode-light', 'vscode-dark',
-  'claude-light', 'claude-dark',
-  'notion-light', 'notion-dark',
-]);
+const SUPPORTED_THEMES = new Set(['vscode-light', 'vscode-dark']);
 let themeSwitchFrame: number | null = null;
 
 function resolveThemePreference(preference: string) {
@@ -49,7 +45,9 @@ function resolveThemePreference(preference: string) {
   }
   if (preference === 'dark') return 'vscode-dark';
   if (preference === 'light') return 'vscode-light';
-  return SUPPORTED_THEMES.has(preference) ? preference : 'vscode-dark';
+  if (SUPPORTED_THEMES.has(preference)) return preference;
+  // 已下线主题（claude-*/notion-*）按明暗迁移到对应的新主题。
+  return preference.endsWith('-light') ? 'vscode-light' : 'vscode-dark';
 }
 
 function applyThemeToDocument(preference: string) {
@@ -60,7 +58,7 @@ function applyThemeToDocument(preference: string) {
   root.classList.add('theme-switching');
   root.setAttribute('data-theme', resolvedTheme);
   root.style.colorScheme = resolvedTheme.endsWith('-dark') ? 'dark' : 'light';
-  window.dispatchEvent(new CustomEvent('markitdown-theme-change', { detail: resolvedTheme }));
+  window.dispatchEvent(new CustomEvent('zeditor-theme-change', { detail: resolvedTheme }));
   themeSwitchFrame = window.requestAnimationFrame(() => {
     root.classList.remove('theme-switching');
     themeSwitchFrame = null;
@@ -83,8 +81,7 @@ function App() {
     setSidebarWidth,
     setSidebarVisible,
     setSettingsOpen,
-    openFile,
-    convertDocument
+    openFile
   } = useAppStore();
   const editorView = useAppStore(state => state.editorView);
   const { proofreadResults, setProofreadPanelVisible, translationPosition, translationOriginal, translationResult, setTranslationVisible, chatbotVisible, setChatbotVisible } = useAIStore();
@@ -148,7 +145,7 @@ function App() {
           const selected = await chooseSaveFile({
             title: `保存“${tab.title}”`,
             defaultPath: tab.title === '未命名' ? '未命名.md' : tab.title,
-            filters: [{ name: 'Markdown', extensions: ['md', 'markdown', 'txt'] }, { name: '文档', extensions: ['pdf', 'docx', 'doc', 'pptx', 'ppt', 'xlsx', 'xls'] }],
+            filters: [{ name: 'Markdown', extensions: ['md', 'markdown', 'txt'] }],
           });
           return typeof selected === 'string' ? selected : null;
         },
@@ -369,22 +366,17 @@ function App() {
     const unlisten = webview.listen<DragDropPayload>('tauri://drag-drop', async (event) => {
       const paths = event.payload.paths;
       for (const path of paths) {
-        const lowerPath = path.toLowerCase();
-        if (lowerPath.endsWith('.md') || lowerPath.endsWith('.txt') || lowerPath.endsWith('.markdown')) {
+        try {
           await openFile(path);
-        } else {
-          try {
-            await convertDocument(path);
-          } catch (error) {
-            console.error('Document conversion failed:', error);
-            window.alert(`文档转换失败：${String(error)}`);
-          }
+        } catch (error) {
+          console.error('Failed to open dropped file:', error);
+          window.alert(`打开文件失败：${String(error)}`);
         }
       }
     });
 
     return () => { unlisten.then(fn => fn()); };
-  }, [convertDocument, openFile]);
+  }, [openFile]);
 
   const handleSplitMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();

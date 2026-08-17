@@ -1,16 +1,16 @@
 <div align="center">
 
-# ✨ MarkitDown
+# ✨ Zeditor
 
 **一款现代化的 Markdown 编辑器**
 
 *让写作回归纯粹，让创作充满灵感*
 
-[![Release](https://img.shields.io/github/v/release/zhcx/markitdown?style=flat-square)](https://github.com/zhcx/markitdown/releases)
-[![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](https://github.com/zhcx/markitdown/blob/main/LICENSE)
-[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey?style=flat-square)](https://github.com/zhcx/markitdown/releases)
+[![Release](https://img.shields.io/github/v/release/zhcx/zeditor?style=flat-square)](https://github.com/zhcx/zeditor/releases)
+[![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](https://github.com/zhcx/zeditor/blob/main/LICENSE)
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey?style=flat-square)](https://github.com/zhcx/zeditor/releases)
 
-<img src="src-tauri/icons/icon.png" alt="MarkitDown Logo" width="128" height="128">
+<img src="src-tauri/icons/icon.png" alt="Zeditor Logo" width="128" height="128">
 
 </div>
 
@@ -25,6 +25,33 @@
 > 这不是传统的软件开发流程，更像是一场人与 AI 的即兴合奏。每一次「试试这样」的念头，都在几秒钟内变成了真实的代码。这种感觉，就像用吉他即兴演奏——你不需要提前写好谱子，旋律在指尖自然流淌。
 >
 > 这个项目诞生于一个下午的灵感碰撞，见证了 AI 辅助创作的无限可能。
+
+---
+
+## 📣 重要更新：软件更名与转换引擎升级
+
+> **本项目已完成品牌与引擎的双重升级，请旧用户特别注意以下变更：**
+
+### 1. 软件名称：MarkItDown → **Zeditor**
+
+本项目最初以 *MarkItDown* 为名创建，但 **MarkItDown 是微软开源的 Python 文档解析库**，为避免与微软官方项目混淆、并确立独立品牌，自 **v0.3.7** 起正式更名为 **Zeditor**。
+
+- 仓库地址同步迁移至 **[github.com/zhcx/zeditor](https://github.com/zhcx/zeditor)**（原 `zhcx/markitdown` 仓库仅保留历史与转换模块的发布资产）。
+- 安装包名称由 `MarkitDown_*` 变更为 `Zeditor_*`，**旧版本可直接覆盖安装，用户文档与配置不受影响**。
+
+### 2. 文档转换引擎：markitdown（Python）→ **AnyDoc（Rust）**
+
+文档转换能力已从 **微软 markitdown（Python 依赖）** 全面替换为 **AnyDoc 原生 Rust 转换引擎**：
+
+| 对比项 | 旧版（markitdown / Python） | 新版（AnyDoc / Rust） |
+| --- | --- | --- |
+| 运行时 | 依赖 Python 环境与第三方库 | 零依赖原生可执行文件 |
+| 安装方式 | 内置打包（安装包体积庞大） | 首次转换时按需下载独立模块 |
+| 安装包体积 | 约 80 MB（内嵌 72 MB 转换程序） | 约 8 MB（模块外置） |
+| 转换性能 | 进程启动慢、跨语言调用开销 | 原生执行、启动与转换更快 |
+| 数据安全 | 本机处理 | 本机处理（不变） |
+
+> ⚠️ 由于转换引擎已更换，**旧的 markitdown 内置转换器不再可用**。升级到 v0.3.7 后，首次打开 DOC/DOCX/PPT/PDF 等文档时，Zeditor 会自动引导从 GitHub Release 下载对应平台的 AnyDoc 模块（亦可离线导入 `.zip` 包）。模块版本与软件版本独立演进，当前转换模块版本为 **v1.2.0**。
 
 ---
 
@@ -48,7 +75,7 @@
 - **写作辅助** - Markdown 检查与格式化、完整语法指南、原生 Emoji 和常用表情
 
 ### 🎯 界面设计
-- **多主题支持** - Claude Light/Dark Theme 与 Notion Light/Dark Theme，可从“功能 → 主题”菜单切换
+- **多主题支持** - 内置「深色主题」与「浅色主题」两套简约配色，可从“功能 → 主题”菜单切换
 - **编辑增强** - 编辑器行号、可拖动网格选择并插入 Markdown 表格
 - **图片导出** - 支持 1:1、4:3、16:9、9:16、A4 比例预览并导出 PNG
 - **现代化设计** - Notion 风格的简洁界面
@@ -64,11 +91,11 @@
 
 ### 📄 文档转换
 
-MarkitDown 支持将 **PDF、DOCX、XLSX、PPTX** 等文档一键转换为 Markdown 格式，以新标签页打开编辑。提供三种使用方式：
+Zeditor 支持将 **DOC、DOCX、PPT、PPTX、XLS、XLSX、ODF、RTF、EPUB、CSV、PDF** 等文档一键转换为 Markdown 格式，以新标签页打开编辑。提供在线安装和离线导入两种方式：
 
 - **在线安装** — 首次转换时自动弹出主题弹窗引导安装，从 GitHub Release 下载对应平台模块
 - **导入离线包** — 在无网络环境中导入提前下载的 ZIP 包
-- **Python 回退** — 安装 `markitdown` 库后自动调用，无需下载转换模块
+- **AnyDoc 模块** — 首次转换时按需下载对应平台的原生 Rust 转换模块
 
 文件转换**始终在本机处理**，不会上传到任何服务器。详情见下方[文档转换模块使用指南](#文档转换模块使用指南)。
 
@@ -111,11 +138,11 @@ MarkitDown 支持将 **PDF、DOCX、XLSX、PPTX** 等文档一键转换为 Markd
 | Codex | App Server JSON-RPC v2 |
 | OpenCode | 本地 Server API + SSE |
 
-Agent 默认关闭，需要先在“设置 → AI 助手”中启用。MarkitDown 复用各 CLI 的登录与默认模型，不保存其账号凭据。Git 根目录中的任务使用隔离 worktree；其他目录在进入 Agent 后授权为当前会话的读写范围，修改会直接写入。命令、网络和 MCP 默认逐次审批，也可仅对当前会话启用完全允许。详细说明见 [Agent 使用与安全说明](docs/agent-support.md)。
+Agent 默认关闭，需要先在“设置 → AI 助手”中启用。Zeditor 复用各 CLI 的登录与默认模型，不保存其账号凭据。Git 根目录中的任务使用隔离 worktree；其他目录在进入 Agent 后授权为当前会话的读写范围，修改会直接写入。命令、网络和 MCP 默认逐次审批，也可仅对当前会话启用完全允许。详细说明见 [Agent 使用与安全说明](docs/agent-support.md)。
 
 ### 🔄 自动更新
 
-- MarkitDown 菜单 → 检查更新
+- Zeditor 菜单 → 检查更新
 - 自动检测 GitHub Release 最新版本
 - 一键下载安装包，实时进度显示
 
@@ -127,32 +154,32 @@ Agent 默认关闭，需要先在“设置 → AI 助手”中启用。MarkitDow
 
 ## 🚀 快速开始
 
-## v0.3.5 更新
+## v0.3.8 更新
 
 ### 更新日志
 
-- **文档转换模块**：新增按需安装的本地转换模块，支持 PDF、DOCX、XLSX、PPTX → Markdown 转换。提供在线安装、离线导入、Python 回退三种使用方式。
-- **主题弹窗**：安装确认、错误提示、卸载确认全部改用主题弹窗，自动适配明暗主题。
-- **资源管理器增强**：右键菜单、近期记录面板、文件树自动刷新（v0.3.4 延续）。
-- **编辑预览联动**：双向高亮定位、统一滚动条（v0.3.4 延续）。
+- **主题体系精简**：移除 Claude 与 Notion 共四套主题，仅保留「深色主题」与「浅色主题」两套简约配色，并统一色彩饱和度与对比度、精简冗余变量、优化语法高亮层级。
+- **菜单栏交互修复**：修复鼠标移出时菜单过快收回、二级子菜单难以触达的问题；收回延迟调整为 350ms 并在菜单间加入透明桥接区域。
+- **质量加固**：修复 PDF 导出浏览器池资源泄漏、文件命令授权与符号链接遍历、并发下载竞态，以及 Agent 持久化、事件上限与流式输出等逻辑；收紧 Tauri 内容安全策略。
+- **转换模块**：继续沿用 AnyDoc v1.2.0（本版本未变更转换引擎）。
 
-### v0.3.5 平台安装包对照
+### v0.3.8 平台安装包对照
 
-> 以下链接指向 v0.3.5 Release 资产；安装包由 GitHub Actions 根据本版本源码构建。
+> 以下链接指向 v0.3.8 Release 资产；安装包由 GitHub Actions 根据 v0.3.8 标签源码构建。
 
 | 操作系统 | 架构 | 最低系统版本 | 推荐安装包 | 适用场景 |
 | --- | --- | --- | --- | --- |
-| Windows | x86_64 | Windows 10 1809+ | [NSIS `.exe`](https://github.com/zhcx/markitdown/releases/download/v0.3.5/MarkitDown_0.3.5_x64-setup.exe) | 推荐大多数用户使用，按向导安装 |
-| Windows | x86_64 | Windows 10 1809+ | [MSI](https://github.com/zhcx/markitdown/releases/download/v0.3.5/MarkitDown_0.3.5_x64_en-US.msi) | 企业部署、系统管理或静默安装 |
-| macOS Apple Silicon | arm64 | macOS 12+ | [DMG](https://github.com/zhcx/markitdown/releases/download/v0.3.5/MarkitDown_0.3.5_aarch64.dmg) | M1、M2、M3、M4 等 Apple 芯片 |
-| macOS Apple Silicon | arm64 | macOS 12+ | [APP 压缩包](https://github.com/zhcx/markitdown/releases/download/v0.3.5/MarkitDown_aarch64.app.tar.gz) | 手动解压或更新 |
-| macOS Intel | x86_64 | macOS 12+ | [DMG](https://github.com/zhcx/markitdown/releases/download/v0.3.5/MarkitDown_0.3.5_x64.dmg) | Intel 芯片 Mac |
-| macOS Intel | x86_64 | macOS 12+ | [APP 压缩包](https://github.com/zhcx/markitdown/releases/download/v0.3.5/MarkitDown_x64.app.tar.gz) | 手动解压或更新 |
-| Ubuntu / Debian | x86_64 | Ubuntu 20.04+ / Debian 11+ | [DEB](https://github.com/zhcx/markitdown/releases/download/v0.3.5/MarkitDown_0.3.5_amd64.deb) | Ubuntu、Debian、Linux Mint 等 |
-| Fedora / RHEL / openSUSE | x86_64 | Fedora 38+ / RHEL 9+ | [RPM](https://github.com/zhcx/markitdown/releases/download/v0.3.5/MarkitDown-0.3.5-1.x86_64.rpm) | RPM 系发行版 |
-| 通用 Linux | x86_64 | 需 webkit2gtk-4.1 | [AppImage](https://github.com/zhcx/markitdown/releases/download/v0.3.5/MarkitDown_0.3.5_amd64.AppImage) | 无需安装，赋予执行权限后运行 |
+| Windows | x86_64 | Windows 10 1809+ | [NSIS `.exe`](https://github.com/zhcx/zeditor/releases/download/v0.3.8/Zeditor_0.3.8_x64-setup.exe) | 推荐大多数用户使用，按向导安装 |
+| Windows | x86_64 | Windows 10 1809+ | [MSI](https://github.com/zhcx/zeditor/releases/download/v0.3.8/Zeditor_0.3.8_x64_en-US.msi) | 企业部署、系统管理或静默安装 |
+| macOS Apple Silicon | arm64 | macOS 12+ | [DMG](https://github.com/zhcx/zeditor/releases/download/v0.3.8/Zeditor_0.3.8_aarch64.dmg) | M1、M2、M3、M4 等 Apple 芯片 |
+| macOS Apple Silicon | arm64 | macOS 12+ | [APP 压缩包](https://github.com/zhcx/zeditor/releases/download/v0.3.8/Zeditor_aarch64.app.tar.gz) | 手动解压或更新 |
+| macOS Intel | x86_64 | macOS 12+ | [DMG](https://github.com/zhcx/zeditor/releases/download/v0.3.8/Zeditor_0.3.8_x64.dmg) | Intel 芯片 Mac |
+| macOS Intel | x86_64 | macOS 12+ | [APP 压缩包](https://github.com/zhcx/zeditor/releases/download/v0.3.8/Zeditor_x64.app.tar.gz) | 手动解压或更新 |
+| Ubuntu / Debian | x86_64 | Ubuntu 20.04+ / Debian 11+ | [DEB](https://github.com/zhcx/zeditor/releases/download/v0.3.8/Zeditor_0.3.8_amd64.deb) | Ubuntu、Debian、Linux Mint 等 |
+| Fedora / RHEL / openSUSE | x86_64 | Fedora 38+ / RHEL 9+ | [RPM](https://github.com/zhcx/zeditor/releases/download/v0.3.8/Zeditor-0.3.8-1.x86_64.rpm) | RPM 系发行版 |
+| 通用 Linux | x86_64 | 需 webkit2gtk-4.1 | [AppImage](https://github.com/zhcx/zeditor/releases/download/v0.3.8/Zeditor_0.3.8_amd64.AppImage) | 无需安装，赋予执行权限后运行 |
 
-完整更新说明与安装提示见 [`docs/releases/v0.3.5.md`](docs/releases/v0.3.5.md)。
+完整更新说明、转换模块下载与安装提示见 [`docs/releases/v0.3.8.md`](docs/releases/v0.3.8.md)。
 
 ## Contributors
 
@@ -161,7 +188,7 @@ Agent 默认关闭，需要先在“设置 → AI 助手”中启用。MarkitDow
 
 ### 下载安装
 
-从 [Releases](https://github.com/zhcx/markitdown/releases) 页面下载适合您系统的安装包：
+从 [Releases](https://github.com/zhcx/zeditor/releases) 页面下载适合您系统的安装包：
 
 | 平台 | 架构 | 推荐下载 | 安装包格式 |
 |------|------|----------|-----------|
@@ -174,8 +201,8 @@ Agent 默认关闭，需要先在“设置 → AI 助手”中启用。MarkitDow
 
 ```bash
 # 克隆仓库
-git clone https://github.com/zhcx/markitdown.git
-cd markitdown
+git clone https://github.com/zhcx/zeditor.git
+cd zeditor
 
 # 安装依赖
 npm install
@@ -194,7 +221,7 @@ npm run tauri build
 
 ### 文档转换模块使用指南
 
-MarkitDown 支持将 **PDF、DOCX、XLSX、PPTX** 等文档转换为 Markdown 格式，并在新标签页中打开编辑。转换模块为按需下载的独立组件，主安装包不包含转换依赖，仅在需要时下载。
+Zeditor 使用 AnyDoc 将 **DOC、DOCX、PPT、PPTX、XLS、XLSX、ODF、RTF、EPUB、CSV、PDF** 转换为 Markdown，并在新标签页中打开编辑。转换模块为按需下载的独立组件，主安装包不包含转换依赖，仅在需要时下载。
 
 #### 转换流程示意
 
@@ -232,44 +259,35 @@ MarkitDown 支持将 **PDF、DOCX、XLSX、PPTX** 等文档转换为 Markdown �
 
 | 平台 | 模块包 |
 | --- | --- |
-| Windows x86_64 | `document-converter-v1.0.0_x86_64-pc-windows-msvc.zip` |
-| macOS Apple Silicon | `document-converter-v1.0.0_aarch64-apple-darwin.zip` |
-| macOS Intel | `document-converter-v1.0.0_x86_64-apple-darwin.zip` |
-| Linux x86_64 | `document-converter-v1.0.0_x86_64-unknown-linux-gnu.zip` |
+| Windows x86_64 | `zeditor-converter-v1.2.0-x86_64-pc-windows-msvc.zip` |
+| macOS Apple Silicon | `zeditor-converter-v1.2.0-aarch64-apple-darwin.zip` |
+| macOS Intel | `zeditor-converter-v1.2.0-x86_64-apple-darwin.zip` |
+| Linux x86_64 | `zeditor-converter-v1.2.0-x86_64-unknown-linux-gnu.zip` |
 
-模块包已在各平台 CI 构建后随 Release 发布，可从 [Releases](https://github.com/zhcx/markitdown/releases/tag/converter-v1.0.0) 页面下载。
+模块可从 [converter-v1.2.0 Release](https://github.com/zhcx/zeditor/releases/tag/converter-v1.2.0) 页面下载。
 
-#### 方式三：Python 回退（开发/轻量环境）
+#### 方式三：开发调试
 
-如果本机已安装 Python，直接安装依赖即可使用，无需下载转换模块：
+开发时可直接构建 AnyDoc 转换器，并通过环境变量指定可执行文件：
 
-```bash
-python -m pip install 'markitdown[pdf,docx,pptx,xlsx]'
-```
-
-安装后应用自动识别并调用 Python 回退。如需指定特定 Python 路径：
-
-```bash
-# Windows (PowerShell)
-$env:MARKITDOWN_PYTHON = “C:\Users\xxx\.conda\envs\myenv\python.exe”
-markitdown
-
-# macOS / Linux
-MARKITDOWN_PYTHON=”/opt/homebrew/bin/python3” ./markitdown
+```powershell
+$env:ANYDOC_CONVERTER_PATH = "D:\path\to\document_converter.exe"
+npm run tauri dev
 ```
 
 #### 支持的格式
 
-| 格式 | 说明 | 依赖 |
+| 类别 | 格式 | 说明 |
 | --- | --- | --- |
-| PDF | 可携带文本的 PDF 文档 | pdfminer / pdfplumber |
-| DOCX | Word 文档 | mammoth |
-| XLSX | Excel 工作簿 | openpyxl / markitdown |
-| PPTX | PowerPoint 演示文稿 | python-pptx |
+| Office / 文档 | DOC、DOCX、DOCM、PPT、PPTX、PPTM、XLS、XLSX、XLSM、XLSB | 保留标题、列表、表格和演讲者备注等结构 |
+| OpenDocument | ODT、ODS、ODP | 转换文档、表格和演示文稿结构 |
+| 其他文档 | RTF、EPUB、CSV、PDF | PDF 支持文本型文档；扫描型 PDF 需要后续 OCR 引擎 |
+| 纯文本 | TXT/TEXT、Markdown、HTML、JSON、XML | 直接以文本编辑器打开 |
 
 #### 安全说明
 
-- 文件转换**始终在本机处理**，不会上传到任何服务器
+- AnyDoc 支持的文档转换在本机处理，不上传文件
+- 扫描型 PDF、图片、音频、MSG 和 Notebook 不在当前 AnyDoc 模块的转换范围内
 - 发布清单使用 Ed25519 签名验证（公钥编译期嵌入）
 - 模块可执行文件经过 SHA-256 完整性校验
 - 未配置公钥时自动跳过 Ed25519 验证
@@ -279,10 +297,9 @@ MARKITDOWN_PYTHON=”/opt/homebrew/bin/python3” ./markitdown
 
 | 问题 | 可能原因 | 解决方法 |
 | --- | --- | --- |
-| 提示”converter_module_missing” | 未安装模块且未配置 Python | 安装 Python 回退或在设置中在线安装 |
+| 提示”converter_module_missing” | 未安装 AnyDoc 模块 | 在设置中在线安装或导入对应平台 ZIP |
 | 下载转换模块失败 | 网络问题 | 检查网络连接，或使用离线包导入 |
 | 健康检查失败 | 模块文件损坏 | 重新安装或导入模块 |
-| Python 回退不生效 | 未安装 markitdown 库 | 执行 `pip install 'markitdown[pdf,docx,pptx,xlsx]'` |
 | 转换结果为空 | 源文件为扫描件/图片 | 确认源文件包含可提取的文本内容 |
 | SmartScreen 警告 | 安装包未代码签名 | 点击”更多信息 → 仍要运行” |
 
@@ -305,7 +322,7 @@ MARKITDOWN_PYTHON=”/opt/homebrew/bin/python3” ./markitdown
 ## 📂 项目结构
 
 ```
-markitdown/
+zeditor/
 ├── src/                    # React 前端
 │   ├── components/         # UI 组件
 │   │   ├── Chatbot/        # AI 对话面板
@@ -347,7 +364,7 @@ SignPath Foundation 申请目前处于准备/审核阶段；在正式启用前�
 
 ## 📄 许可证
 
-[MIT License](https://github.com/zhcx/markitdown/blob/main/LICENSE)
+[MIT License](https://github.com/zhcx/zeditor/blob/main/LICENSE)
 
 ---
 
@@ -355,7 +372,7 @@ SignPath Foundation 申请目前处于准备/审核阶段；在正式启用前�
 
 <div align="center">
 
-[![GitHub 更新热力图](https://ghchart.rshah.org/2196f3/zhcx)](https://github.com/zhcx/markitdown/graphs/commit-activity)
+[![GitHub 更新热力图](https://ghchart.rshah.org/2196f3/zhcx)](https://github.com/zhcx/zeditor/graphs/commit-activity)
 
 </div>
 

@@ -1,4 +1,4 @@
-# SignPath Foundation Application — MarkitDown
+# SignPath Foundation Application — Zeditor
 
 This document contains copy-ready English application material for submission at <https://signpath.org/apply>.
 
@@ -11,7 +11,7 @@ This document contains copy-ready English application material for submission at
 
 ## Project details
 
-- **Project name:** MarkitDown
+- **Project name:** Zeditor
 - **Repository:** <https://github.com/zhcx/markitdown>
 - **Project website:** <https://github.com/zhcx/markitdown>
 - **Release/download page:** <https://github.com/zhcx/markitdown/releases>
@@ -20,22 +20,22 @@ This document contains copy-ready English application material for submission at
 - **Privacy policy:** <https://github.com/zhcx/markitdown/blob/main/PRIVACY.md>
 - **Code signing policy:** <https://github.com/zhcx/markitdown/blob/main/CODE_SIGNING_POLICY.md>
 - **Build workflow:** <https://github.com/zhcx/markitdown/blob/main/.github/workflows/build.yml>
-- **Primary language/technology:** TypeScript, React, Rust, Tauri, and Python
+- **Primary language/technology:** TypeScript, React, Rust, and Tauri
 - **Supported platforms:** Windows x64, macOS Intel/Apple Silicon, and Linux x64
 
 ## Short project description
 
-MarkitDown is a free, open-source, local-first Markdown desktop editor built with Tauri. It provides multi-tab editing, live preview, document conversion, export, optional user-configured AI assistance, web search, and image-hosting integrations. The complete application source and release workflow are public under the MIT License.
+Zeditor is a free, open-source, local-first Markdown desktop editor built with Tauri. It provides multi-tab editing, live preview, AnyDoc document conversion, export, optional user-configured AI assistance, web search, and image-hosting integrations. The complete application source and release workflow are public under the MIT License.
 
 ## Why code signing is requested
 
-MarkitDown distributes Windows MSI and NSIS installers. Because the project currently has no trusted Authenticode certificate, Windows and browser reputation systems may show an unknown-publisher warning even for artifacts built by the official GitHub Actions workflow. We are requesting SignPath Foundation code signing so users can verify publisher identity and artifact integrity and so the project can establish a consistent Windows reputation without distributing or storing a private signing key.
+Zeditor distributes Windows MSI and NSIS installers. Because the project currently has no trusted Authenticode certificate, Windows and browser reputation systems may show an unknown-publisher warning even for artifacts built by the official GitHub Actions workflow. We are requesting SignPath Foundation code signing so users can verify publisher identity and artifact integrity and so the project can establish a consistent Windows reputation without distributing or storing a private signing key.
 
 ## Windows artifacts to be signed
 
 The project requests a two-stage signing configuration:
 
-1. **Inner executable stage:** the Tauri application executable (`markitdown.exe`).
+1. **Inner executable stage:** the Tauri application executable (`zeditor.exe`).
 2. **Installer stage:** the final Windows x64 MSI package and NSIS setup executable.
 
 Both stages originate from the same GitHub-hosted workflow run and release commit. Each release request will require manual approval.
@@ -53,11 +53,11 @@ The workflow first builds and uploads the application executable, submits it to 
 - Multi-factor authentication will be enabled for every repository and SignPath account with release or signing authority.
 - Signed releases require manual approval and must correspond to an official, immutable version tag.
 - The public code signing policy documents provenance, roles, verification, privacy, and incident response.
-- MarkitDown signs only its own project artifacts and contains no proprietary project component.
+- Zeditor signs only its own project artifacts and contains no proprietary project component.
 
 ## Privacy statement
 
-MarkitDown does not operate maintainer-controlled analytics, advertising, telemetry, or user-account services. Documents are processed locally unless a user deliberately invokes a configured third-party integration such as an AI provider, web search service, image host, or GitHub update check. Those direct user-selected transfers and local credential storage are disclosed in the public privacy policy. Signing transfers only release artifacts and related build metadata to GitHub and SignPath.
+Zeditor does not operate maintainer-controlled analytics, advertising, telemetry, or user-account services. Documents are processed locally unless a user deliberately invokes a configured third-party integration such as an AI provider, web search service, image host, or GitHub update check. Those direct user-selected transfers and local credential storage are disclosed in the public privacy policy. Signing transfers only release artifacts and related build metadata to GitHub and SignPath.
 
 ## Required SignPath attribution
 

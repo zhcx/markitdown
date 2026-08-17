@@ -57,7 +57,7 @@ export function AgentPanel({ onRuntimeChange }: AgentPanelProps) {
   const [contextPaths, setContextPaths] = useState<string[]>([]);
   const [editorContext, setEditorContext] = useState<AgentEditorContext | null>(null);
   const [selection, setSelection] = useState<{ key: string; excluded: string[] }>({ key: '', excluded: [] });
-  const roots = useMemo(() => readStoredStringArray('markitdown.workspace-roots'), []);
+  const roots = useMemo(() => readStoredStringArray('zeditor.workspace-roots'), []);
   const workspaceRoot = roots[0] || '';
   const activeSession = sessions.find((session) => session.id === activeSessionId);
   const backendConfig = settings.agent.backends[backend];

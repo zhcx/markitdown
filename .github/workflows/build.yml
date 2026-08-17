@@ -69,21 +69,32 @@ jobs:
     needs: quality-checks
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout release notes
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+
       - name: Create release or clear existing assets
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          notes_file="docs/releases/${RELEASE_TAG}.md"
+          test -f "$notes_file" || { echo "Missing release notes: $notes_file"; exit 1; }
           if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" --jq '.assets[].id' |
               while read -r asset_id; do
                 gh api --method DELETE "repos/${GITHUB_REPOSITORY}/releases/assets/${asset_id}"
               done
+            gh release edit "$RELEASE_TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "Zeditor $RELEASE_TAG" \
+              --notes-file "$notes_file"
           else
             gh release create "$RELEASE_TAG" \
               --repo "$GITHUB_REPOSITORY" \
               --verify-tag \
-              --title "MarkitDown $RELEASE_TAG" \
-              --notes "Cross-platform MarkitDown release. Signing status is shown by each artifact's Authenticode signature. Policy: https://github.com/zhcx/markitdown/blob/main/CODE_SIGNING_POLICY.md. When enabled: Free code signing provided by SignPath.io, certificate by SignPath Foundation."
+              --title "Zeditor $RELEASE_TAG" \
+              --notes-file "$notes_file"
           fi
 
   build-non-windows:
@@ -140,7 +151,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         with:
           tagName: ${{ env.RELEASE_TAG }}
-          releaseName: MarkitDown ${{ env.RELEASE_TAG }}
+          releaseName: Zeditor ${{ env.RELEASE_TAG }}
           releaseDraft: false
           prerelease: false
           args: --target ${{ matrix.target }}
@@ -197,7 +208,7 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force signpath-stage-1 | Out-Null
-          Copy-Item "src-tauri/target/$env:WINDOWS_TARGET/release/markitdown.exe" signpath-stage-1/markitdown.exe
+          Copy-Item "src-tauri/target/$env:WINDOWS_TARGET/release/zeditor.exe" signpath-stage-1/zeditor.exe
 
       - name: Upload inner executables for provenance
         id: upload-unsigned-executables
@@ -226,9 +237,9 @@ jobs:
         if: steps.signpath.outputs.enabled == 'true'
         shell: pwsh
         run: |
-          $signedApp = Get-ChildItem signed-stage-1 -Recurse -File -Filter markitdown.exe | Select-Object -First 1
+          $signedApp = Get-ChildItem signed-stage-1 -Recurse -File -Filter zeditor.exe | Select-Object -First 1
           if (-not $signedApp) { throw "SignPath did not return the application executable." }
-          Copy-Item $signedApp.FullName "src-tauri/target/$env:WINDOWS_TARGET/release/markitdown.exe" -Force
+          Copy-Item $signedApp.FullName "src-tauri/target/$env:WINDOWS_TARGET/release/zeditor.exe" -Force
 
       - name: Verify signed inner executables
         if: steps.signpath.outputs.enabled == 'true'

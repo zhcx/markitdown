@@ -10,8 +10,8 @@ test('desktop bundles remain converter-free on every platform', () => {
 
   assert.ok(!base.bundle.resources.includes('resources/document_converter.exe'))
   assert.ok(!windows.bundle.resources.includes('resources/document_converter.exe'))
-  assert.ok(base.bundle.resources.includes('resources/document_converter.py'))
-  assert.ok(windows.bundle.resources.includes('resources/document_converter.py'))
+  assert.ok(!base.bundle.resources.includes('resources/document_converter.py'))
+  assert.ok(!windows.bundle.resources.includes('resources/document_converter.py'))
 })
 
 test('converter manager verifies metadata and hashes before activation', () => {
@@ -20,7 +20,8 @@ test('converter manager verifies metadata and hashes before activation', () => {
   assert.match(manager, /CONVERTER_MANIFEST_PUBLIC_KEY/)
   assert.match(manager, /sha256_file\(&staged_executable\)/)
   assert.match(manager, /enclosed_name\(\)/)
-  assert.match(manager, /starts_with\("\/zhcx\/markitdown\/releases\/download\/"\)/)
+  // 上游仓库由 zhcx/markitdown 更名为 zhcx/zeditor，转换器发布 URL 同步更新
+  assert.match(manager, /starts_with\("\/zhcx\/zeditor\/releases\/download\/"\)/)
   assert.match(manager, /health_check\(&staged_executable/)
   assert.match(manager, /converter_module_missing/)
   // Ed25519 签名验证可选：有公钥时验证，无公钥时跳过
@@ -28,15 +29,32 @@ test('converter manager verifies metadata and hashes before activation', () => {
 })
 
 test('converter protocol is versioned and keeps large Markdown out of stdout', () => {
-  const converter = read('src-tauri/resources/document_converter.py')
+  const converter = read('converter/src/main.rs')
 
-  assert.match(converter, /PROTOCOL_VERSION = 1/)
-  assert.match(converter, /"--version-json"/)
-  assert.match(converter, /os\.replace\(temporary_output, output\)/)
-  assert.match(converter, /ensure_ascii=True/)
+  assert.match(converter, /PROTOCOL_VERSION: u32 = 1/)
+  assert.match(converter, /\["--version-json"\]/)
+  assert.match(converter, /\.partial/)
+  assert.match(converter, /fs::rename\(&temporary, output\)/)
+  assert.match(converter, /engine: ENGINE/)
+  for (const format of ['doc', 'docm', 'ppt', 'xlsb', 'odt', 'epub', 'pdf']) {
+    assert.match(converter, new RegExp(`"${format}"`))
+  }
 })
 
-test('converter workflow builds four unsigned native modules from the frozen uv lock', () => {
+test('open dialogs and converter metadata share the expanded format catalog', () => {
+  const formats = read('src/utils/documentFormats.ts')
+  const packager = read('scripts/prepare-converter-package.mjs')
+  const store = read('src/stores/appStore.ts')
+
+  for (const format of ['doc', 'docx', 'docm', 'ppt', 'pptx', 'xls', 'xlsb', 'odt', 'ods', 'odp', 'rtf', 'epub', 'csv', 'pdf']) {
+    assert.match(formats, new RegExp(`'${format}'`))
+    assert.match(packager, new RegExp(`'${format}'`))
+  }
+  assert.match(store, /isConvertibleDocumentName/)
+  assert.match(store, /convertDocument\(path\)/)
+})
+
+test('converter workflow builds four native AnyDoc modules with Cargo', () => {
   const workflow = read('.github/workflows/converter.yml')
 
   for (const target of [
@@ -47,7 +65,8 @@ test('converter workflow builds four unsigned native modules from the frozen uv 
   ]) {
     assert.match(workflow, new RegExp(target))
   }
-  assert.match(workflow, /uv sync --project converter --frozen/)
+  assert.match(workflow, /cargo build --manifest-path converter\/Cargo.toml --release --locked/)
+  assert.match(workflow, /engine!=='anydoc'/)
   assert.doesNotMatch(workflow, /signpath/i)
 })
 

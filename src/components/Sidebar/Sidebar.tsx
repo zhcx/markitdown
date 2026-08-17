@@ -10,6 +10,10 @@ import {
 } from '../../utils/markdownOutline';
 import { readStoredStringArray, writeStoredStringArray } from '../../utils/storage';
 import { isTextFileName } from '../../utils/fileIcon';
+import {
+  OPENABLE_FILE_EXTENSIONS,
+  isConvertibleDocumentName,
+} from '../../utils/documentFormats';
 import { FileTypeIcon } from './FileTypeIcon';
 
 interface FileNode {
@@ -56,12 +60,12 @@ interface RecentHistoryEntry {
 }
 
 const OPEN_EDITORS_ID = 'virtual:open-editors';
-const WORKSPACE_ROOTS_KEY = 'markitdown.workspace-roots';
+const WORKSPACE_ROOTS_KEY = 'zeditor.workspace-roots';
 const isTauriRuntime = () => '__TAURI_INTERNALS__' in window;
 const isDirectOpenFile = isTextFileName;
 // Keep this in sync with the desktop command. These are the file types offered
-// by MarkItDown in the workspace, rather than only files the editor can read.
-const isConvertibleFile = (name: string) => /\.(pdf|doc|docx|ppt|pptx|xls|xlsx|html?|csv|json|xml|epub|zip|png|jpe?g|gif|webp|bmp|svg|mp3|wav|m4a|ogg|eml|msg|rss|atom|ipynb)$/i.test(name);
+// by Zeditor in the workspace, rather than only files the editor can read.
+const isConvertibleFile = isConvertibleDocumentName;
 const replaceNodeChildren = (nodes: FileNode[], path: string, children: FileNode[]): FileNode[] => nodes.map(node => {
   if (node.path === path) return { ...node, children };
   return node.children ? { ...node, children: replaceNodeChildren(node.children, path, children) } : node;
@@ -185,7 +189,7 @@ function SearchSidebar({ style }: SidebarProps) {
   const [status, setStatus] = useState('');
   const [searching, setSearching] = useState(false);
   const searchSequence = useRef(0);
-  const [history, setHistory] = useState<string[]>(() => readStoredStringArray('markitdown.workspace-search-history'));
+  const [history, setHistory] = useState<string[]>(() => readStoredStringArray('zeditor.workspace-search-history'));
 
   const options = (applyReplace = false) => ({
     roots: readStoredStringArray(WORKSPACE_ROOTS_KEY), query,
@@ -206,7 +210,7 @@ function SearchSidebar({ style }: SidebarProps) {
       setResults(response.matches); setDiffs(response.diffs);
       setStatus(`${response.scanned_files} 个文件，${response.matches.length} 处匹配${response.truncated ? '（结果已截断）' : ''}${response.applied ? '；替换已写入' : ''}`);
       const next = [query, ...history.filter(item => item !== query)].slice(0, 12);
-      setHistory(next); writeStoredStringArray('markitdown.workspace-search-history', next);
+      setHistory(next); writeStoredStringArray('zeditor.workspace-search-history', next);
     } catch (error) { setStatus(String(error)); } finally { setSearching(false); }
   };
 
@@ -365,7 +369,7 @@ function ExplorerSidebar({ style }: SidebarProps) {
   }, [readBrowserFolder, readFolder, workspaceFolders]);
 
   // ── 历史记录管理 ──────────────────────────────────────────
-  const HISTORY_KEY = 'markitdown.explorer-history';
+  const HISTORY_KEY = 'zeditor.explorer-history';
   const loadHistory = useCallback(() => {
     try {
       const stored = localStorage.getItem(HISTORY_KEY);
@@ -549,11 +553,11 @@ function ExplorerSidebar({ style }: SidebarProps) {
         refreshWorkspaceFolder(detail.path);
       }
     };
-    window.addEventListener('markitdown-reset-explorer', onReset);
-    window.addEventListener('markitdown-refresh-folder', onRefresh as EventListener);
+    window.addEventListener('zeditor-reset-explorer', onReset);
+    window.addEventListener('zeditor-refresh-folder', onRefresh as EventListener);
     return () => {
-      window.removeEventListener('markitdown-reset-explorer', onReset);
-      window.removeEventListener('markitdown-refresh-folder', onRefresh as EventListener);
+      window.removeEventListener('zeditor-reset-explorer', onReset);
+      window.removeEventListener('zeditor-refresh-folder', onRefresh as EventListener);
     };
   }, [addWorkspaceFolder, refreshWorkspaceFolder]);
 
@@ -675,7 +679,7 @@ function ExplorerSidebar({ style }: SidebarProps) {
       await openFile(node.path);
     } else if (node.file) {
       // Browser folders have no native file path, so conversion must run in the
-      // desktop application where the bundled MarkItDown sidecar is available.
+      // desktop application where the optional Zeditor converter module is available.
       window.alert('文件转换仅在桌面应用中可用，请使用桌面版打开此文件夹。');
     } else {
       try {
@@ -720,7 +724,10 @@ function ExplorerSidebar({ style }: SidebarProps) {
 
   const handleOpenFile = async () => {
     try {
-      const selected = await open({ filters: [{ name: 'Markdown/文档', extensions: ['md', 'markdown', 'txt', 'pdf', 'docx', 'doc', 'pptx', 'ppt', 'xlsx', 'xls', 'html', 'htm', 'csv', 'json', 'xml', 'epub'] }], multiple: true });
+      const selected = await open({
+        filters: [{ name: '可编辑文本与可转换文档', extensions: OPENABLE_FILE_EXTENSIONS }],
+        multiple: true,
+      });
       if (!selected) return;
       for (const path of (Array.isArray(selected) ? selected : [selected])) await openFile(path as string);
       setExpandedNodes(previous => new Set(previous).add(OPEN_EDITORS_ID));

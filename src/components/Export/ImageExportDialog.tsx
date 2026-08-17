@@ -43,7 +43,7 @@ export function ImageExportDialog({ content, onClose }: ImageExportDialogProps) 
     const height = Math.round(width / current.ratio);
     const background = getComputedStyle(document.documentElement).getPropertyValue('--bg-document').trim() || '#fffdf8';
     const foreground = getComputedStyle(document.documentElement).getPropertyValue('--text-color').trim() || '#242321';
-    const themedHtml = applyExportTemplate(renderedHtml, 'MarkItDown', template);
+    const themedHtml = applyExportTemplate(renderedHtml, 'Zeditor', template);
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width * scale}" height="${height * scale}"><foreignObject width="100%" height="100%"><div xmlns="http://www.w3.org/1999/xhtml" style="box-sizing:border-box;width:100%;height:100%;padding:${Math.round(width * 0.04)}px;background:${background};color:${foreground};font-size:${Math.max(18, Math.round(width / 48))}px;overflow:hidden"><style>img{max-width:100%}</style>${themedHtml}</div></foreignObject></svg>`;
     const image = new Image();
     image.onload = () => {
@@ -54,7 +54,7 @@ export function ImageExportDialog({ content, onClose }: ImageExportDialogProps) 
       if (!context) return;
       context.drawImage(image, 0, 0);
       canvas.toBlob((blob) => {
-        if (blob) downloadBlob(blob, `markitdown-${current.label.replace(/\s/g, '')}.png`);
+        if (blob) downloadBlob(blob, `zeditor-${current.label.replace(/\s/g, '')}.png`);
         setExporting(false);
         onClose();
       }, 'image/png');

@@ -110,7 +110,7 @@ export function ConverterDialog({ action, onClose }: ConverterDialogProps) {
             <p>可通过以下方式解决：</p>
             <ul>
               <li>在<strong>设置 → 文档转换</strong>中安装或导入转换模块</li>
-              <li>安装 Python <code>markitdown</code> 库使用内置回退方案</li>
+              <li>安装对应平台的 Zeditor AnyDoc 转换模块</li>
               <li>仅支持 Markdown 格式文件可直接打开</li>
             </ul>
           </div>
