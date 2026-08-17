@@ -171,15 +171,15 @@ Agent 默认关闭，需要先在“设置 → AI 助手”中启用。Zeditor �
 
 | 操作系统 | 架构 | 最低系统版本 | 推荐安装包 | 适用场景 |
 | --- | --- | --- | --- | --- |
-| Windows | x86_64 | Windows 10 1809+ | [NSIS `.exe`](https://github.com/zhcx/markitdown/releases/download/v0.3.7/Zeditor_0.3.7_x64-setup.exe) | 推荐大多数用户使用，按向导安装 |
-| Windows | x86_64 | Windows 10 1809+ | [MSI](https://github.com/zhcx/markitdown/releases/download/v0.3.7/Zeditor_0.3.7_x64_en-US.msi) | 企业部署、系统管理或静默安装 |
-| macOS Apple Silicon | arm64 | macOS 12+ | [DMG](https://github.com/zhcx/markitdown/releases/download/v0.3.7/Zeditor_0.3.7_aarch64.dmg) | M1、M2、M3、M4 等 Apple 芯片 |
-| macOS Apple Silicon | arm64 | macOS 12+ | [APP 压缩包](https://github.com/zhcx/markitdown/releases/download/v0.3.7/Zeditor_aarch64.app.tar.gz) | 手动解压或更新 |
-| macOS Intel | x86_64 | macOS 12+ | [DMG](https://github.com/zhcx/markitdown/releases/download/v0.3.7/Zeditor_0.3.7_x64.dmg) | Intel 芯片 Mac |
-| macOS Intel | x86_64 | macOS 12+ | [APP 压缩包](https://github.com/zhcx/markitdown/releases/download/v0.3.7/Zeditor_x64.app.tar.gz) | 手动解压或更新 |
-| Ubuntu / Debian | x86_64 | Ubuntu 20.04+ / Debian 11+ | [DEB](https://github.com/zhcx/markitdown/releases/download/v0.3.7/Zeditor_0.3.7_amd64.deb) | Ubuntu、Debian、Linux Mint 等 |
-| Fedora / RHEL / openSUSE | x86_64 | Fedora 38+ / RHEL 9+ | [RPM](https://github.com/zhcx/markitdown/releases/download/v0.3.7/Zeditor-0.3.7-1.x86_64.rpm) | RPM 系发行版 |
-| 通用 Linux | x86_64 | 需 webkit2gtk-4.1 | [AppImage](https://github.com/zhcx/markitdown/releases/download/v0.3.7/Zeditor_0.3.7_amd64.AppImage) | 无需安装，赋予执行权限后运行 |
+| Windows | x86_64 | Windows 10 1809+ | [NSIS `.exe`](https://github.com/zhcx/zeditor/releases/download/v0.3.7/Zeditor_0.3.7_x64-setup.exe) | 推荐大多数用户使用，按向导安装 |
+| Windows | x86_64 | Windows 10 1809+ | [MSI](https://github.com/zhcx/zeditor/releases/download/v0.3.7/Zeditor_0.3.7_x64_en-US.msi) | 企业部署、系统管理或静默安装 |
+| macOS Apple Silicon | arm64 | macOS 12+ | [DMG](https://github.com/zhcx/zeditor/releases/download/v0.3.7/Zeditor_0.3.7_aarch64.dmg) | M1、M2、M3、M4 等 Apple 芯片 |
+| macOS Apple Silicon | arm64 | macOS 12+ | [APP 压缩包](https://github.com/zhcx/zeditor/releases/download/v0.3.7/Zeditor_aarch64.app.tar.gz) | 手动解压或更新 |
+| macOS Intel | x86_64 | macOS 12+ | [DMG](https://github.com/zhcx/zeditor/releases/download/v0.3.7/Zeditor_0.3.7_x64.dmg) | Intel 芯片 Mac |
+| macOS Intel | x86_64 | macOS 12+ | [APP 压缩包](https://github.com/zhcx/zeditor/releases/download/v0.3.7/Zeditor_x64.app.tar.gz) | 手动解压或更新 |
+| Ubuntu / Debian | x86_64 | Ubuntu 20.04+ / Debian 11+ | [DEB](https://github.com/zhcx/zeditor/releases/download/v0.3.7/Zeditor_0.3.7_amd64.deb) | Ubuntu、Debian、Linux Mint 等 |
+| Fedora / RHEL / openSUSE | x86_64 | Fedora 38+ / RHEL 9+ | [RPM](https://github.com/zhcx/zeditor/releases/download/v0.3.7/Zeditor-0.3.7-1.x86_64.rpm) | RPM 系发行版 |
+| 通用 Linux | x86_64 | 需 webkit2gtk-4.1 | [AppImage](https://github.com/zhcx/zeditor/releases/download/v0.3.7/Zeditor_0.3.7_amd64.AppImage) | 无需安装，赋予执行权限后运行 |
 
 完整更新说明、转换模块下载与安装提示见 [`docs/releases/v0.3.7.md`](docs/releases/v0.3.7.md)。
 
@@ -190,7 +190,7 @@ Agent 默认关闭，需要先在“设置 → AI 助手”中启用。Zeditor �
 
 ### 下载安装
 
-从 [Releases](https://github.com/zhcx/markitdown/releases) 页面下载适合您系统的安装包：
+从 [Releases](https://github.com/zhcx/zeditor/releases) 页面下载适合您系统的安装包：
 
 | 平台 | 架构 | 推荐下载 | 安装包格式 |
 |------|------|----------|-----------|
@@ -266,7 +266,7 @@ Zeditor 使用 AnyDoc 将 **DOC、DOCX、PPT、PPTX、XLS、XLSX、ODF、RTF、E
 | macOS Intel | `zeditor-converter-v1.2.0-x86_64-apple-darwin.zip` |
 | Linux x86_64 | `zeditor-converter-v1.2.0-x86_64-unknown-linux-gnu.zip` |
 
-模块可从 [converter-v1.2.0 Release](https://github.com/zhcx/markitdown/releases/tag/converter-v1.2.0) 页面下载。
+模块可从 [converter-v1.2.0 Release](https://github.com/zhcx/zeditor/releases/tag/converter-v1.2.0) 页面下载。
 
 #### 方式三：开发调试
 
@@ -366,7 +366,7 @@ SignPath Foundation 申请目前处于准备/审核阶段；在正式启用前�
 
 ## 📄 许可证
 
-[MIT License](https://github.com/zhcx/markitdown/blob/main/LICENSE)
+[MIT License](https://github.com/zhcx/zeditor/blob/main/LICENSE)
 
 ---
 
@@ -374,7 +374,7 @@ SignPath Foundation 申请目前处于准备/审核阶段；在正式启用前�
 
 <div align="center">
 
-[![GitHub 更新热力图](https://ghchart.rshah.org/2196f3/zhcx)](https://github.com/zhcx/markitdown/graphs/commit-activity)
+[![GitHub 更新热力图](https://ghchart.rshah.org/2196f3/zhcx)](https://github.com/zhcx/zeditor/graphs/commit-activity)
 
 </div>
 

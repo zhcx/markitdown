@@ -24,7 +24,7 @@ for (const name of files) {
   const bytes = await readFile(path);
   artifacts.push({
     target,
-    url: `https://github.com/zhcx/markitdown/releases/download/converter-v${version}/${name}`,
+    url: `https://github.com/zhcx/zeditor/releases/download/converter-v${version}/${name}`,
     size: (await stat(path)).size,
     sha256: createHash('sha256').update(bytes).digest('hex'),
   });
