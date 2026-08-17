@@ -87,13 +87,13 @@ jobs:
               done
             gh release edit "$RELEASE_TAG" \
               --repo "$GITHUB_REPOSITORY" \
-              --title "MarkitDown $RELEASE_TAG" \
+              --title "Zeditor $RELEASE_TAG" \
               --notes-file "$notes_file"
           else
             gh release create "$RELEASE_TAG" \
               --repo "$GITHUB_REPOSITORY" \
               --verify-tag \
-              --title "MarkitDown $RELEASE_TAG" \
+              --title "Zeditor $RELEASE_TAG" \
               --notes-file "$notes_file"
           fi
 
@@ -151,7 +151,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         with:
           tagName: ${{ env.RELEASE_TAG }}
-          releaseName: MarkitDown ${{ env.RELEASE_TAG }}
+          releaseName: Zeditor ${{ env.RELEASE_TAG }}
           releaseDraft: false
           prerelease: false
           args: --target ${{ matrix.target }}
@@ -208,7 +208,7 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force signpath-stage-1 | Out-Null
-          Copy-Item "src-tauri/target/$env:WINDOWS_TARGET/release/markitdown.exe" signpath-stage-1/markitdown.exe
+          Copy-Item "src-tauri/target/$env:WINDOWS_TARGET/release/zeditor.exe" signpath-stage-1/zeditor.exe
 
       - name: Upload inner executables for provenance
         id: upload-unsigned-executables
@@ -237,9 +237,9 @@ jobs:
         if: steps.signpath.outputs.enabled == 'true'
         shell: pwsh
         run: |
-          $signedApp = Get-ChildItem signed-stage-1 -Recurse -File -Filter markitdown.exe | Select-Object -First 1
+          $signedApp = Get-ChildItem signed-stage-1 -Recurse -File -Filter zeditor.exe | Select-Object -First 1
           if (-not $signedApp) { throw "SignPath did not return the application executable." }
-          Copy-Item $signedApp.FullName "src-tauri/target/$env:WINDOWS_TARGET/release/markitdown.exe" -Force
+          Copy-Item $signedApp.FullName "src-tauri/target/$env:WINDOWS_TARGET/release/zeditor.exe" -Force
 
       - name: Verify signed inner executables
         if: steps.signpath.outputs.enabled == 'true'

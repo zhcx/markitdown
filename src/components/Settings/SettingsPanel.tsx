@@ -143,7 +143,7 @@ export function SettingsPanel() {
 
   const previewContentFontSize = (fontSize: number) => {
     document.documentElement.style.setProperty('--font-content-size', `${fontSize}px`);
-    window.dispatchEvent(new CustomEvent('markitdown-content-font-size-preview', { detail: fontSize }));
+    window.dispatchEvent(new CustomEvent('zeditor-content-font-size-preview', { detail: fontSize }));
   };
 
   const handleCancel = () => {
@@ -1253,7 +1253,7 @@ export function SettingsPanel() {
                   onClick={async () => {
                     const selected = await open({
                       multiple: false,
-                      filters: [{ name: 'MarkitDown 转换模块', extensions: ['zip'] }],
+                      filters: [{ name: 'Zeditor AnyDoc 转换模块', extensions: ['zip'] }],
                     });
                     if (typeof selected !== 'string') return;
                     setConverterBusy(true);
@@ -1304,8 +1304,8 @@ export function SettingsPanel() {
               <details className="converter-advanced">
                 <summary>高级设置</summary>
                 <small>
-                  如需使用自行维护的 Python 环境，请在启动 MarkitDown 前设置
-                  <code> MARKITDOWN_PYTHON </code>
+                  开发调试时可在启动 Zeditor 前设置
+                  <code> ANYDOC_CONVERTER_PATH </code>
                   为对应 Python 可执行文件路径。应用不会自动探测或安装 Python 依赖。
                 </small>
               </details>

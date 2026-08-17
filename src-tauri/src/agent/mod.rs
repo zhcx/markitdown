@@ -307,7 +307,7 @@ fn probe_capabilities(path: &Path, backend: AgentBackendId) -> Result<(), String
     };
     if !output.status.success() || required.iter().any(|needle| !help.contains(needle)) {
         return Err(format!(
-            "当前 {} 版本缺少 MarkitDown 所需的流式或审批接口，请升级 CLI",
+            "当前 {} 版本缺少 Zeditor 所需的流式或审批接口，请升级 CLI",
             backend.label()
         ));
     }
@@ -834,7 +834,7 @@ async fn spawn_opencode_turn(
     } else {
         let response = client
             .post(format!("{base_url}/session"))
-            .json(&json!({"title": "MarkitDown Agent"}))
+            .json(&json!({"title": "Zeditor Agent"}))
             .send()
             .await
             .map_err(|error| error.to_string())?;
@@ -1507,7 +1507,7 @@ pub fn run_permission_hook(request_dir: &Path) -> Result<(), String> {
         json!({"behavior": "deny", "message": response.get("message").and_then(Value::as_str).unwrap_or("用户拒绝了此操作")})
     };
     let mut stdout = std::io::stdout();
-    writeln!(stdout, "{}", json!({"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": decision.get("behavior").and_then(Value::as_str).unwrap_or("deny"), "permissionDecisionReason": decision.get("message").and_then(Value::as_str).unwrap_or("MarkitDown Agent approval"), "updatedInput": decision.get("updatedInput").cloned().unwrap_or(Value::Null)}})).map_err(|error| error.to_string())?;
+    writeln!(stdout, "{}", json!({"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": decision.get("behavior").and_then(Value::as_str).unwrap_or("deny"), "permissionDecisionReason": decision.get("message").and_then(Value::as_str).unwrap_or("Zeditor Agent approval"), "updatedInput": decision.get("updatedInput").cloned().unwrap_or(Value::Null)}})).map_err(|error| error.to_string())?;
     stdout.flush().map_err(|error| error.to_string())?;
     Ok(())
 }
@@ -1705,8 +1705,7 @@ mod tests {
 
     #[tokio::test]
     async fn allow_all_is_memory_only_when_session_is_persisted() {
-        let storage =
-            std::env::temp_dir().join(format!("markitdown-session-test-{}", Uuid::new_v4()));
+        let storage = std::env::temp_dir().join(format!("zeditor-session-test-{}", Uuid::new_v4()));
         let session = AgentSession {
             id: "session".into(),
             backend: AgentBackendId::ClaudeCode,

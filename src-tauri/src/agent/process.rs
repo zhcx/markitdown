@@ -242,7 +242,7 @@ mod tests {
     #[test]
     fn discovery_prefers_native_exe_over_npm_shims() {
         let root =
-            std::env::temp_dir().join(format!("markitdown-process-test-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("zeditor-process-test-{}", uuid::Uuid::new_v4()));
         fs::create_dir_all(&root).unwrap();
         let shell_shim = root.join("codex");
         let cmd_shim = root.join("codex.cmd");
@@ -261,10 +261,8 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn path_discovery_does_not_need_a_shell_process() {
-        let root = std::env::temp_dir().join(format!(
-            "markitdown-discovery-test-{}",
-            uuid::Uuid::new_v4()
-        ));
+        let root =
+            std::env::temp_dir().join(format!("zeditor-discovery-test-{}", uuid::Uuid::new_v4()));
         fs::create_dir_all(&root).unwrap();
         let shim = root.join("opencode.cmd");
         fs::write(&shim, "@echo off").unwrap();
@@ -280,7 +278,7 @@ mod tests {
     #[test]
     fn official_extension_discovery_prefers_the_newest_codex_binary() {
         let root = std::env::temp_dir().join(format!(
-            "markitdown-codex-extension-test-{}",
+            "zeditor-codex-extension-test-{}",
             uuid::Uuid::new_v4()
         ));
         let older = root
@@ -309,7 +307,7 @@ mod tests {
     #[test]
     fn claude_discovery_uses_native_npm_binary_before_cmd_shim() {
         let root = std::env::temp_dir().join(format!(
-            "markitdown-claude-discovery-test-{}",
+            "zeditor-claude-discovery-test-{}",
             uuid::Uuid::new_v4()
         ));
         let native = root
@@ -332,7 +330,7 @@ mod tests {
     #[test]
     fn cmd_shims_run_without_a_console_window() {
         let root =
-            std::env::temp_dir().join(format!("markitdown command test {}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("zeditor command test {}", uuid::Uuid::new_v4()));
         fs::create_dir_all(&root).unwrap();
         let shim = root.join("agent.cmd");
         fs::write(&shim, "@echo off\r\necho %1").unwrap();

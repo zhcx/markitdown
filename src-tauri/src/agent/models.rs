@@ -58,7 +58,7 @@ async fn list_codex_models(
                     "id": 1,
                     "method": "initialize",
                     "params": {
-                        "clientInfo": {"name": "markitdown", "title": "MarkitDown", "version": env!("CARGO_PKG_VERSION")},
+                        "clientInfo": {"name": "zeditor", "title": "Zeditor", "version": env!("CARGO_PKG_VERSION")},
                         "capabilities": {"experimentalApi": true}
                     }
                 })

@@ -76,7 +76,7 @@ fn measure_data_url(browser: &Browser, html: &str) -> Result<(), Box<dyn Error>>
 
 fn measure_file_url(browser: &Browser, html: &str) -> Result<(), Box<dyn Error>> {
     let tab = browser.new_tab()?;
-    let path = std::env::temp_dir().join(format!("markitdown_probe_{}.html", uuid::Uuid::new_v4()));
+    let path = std::env::temp_dir().join(format!("zeditor_probe_{}.html", uuid::Uuid::new_v4()));
     std::fs::write(&path, html)?;
     let file_url = format!("file:///{}", path.to_string_lossy().replace('\\', "/"));
 

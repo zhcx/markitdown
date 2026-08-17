@@ -171,7 +171,7 @@ pub fn opencode_permissions(mode: AgentApprovalMode, read_only: bool) -> Value {
 
 pub fn codex_initialize() -> Value {
     json!({"id": 1, "method": "initialize", "params": {
-        "clientInfo": {"name": "markitdown", "title": "MarkitDown", "version": env!("CARGO_PKG_VERSION")},
+        "clientInfo": {"name": "zeditor", "title": "Zeditor", "version": env!("CARGO_PKG_VERSION")},
         "capabilities": {"experimentalApi": true}
     }})
 }

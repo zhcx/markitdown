@@ -10,8 +10,8 @@ test('desktop bundles remain converter-free on every platform', () => {
 
   assert.ok(!base.bundle.resources.includes('resources/document_converter.exe'))
   assert.ok(!windows.bundle.resources.includes('resources/document_converter.exe'))
-  assert.ok(base.bundle.resources.includes('resources/document_converter.py'))
-  assert.ok(windows.bundle.resources.includes('resources/document_converter.py'))
+  assert.ok(!base.bundle.resources.includes('resources/document_converter.py'))
+  assert.ok(!windows.bundle.resources.includes('resources/document_converter.py'))
 })
 
 test('converter manager verifies metadata and hashes before activation', () => {
@@ -28,14 +28,14 @@ test('converter manager verifies metadata and hashes before activation', () => {
 })
 
 test('converter protocol is versioned and keeps large Markdown out of stdout', () => {
-  const converter = read('src-tauri/resources/document_converter.py')
+  const converter = read('converter/src/main.rs')
 
-  assert.match(converter, /PROTOCOL_VERSION = 1/)
-  assert.match(converter, /"--version-json"/)
-  assert.match(converter, /os\.replace\(temporary_output, output\)/)
-  assert.match(converter, /ensure_ascii=True/)
-  assert.match(converter, /image_fallback/)
-  for (const format of ['xls', 'msg', 'mp4', 'jsonl', 'epub', 'ipynb']) {
+  assert.match(converter, /PROTOCOL_VERSION: u32 = 1/)
+  assert.match(converter, /\["--version-json"\]/)
+  assert.match(converter, /\.partial/)
+  assert.match(converter, /fs::rename\(&temporary, output\)/)
+  assert.match(converter, /engine: ENGINE/)
+  for (const format of ['doc', 'docm', 'ppt', 'xlsb', 'odt', 'epub', 'pdf']) {
     assert.match(converter, new RegExp(`"${format}"`))
   }
 })
@@ -45,7 +45,7 @@ test('open dialogs and converter metadata share the expanded format catalog', ()
   const packager = read('scripts/prepare-converter-package.mjs')
   const store = read('src/stores/appStore.ts')
 
-  for (const format of ['pdf', 'docx', 'pptx', 'xlsx', 'xls', 'html', 'jsonl', 'zip', 'epub', 'jpg', 'wav', 'mp4', 'msg', 'ipynb']) {
+  for (const format of ['doc', 'docx', 'docm', 'ppt', 'pptx', 'xls', 'xlsb', 'odt', 'ods', 'odp', 'rtf', 'epub', 'csv', 'pdf']) {
     assert.match(formats, new RegExp(`'${format}'`))
     assert.match(packager, new RegExp(`'${format}'`))
   }
@@ -53,7 +53,7 @@ test('open dialogs and converter metadata share the expanded format catalog', ()
   assert.match(store, /convertDocument\(path\)/)
 })
 
-test('converter workflow builds four unsigned native modules from the frozen uv lock', () => {
+test('converter workflow builds four native AnyDoc modules with Cargo', () => {
   const workflow = read('.github/workflows/converter.yml')
 
   for (const target of [
@@ -64,7 +64,8 @@ test('converter workflow builds four unsigned native modules from the frozen uv 
   ]) {
     assert.match(workflow, new RegExp(target))
   }
-  assert.match(workflow, /uv sync --project converter --frozen/)
+  assert.match(workflow, /cargo build --manifest-path converter\/Cargo.toml --release --locked/)
+  assert.match(workflow, /engine!=='anydoc'/)
   assert.doesNotMatch(workflow, /signpath/i)
 })
 

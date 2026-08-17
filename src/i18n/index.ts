@@ -100,7 +100,7 @@ const entries: Record<string, Translation> = {
   '导出失败': { 'zh-CN': '导出失败', 'zh-TW': '匯出失敗', en: 'Export failed' },
   '正在导出': { 'zh-CN': '正在导出', 'zh-TW': '正在匯出', en: 'Exporting' },
   '检查更新': { 'zh-CN': '检查更新', 'zh-TW': '檢查更新', en: 'Check for updates' },
-  '关于 MarkitDown': { 'zh-CN': '关于 MarkitDown', 'zh-TW': '關於 MarkitDown', en: 'About MarkitDown' },
+  '关于 Zeditor': { 'zh-CN': '关于 Zeditor', 'zh-TW': '關於 Zeditor', en: 'About Zeditor' },
   '快捷键说明': { 'zh-CN': '快捷键说明', 'zh-TW': '快捷鍵說明', en: 'Keyboard shortcuts' },
   '正在检查更新...': { 'zh-CN': '正在检查更新…', 'zh-TW': '正在檢查更新…', en: 'Checking for updates…' },
   '已是最新版本': { 'zh-CN': '已是最新版本', 'zh-TW': '已是最新版本', en: 'You are up to date' },

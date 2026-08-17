@@ -1,5 +1,5 @@
-// Prevents additional console window on Windows in release, DO NOT REMOVE!!
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+// Prevents an additional console window on Windows, including debug builds.
+#![cfg_attr(windows, windows_subsystem = "windows")]
 
 use std::{
     path::{Path, PathBuf},
@@ -97,7 +97,7 @@ fn main() {
             .map(PathBuf::from)
             .and_then(|path| agent::run_permission_hook(&path));
         if let Err(error) = result {
-            eprintln!("MarkitDown permission bridge failed: {error}");
+            eprintln!("Zeditor permission bridge failed: {error}");
         }
         return;
     }
@@ -110,10 +110,10 @@ fn main() {
             .location()
             .map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column()))
             .unwrap_or_else(|| "unknown location".to_string());
-        let full = format!("[MARKITDOWN PANIC] {location}: {msg}");
+        let full = format!("[ZEDITOR PANIC] {location}: {msg}");
         eprintln!("{}", full);
         // 同时写入文件，方便 Windows GUI 模式下诊断
-        let log_path = std::env::temp_dir().join("markitdown_crash.log");
+        let log_path = std::env::temp_dir().join("zeditor_crash.log");
         use std::io::Write;
         if let Ok(mut f) = std::fs::OpenOptions::new()
             .create(true)
@@ -206,12 +206,6 @@ fn main() {
             let agent_storage = _app.path().app_data_dir()?.join("agent-runtime");
             _app.manage(agent::AgentSupervisor::new(agent_storage));
             _app.manage(converter::ConverterManager::default());
-            #[cfg(debug_assertions)]
-            {
-                if let Some(window) = _app.get_webview_window("main") {
-                    window.open_devtools();
-                }
-            }
             Ok(())
         })
         .run(tauri::generate_context!())

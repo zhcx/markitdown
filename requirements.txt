@@ -1,3 +1,0 @@
-# Runtime dependency for the source/dev document conversion fallback.
-# Release CI restores the cross-platform converter/uv.lock instead.
-markitdown[audio-transcription,docx,outlook,pdf,pptx,xls,xlsx]==0.1.6

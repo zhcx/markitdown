@@ -81,7 +81,7 @@ export interface ChatConversation {
   messages: ChatMessage[];
 }
 
-const CHAT_HISTORY_STORAGE_KEY = 'markitdown.ai-chat-history';
+const CHAT_HISTORY_STORAGE_KEY = 'zeditor.ai-chat-history';
 const CHAT_HISTORY_LIMIT = 30;
 
 const createConversationId = () => `chat-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;

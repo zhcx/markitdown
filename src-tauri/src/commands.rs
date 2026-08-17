@@ -325,9 +325,9 @@ fn app_config_file(app: &AppHandle, file_name: &str) -> Result<PathBuf, String> 
     Ok(config_dir.join(file_name))
 }
 
-/// 写一行日志到系统临时目录下的 markitdown_crash.log，用于诊断崩溃
+/// 写一行日志到系统临时目录下的 zeditor_crash.log，用于诊断崩溃
 pub fn log_to_file(msg: &str) {
-    let log_path = std::env::temp_dir().join("markitdown_crash.log");
+    let log_path = std::env::temp_dir().join("zeditor_crash.log");
     use std::io::Write;
     if let Ok(mut f) = std::fs::OpenOptions::new()
         .create(true)
@@ -416,7 +416,7 @@ pub async fn upload_image_bytes(
         return Err("Clipboard image is larger than the 20 MB limit".into());
     }
     let temp_path = std::env::temp_dir().join(format!(
-        "markitdown-paste-{}.{}",
+        "zeditor-paste-{}.{}",
         uuid::Uuid::new_v4(),
         safe_extension
     ));
@@ -541,7 +541,7 @@ fn wrap_html_page(body: &str, margin_mm: f32) -> String {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>MarkitDown Export</title>
+<title>Zeditor Export</title>
 <style>
 @page {{ margin: {margin}mm; }}
 * {{ box-sizing: border-box; }}
@@ -588,9 +588,9 @@ fn wrap_word_page(body: &str, margin_mm: f32) -> String {
 <head>
 <meta charset="UTF-8">
 <meta name="ProgId" content="Word.Document">
-<meta name="Generator" content="MarkitDown">
-<meta name="Originator" content="MarkitDown">
-<title>MarkitDown Export</title>
+<meta name="Generator" content="Zeditor">
+<meta name="Originator" content="Zeditor">
+<title>Zeditor Export</title>
 <!--[if gte mso 9]>
 <xml>
   <w:WordDocument>
@@ -662,7 +662,7 @@ pub async fn export_pdf(
     let with_images = embed_images(&html_body, file_path.as_deref());
     let full = wrap_html_page(&with_images, settings.pdf_margin);
     let temp_dir = std::env::temp_dir();
-    let temp_html = temp_dir.join(format!("markitdown_export_{}.html", uuid::Uuid::new_v4()));
+    let temp_html = temp_dir.join(format!("zeditor_export_{}.html", uuid::Uuid::new_v4()));
     std::fs::write(&temp_html, full).map_err(|e| format!("{}", e))?;
     // Return as file:// URL so the shell plugin can open it
     let url = format!("file:///{}", temp_html.to_string_lossy().replace('\\', "/"));
@@ -1555,8 +1555,8 @@ pub async fn check_for_updates() -> Result<UpdateInfo, String> {
         .map_err(|e| format!("HTTP: {}", e))?;
     let current = VERSION.to_string();
     let resp = match client
-        .get("https://api.github.com/repos/zhcx/markitdown/releases/latest")
-        .header("User-Agent", "MarkitDown")
+        .get("https://api.github.com/repos/zhcx/zeditor/releases/latest")
+        .header("User-Agent", "Zeditor")
         .header("Accept", "application/vnd.github.v3+json")
         .send()
         .await
@@ -1619,7 +1619,7 @@ pub async fn check_for_updates() -> Result<UpdateInfo, String> {
         latest_version: latest,
         download_url: rel["html_url"]
             .as_str()
-            .unwrap_or("https://github.com/zhcx/markitdown/releases")
+            .unwrap_or("https://github.com/zhcx/zeditor/releases")
             .into(),
         asset_download_url,
         asset_name,
@@ -1636,8 +1636,8 @@ async fn check_updates_from_atom(
     api_error: String,
 ) -> Result<UpdateInfo, String> {
     let feed = client
-        .get("https://github.com/zhcx/markitdown/releases.atom")
-        .header("User-Agent", "MarkitDown")
+        .get("https://github.com/zhcx/zeditor/releases.atom")
+        .header("User-Agent", "Zeditor")
         .send()
         .await
         .map_err(|error| format!("{}; Release feed: {}", api_error, error))?;
@@ -1653,7 +1653,7 @@ async fn check_updates_from_atom(
     )?;
     let has_update = compare_versions(&latest, &current)?;
     let download_url = format!(
-        "https://github.com/zhcx/markitdown/releases/tag/v{}",
+        "https://github.com/zhcx/zeditor/releases/tag/v{}",
         latest
     );
 
@@ -1735,22 +1735,22 @@ mod update_tests {
     fn extracts_the_first_release_tag_from_an_atom_feed() {
         let feed = r#"
             <feed>
-              <entry><link href="https://github.com/zhcx/markitdown/releases/tag/v0.2.6" /></entry>
-              <entry><link href="https://github.com/zhcx/markitdown/releases/tag/v0.2.5" /></entry>
+              <entry><link href="https://github.com/zhcx/zeditor/releases/tag/v0.3.7" /></entry>
+              <entry><link href="https://github.com/zhcx/zeditor/releases/tag/v0.3.6" /></entry>
             </feed>
         "#;
 
-        assert_eq!(extract_latest_tag_from_atom(feed).unwrap(), "0.2.6");
+        assert_eq!(extract_latest_tag_from_atom(feed).unwrap(), "0.3.7");
     }
 
     #[test]
     fn accepts_only_safe_installers_from_this_projects_releases() {
         assert!(validate_update_download(
-            "https://github.com/zhcx/markitdown/releases/download/v0.3.2/MarkitDown_0.3.2_x64-setup.exe",
-            "MarkitDown_0.3.2_x64-setup.exe",
+            "https://github.com/zhcx/zeditor/releases/download/v0.3.7/Zeditor_0.3.7_x64-setup.exe",
+            "Zeditor_0.3.7_x64-setup.exe",
         ).is_ok());
         assert!(validate_update_download(
-            "http://github.com/zhcx/markitdown/releases/download/v1/app.exe",
+            "http://github.com/zhcx/zeditor/releases/download/v1/app.exe",
             "app.exe"
         )
         .is_err());
@@ -1761,12 +1761,12 @@ mod update_tests {
         )
         .is_err());
         assert!(validate_update_download(
-            "https://github.com/zhcx/markitdown/releases/download/v1/app.exe",
+            "https://github.com/zhcx/zeditor/releases/download/v1/app.exe",
             "..\\app.exe"
         )
         .is_err());
         assert!(validate_update_download(
-            "https://github.com/zhcx/markitdown/releases/download/v1/app.zip",
+            "https://github.com/zhcx/zeditor/releases/download/v1/app.zip",
             "app.zip"
         )
         .is_err());
@@ -1824,7 +1824,7 @@ mod workspace_search_tests {
 
     #[tokio::test]
     async fn capped_results_do_not_partially_apply_workspace_replacements() {
-        let root = std::env::temp_dir().join(format!("markitdown-search-{}", uuid::Uuid::new_v4()));
+        let root = std::env::temp_dir().join(format!("zeditor-search-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).expect("create search fixture");
         let content = "needle\n".repeat(1_100);
         let first = root.join("first.md");
@@ -1864,11 +1864,11 @@ fn validate_update_download(download_url: &str, file_name: &str) -> Result<reqwe
         && url.host_str() == Some("github.com")
         && url
             .path()
-            .starts_with("/zhcx/markitdown/releases/download/")
+            .starts_with("/zhcx/zeditor/releases/download/")
         && url.query().is_none()
         && url.fragment().is_none();
     if !valid_release {
-        return Err("更新安装包必须来自 MarkitDown 的 GitHub Release".into());
+        return Err("更新安装包必须来自 Zeditor 的 GitHub Release".into());
     }
 
     let path = Path::new(file_name);
@@ -1896,7 +1896,7 @@ pub async fn download_and_install_update(
 ) -> Result<(), String> {
     const MAX_UPDATE_BYTES: u64 = 1024 * 1024 * 1024;
     let download_url = validate_update_download(&download_url, &file_name)?;
-    let temp_dir = std::env::temp_dir().join("markitdown_update");
+    let temp_dir = std::env::temp_dir().join("zeditor_update");
     std::fs::create_dir_all(&temp_dir).map_err(|e| format!("创建临时目录失败: {}", e))?;
     let installer_path = temp_dir.join(&file_name);
 
@@ -1908,7 +1908,7 @@ pub async fn download_and_install_update(
 
     let resp = client
         .get(download_url)
-        .header("User-Agent", "MarkitDown")
+        .header("User-Agent", "Zeditor")
         .send()
         .await
         .map_err(|e| format!("下载请求失败: {}", e))?;

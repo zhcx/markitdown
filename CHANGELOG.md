@@ -1,19 +1,19 @@
 # 更新日志
 
-## v0.3.6（2026-07-29）
+## v0.3.7（2026-08-17）
 
-完整说明见 [`docs/releases/v0.3.6.md`](docs/releases/v0.3.6.md)。
+完整说明见 [`docs/releases/v0.3.7.md`](docs/releases/v0.3.7.md)。
 
 ### 文档转换
 
-- 将可选转换模块升级至 v1.1.0，并保持 Microsoft MarkItDown 依赖为最新稳定版 0.1.6。
-- 新增 XLS、Outlook MSG、音频转写依赖，以及 HTML、CSV、JSON/JSONL、XML/RSS/Atom、ZIP、EPUB、图片和 Jupyter Notebook 等格式入口。
-- JPG/JPEG/PNG 在没有 LLM 或 ExifTool 输出时，会生成本地图片引用和基础图像/EXIF 元数据。
+- 将可选转换模块升级至 v1.2.0，替换为 Firecrawl AnyDoc 0.1.9 原生 Rust 引擎。
+- 新增 DOC、DOCM、PPT、PPS、POT、PPTM、PPSX、PPSM、XLSM、XLSB、ODF、RTF 和 EPUB 等格式入口。
+- AnyDoc 通过统一文档模型生成结构化 Markdown，并在本地完成文本型 PDF 转换。
 - 统一菜单、资源管理器、拖放和系统文件打开的格式路由，避免把二进制文档当作文本读取。
 
 ### 版本
 
-- 应用版本统一更新为 0.3.6，转换模块版本统一更新为 1.1.0。
+- 应用版本统一更新为 0.3.7，转换模块版本统一更新为 1.2.0，产品名称统一为 Zeditor。
 
 ## v0.3.4（2026-07-22）
 
@@ -98,7 +98,7 @@
 
 - 修复自定义标题栏偶发无法拖动的问题。
 - 修复点击标题栏时窗口偶发最小化或窗口状态异常的问题。
-- 修复窗口最小化后，点击 Windows 任务栏中的 MarkitDown 图标偶发无法恢复界面的问题。
+- 修复窗口最小化后，点击 Windows 任务栏中的 Zeditor 图标偶发无法恢复界面的问题。
 - 标题栏统一使用 Tauri 原生拖拽与双击处理，移除重复的手动窗口操作，避免 Windows 窗口消息竞态。
 - 新增标题栏窗口交互回归测试。
 

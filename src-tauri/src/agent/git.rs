@@ -93,7 +93,7 @@ pub fn create_isolated_worktree(
 
     let patch = git(root, &["diff", "--binary", "HEAD"])?;
     if !patch.trim().is_empty() {
-        let patch_path = session_dir.join(".markitdown-baseline.patch");
+        let patch_path = session_dir.join(".zeditor-baseline.patch");
         fs::write(&patch_path, patch.as_bytes()).map_err(|error| error.to_string())?;
         let patch_arg = patch_path.to_string_lossy().to_string();
         let apply_result = git(session_dir, &["apply", "--binary", &patch_arg]);
@@ -112,13 +112,13 @@ pub fn create_isolated_worktree(
         session_dir,
         &[
             "-c",
-            "user.name=MarkitDown Agent",
+            "user.name=Zeditor Agent",
             "-c",
-            "user.email=agent@markitdown.local",
+            "user.email=agent@zeditor.local",
             "commit",
             "--allow-empty",
             "-m",
-            "MarkitDown Agent baseline",
+            "Zeditor Agent baseline",
         ],
     )?;
     let base_commit = git(session_dir, &["rev-parse", "HEAD"])?.trim().to_string();
@@ -234,7 +234,7 @@ pub fn apply_changes(
     if patch.trim().is_empty() {
         return Ok(());
     }
-    let patch_path = worktree.join(".markitdown-agent-result.patch");
+    let patch_path = worktree.join(".zeditor-agent-result.patch");
     fs::write(&patch_path, patch.as_bytes()).map_err(|error| error.to_string())?;
     let patch_arg = patch_path.to_string_lossy().to_string();
     let result = git(
@@ -246,14 +246,14 @@ pub fn apply_changes(
 
     let mut commit_args = vec![
         "-c",
-        "user.name=MarkitDown Agent",
+        "user.name=Zeditor Agent",
         "-c",
-        "user.email=agent@markitdown.local",
+        "user.email=agent@zeditor.local",
         "commit",
         "--allow-empty",
         "--only",
         "-m",
-        "MarkitDown Agent applied changes",
+        "Zeditor Agent applied changes",
         "--",
     ];
     commit_args.extend(paths.iter().map(String::as_str));
@@ -301,7 +301,7 @@ mod tests {
     #[test]
     fn isolated_baseline_preserves_dirty_files_and_applies_only_agent_delta() {
         let parent =
-            std::env::temp_dir().join(format!("markitdown-agent-test-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("zeditor-agent-test-{}", uuid::Uuid::new_v4()));
         let root = parent.join("repo");
         let worktree = parent.join("worktree");
         fs::create_dir_all(&root).unwrap();
@@ -389,10 +389,8 @@ mod tests {
 
     #[test]
     fn refuses_to_apply_when_original_changed_after_session_started() {
-        let parent = std::env::temp_dir().join(format!(
-            "markitdown-agent-conflict-{}",
-            uuid::Uuid::new_v4()
-        ));
+        let parent =
+            std::env::temp_dir().join(format!("zeditor-agent-conflict-{}", uuid::Uuid::new_v4()));
         let root = parent.join("repo");
         let worktree = parent.join("worktree");
         fs::create_dir_all(&root).unwrap();

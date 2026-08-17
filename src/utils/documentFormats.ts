@@ -1,35 +1,12 @@
 /**
- * File formats supported by the bundled Microsoft MarkItDown 0.1.6 converter.
- *
- * Keep this list aligned with `SUPPORTED_FORMATS` in
- * `src-tauri/resources/document_converter.py` and the module packaging script.
+ * File formats supported by the optional Firecrawl AnyDoc converter.
+ * Keep this list aligned with converter/src/main.rs and the module packager.
  */
 export const CONVERTIBLE_DOCUMENT_EXTENSIONS = [
-  'pdf',
-  'docx',
-  'pptx',
-  'xlsx',
-  'xls',
-  'html',
-  'htm',
-  'xhtml',
-  'csv',
-  'json',
-  'jsonl',
-  'xml',
-  'rss',
-  'atom',
-  'zip',
-  'epub',
-  'jpg',
-  'jpeg',
-  'png',
-  'wav',
-  'mp3',
-  'm4a',
-  'mp4',
-  'msg',
-  'ipynb',
+  'doc', 'docx', 'docm',
+  'ppt', 'pps', 'pot', 'pptx', 'pptm', 'ppsx', 'ppsm',
+  'xls', 'xlsx', 'xlsm', 'xlsb',
+  'odt', 'ods', 'odp', 'rtf', 'epub', 'csv', 'pdf',
 ] as const;
 
 export const DIRECTLY_EDITABLE_EXTENSIONS = [

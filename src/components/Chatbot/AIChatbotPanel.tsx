@@ -77,12 +77,12 @@ function ReasoningOptionIcon({ effort }: { effort: ReasoningEffort }) {
 
 export function AIChatbotPanel() {
   const [runtime, setRuntime] = useState<AIRuntime>(() => {
-    try { return localStorage.getItem('markitdown.ai-runtime') === 'agent' ? 'agent' : 'api'; }
+    try { return localStorage.getItem('zeditor.ai-runtime') === 'agent' ? 'agent' : 'api'; }
     catch { return 'api'; }
   });
   const handleRuntimeChange = (next: AIRuntime) => {
     setRuntime(next);
-    try { localStorage.setItem('markitdown.ai-runtime', next); } catch { /* ignored */ }
+    try { localStorage.setItem('zeditor.ai-runtime', next); } catch { /* ignored */ }
   };
   return runtime === 'agent'
     ? <AgentPanel onRuntimeChange={handleRuntimeChange} />
@@ -110,8 +110,8 @@ function ApiChatPanel({ onRuntimeChange }: { onRuntimeChange: (runtime: AIRuntim
   const { settings } = useAppStore();
   const workspaceConfig = useMemo(() => {
     try {
-      const roots = readStoredStringArray('markitdown.workspace-roots');
-      const key = roots[0] ? `markitdown.workspace-ai-config:${roots[0]}` : '';
+      const roots = readStoredStringArray('zeditor.workspace-roots');
+      const key = roots[0] ? `zeditor.workspace-ai-config:${roots[0]}` : '';
       if (!key) return { key };
       const saved = JSON.parse(localStorage.getItem(key) || '{}') as { provider?: AIProviderId; model?: string };
       return { key, ...saved };

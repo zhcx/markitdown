@@ -69,7 +69,7 @@ export async function performWebSearch(query: string, settings: WebSearchSetting
       body: JSON.stringify({ query: normalizedQuery, settings }),
     });
   } catch {
-    throw new Error('浏览器搜索代理不可用，请确认 MarkitDown 开发服务仍在运行');
+    throw new Error('浏览器搜索代理不可用，请确认 Zeditor 开发服务仍在运行');
   }
   const body = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(body.error || `浏览器搜索服务失败 (${response.status})`);

@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "MarkitDown",
-  "version": "0.3.6",
-  "identifier": "com.markitdown.desktop",
+  "productName": "Zeditor",
+  "version": "0.3.7",
+  "identifier": "com.zeditor.desktop",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:5173",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "MarkitDown",
+        "title": "Zeditor",
         "width": 1200,
         "height": 800,
         "minWidth": 800,
@@ -34,13 +34,11 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "resources": [
-      "resources/document_converter.py"
-    ],
+    "resources": [],
     "fileAssociations": [
       {
         "ext": ["md", "markdown"],
-        "name": "MarkitDown.Markdown",
+        "name": "Zeditor.Markdown",
         "description": "Markdown Document",
         "mimeType": "text/markdown",
         "role": "Editor"

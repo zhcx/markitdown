@@ -120,7 +120,7 @@ function createController(editor: monaco.editor.IStandaloneCodeEditor, model: mo
     const change = spec?.changes;
     if (change && typeof change.from === 'number') {
       const text = change.insert ?? '';
-      editor.executeEdits('markitdown', [{ range: monaco.Range.fromPositions(offsetToPosition(model, change.from), offsetToPosition(model, change.to ?? change.from)), text, forceMoveMarkers: true }]);
+      editor.executeEdits('zeditor', [{ range: monaco.Range.fromPositions(offsetToPosition(model, change.from), offsetToPosition(model, change.to ?? change.from)), text, forceMoveMarkers: true }]);
     }
     const selected = spec?.selection?.main || spec?.selection;
     const anchor = selected?.anchor ?? selected?.from;
@@ -148,7 +148,7 @@ function createController(editor: monaco.editor.IStandaloneCodeEditor, model: mo
     getSelection,
     getText: (from, to) => model.getValueInRange(monaco.Range.fromPositions(offsetToPosition(model, from), offsetToPosition(model, to))),
     replaceRange: (from, to, text, selection) => {
-      editor.executeEdits('markitdown', [{ range: monaco.Range.fromPositions(offsetToPosition(model, from), offsetToPosition(model, to)), text, forceMoveMarkers: true }]);
+      editor.executeEdits('zeditor', [{ range: monaco.Range.fromPositions(offsetToPosition(model, from), offsetToPosition(model, to)), text, forceMoveMarkers: true }]);
       if (selection) setSelection(selection.from, selection.to);
     },
     setSelection,
@@ -165,8 +165,8 @@ function createController(editor: monaco.editor.IStandaloneCodeEditor, model: mo
       return { left, bottom, x: left, y: bottom };
     },
     focus: () => editor.focus(),
-    undo: () => editor.trigger('markitdown', 'undo', null),
-    redo: () => editor.trigger('markitdown', 'redo', null),
+    undo: () => editor.trigger('zeditor', 'undo', null),
+    redo: () => editor.trigger('zeditor', 'redo', null),
     revealOffset: (offset) => editor.revealPositionInCenter(offsetToPosition(model, offset)),
     dispatch: applyDispatch,
   } as EditorController;
@@ -226,13 +226,13 @@ export function Editor({ className, style, onActiveLineChange, onActiveLineRevea
       slashMenuRef.current = null;
       setSlashMenu(null);
       monacoRef.current?.trigger(
-        'markitdown-editor-find',
+        'zeditor-editor-find',
         replace ? 'editor.action.startFindReplaceAction' : 'actions.find',
         null,
       );
     };
-    window.addEventListener('markitdown-editor-find', handleFindRequest);
-    return () => window.removeEventListener('markitdown-editor-find', handleFindRequest);
+    window.addEventListener('zeditor-editor-find', handleFindRequest);
+    return () => window.removeEventListener('zeditor-editor-find', handleFindRequest);
   }, []);
 
   const runContextMenuAction = useCallback(async (action: 'undo' | 'redo' | 'cut' | 'copy' | 'copyHtml' | 'copyPlain' | 'paste' | 'selectAll') => {
@@ -243,7 +243,7 @@ export function Editor({ className, style, onActiveLineChange, onActiveLineRevea
     if (!editor || !model || !controller) return;
 
     if (action === 'undo' || action === 'redo') {
-      editor.trigger('markitdown-context-menu', action, null);
+      editor.trigger('zeditor-context-menu', action, null);
     } else if (action === 'selectAll') {
       editor.setSelection(model.getFullModelRange());
     } else if (action === 'paste') {
@@ -255,7 +255,7 @@ export function Editor({ className, style, onActiveLineChange, onActiveLineRevea
           to: selection.from + text.length,
         });
       } catch {
-        editor.trigger('markitdown-context-menu', 'editor.action.clipboardPasteAction', null);
+      editor.trigger('zeditor-context-menu', 'editor.action.clipboardPasteAction', null);
       }
     } else {
       const selection = controller.getSelection();
@@ -288,7 +288,7 @@ export function Editor({ className, style, onActiveLineChange, onActiveLineRevea
             // Clipboard permissions can be denied by the host WebView.
           }
         } else {
-          editor.trigger('markitdown-context-menu', `editor.action.clipboard${action === 'cut' ? 'Cut' : 'Copy'}Action`, null);
+      editor.trigger('zeditor-context-menu', `editor.action.clipboard${action === 'cut' ? 'Cut' : 'Copy'}Action`, null);
         }
       }
     }
@@ -339,7 +339,7 @@ export function Editor({ className, style, onActiveLineChange, onActiveLineRevea
 
   const requestExport = useCallback((format: 'pdf' | 'word' | 'html') => {
     setContextMenu(null);
-    window.dispatchEvent(new CustomEvent('markitdown-export-request', { detail: { format } }));
+    window.dispatchEvent(new CustomEvent('zeditor-export-request', { detail: { format } }));
   }, []);
 
   const revealCurrentFile = useCallback(async () => {
@@ -615,7 +615,7 @@ export function Editor({ className, style, onActiveLineChange, onActiveLineRevea
       const theme = (event as CustomEvent<string>).detail;
       monaco.editor.setTheme(theme.endsWith('-dark') ? 'vs-dark' : 'vs');
     };
-    window.addEventListener('markitdown-theme-change', handleTheme);
+    window.addEventListener('zeditor-theme-change', handleTheme);
 
     const handlePaste = async (event: ClipboardEvent) => {
       const image = Array.from(event.clipboardData?.items || []).find((item) => item.type.startsWith('image/'))?.getAsFile();
@@ -663,7 +663,7 @@ export function Editor({ className, style, onActiveLineChange, onActiveLineRevea
       editorNode?.removeEventListener('pointerdown', handleSelectionPointerDown, true);
       window.removeEventListener('pointerup', handleSelectionPointerEnd, true);
       window.removeEventListener('pointercancel', handleSelectionPointerEnd, true);
-      window.removeEventListener('markitdown-theme-change', handleTheme);
+    window.removeEventListener('zeditor-theme-change', handleTheme);
       contentDisposable.dispose();
       cursorDisposable.dispose();
       mouseDisposable.dispose();
@@ -705,8 +705,8 @@ export function Editor({ className, style, onActiveLineChange, onActiveLineRevea
         lineHeight: Math.round(fontSize * settings.appearance.line_height),
       });
     };
-    window.addEventListener('markitdown-content-font-size-preview', handleFontSizePreview);
-    return () => window.removeEventListener('markitdown-content-font-size-preview', handleFontSizePreview);
+    window.addEventListener('zeditor-content-font-size-preview', handleFontSizePreview);
+    return () => window.removeEventListener('zeditor-content-font-size-preview', handleFontSizePreview);
   }, [settings.appearance.line_height]);
 
   useEffect(() => {

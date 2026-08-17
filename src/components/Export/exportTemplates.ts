@@ -29,8 +29,8 @@ export const EXPORT_TEMPLATES: ExportTemplate[] = [
 ];
 
 export const getExportTemplate = (id: ExportTemplateId): ExportTemplate => ({ ...(EXPORT_TEMPLATES.find((template) => template.id === id) || EXPORT_TEMPLATES[0]) });
-export const loadExportTemplate = () => { try { return getExportTemplate((localStorage.getItem('markitdown.export-template') || 'wechat') as ExportTemplateId); } catch { return getExportTemplate('wechat'); } };
-export const saveExportTemplate = (template: ExportTemplate) => localStorage.setItem('markitdown.export-template', template.id);
+export const loadExportTemplate = () => { try { return getExportTemplate((localStorage.getItem('zeditor.export-template') || localStorage.getItem('markitdown.export-template') || 'wechat') as ExportTemplateId); } catch { return getExportTemplate('wechat'); } };
+export const saveExportTemplate = (template: ExportTemplate) => localStorage.setItem('zeditor.export-template', template.id);
 
 const escapeHtmlText = (value: string) => value
   .replace(/&/g, '&amp;')
@@ -44,7 +44,7 @@ const safeStyleText = (value: string) => value.replace(/</g, '\\3C ');
 export function applyExportTemplate(html: string, title: string, template: ExportTemplate) {
   const safeTitle = escapeHtmlText(title);
   const headings = [...html.matchAll(/<h([1-3])[^>]*>(.*?)<\/h\1>/g)].map((heading) => `<li>${heading[2].replace(/<[^>]+>/g, '')}</li>`).join('');
-  const cover = template.cover ? `<section class="export-cover"><h1>${safeTitle}</h1><p>MarkItDown 导出文档</p></section>` : '';
+  const cover = template.cover ? `<section class="export-cover"><h1>${safeTitle}</h1><p>Zeditor 导出文档</p></section>` : '';
   const toc = template.toc && headings ? `<nav class="export-toc"><strong>目录</strong><ol>${headings}</ol></nav>` : '';
   const watermark = template.watermark ? `<div class="export-watermark">${escapeHtmlText(template.watermark)}</div>` : '';
   const footer = template.headerFooter ? `<footer class="export-footer"><span>${safeTitle}</span><span>第 <span class="page-number">页</span></span></footer>` : '';

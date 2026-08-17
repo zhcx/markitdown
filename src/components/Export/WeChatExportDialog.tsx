@@ -55,7 +55,7 @@ function renderWeChatHtml(markdown: string, title: string, theme: WeChatTheme) {
   });
   const cover = documentNode.createElement('section');
   cover.setAttribute('style', `margin:8px 0 30px;padding:30px 24px 24px;border-top:5px solid ${theme.primary};background:${theme.pale};`);
-  cover.innerHTML = `<p style="margin:0 0 10px;color:${theme.primary};font-size:12px;letter-spacing:2px;font-family:${WECHAT_FONT_FAMILY};"><span leaf="">MARKITDOWN · WECHAT</span></p><p style="margin:0;font-size:28px;line-height:1.35;font-weight:700;${textStyle(theme)}"><span leaf="" data-wechat-title></span></p><p style="margin:14px 0 0;color:${theme.primary};font-family:${WECHAT_FONT_FAMILY};font-size:13px;"><span leaf="">阅读这篇文章</span></p>`;
+  cover.innerHTML = `<p style="margin:0 0 10px;color:${theme.primary};font-size:12px;letter-spacing:2px;font-family:${WECHAT_FONT_FAMILY};"><span leaf="">ZEDITOR · WECHAT</span></p><p style="margin:0;font-size:28px;line-height:1.35;font-weight:700;${textStyle(theme)}"><span leaf="" data-wechat-title></span></p><p style="margin:14px 0 0;color:${theme.primary};font-family:${WECHAT_FONT_FAMILY};font-size:13px;"><span leaf="">阅读这篇文章</span></p>`;
   const titleNode = cover.querySelector<HTMLElement>('[data-wechat-title]');
   if (titleNode) {
     titleNode.textContent = title;

@@ -9,7 +9,7 @@
       // Desktop keeps this small mirror in WebView localStorage as well.
       (() => {
         try {
-          const saved = JSON.parse(localStorage.getItem('markitdown.browser.settings') || 'null');
+          const saved = JSON.parse(localStorage.getItem('zeditor.browser.settings') || localStorage.getItem('markitdown.browser.settings') || 'null');
           const preference = saved?.appearance?.theme;
           const validThemes = ['vscode-light', 'vscode-dark', 'claude-light', 'claude-dark', 'notion-light', 'notion-dark'];
           const theme = preference === 'system'
@@ -28,7 +28,7 @@
         } catch { /* Use the stylesheet default when cached data is unavailable. */ }
       })();
     </script>
-    <title>MarkitDown</title>
+    <title>Zeditor</title>
   </head>
   <body>
     <div id="root"></div>

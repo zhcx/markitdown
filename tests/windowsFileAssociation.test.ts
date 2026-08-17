@@ -12,7 +12,7 @@ test('Windows bundles register Markdown files with a dedicated document icon', (
   )
 
   assert.deepEqual(association?.ext, ['md', 'markdown'])
-  assert.equal(association?.name, 'MarkitDown.Markdown')
+  assert.equal(association?.name, 'Zeditor.Markdown')
   assert.equal(association?.description, 'Markdown Document')
   assert.ok(existsSync('src-tauri/icons/markdown-file.ico'))
   assert.ok(windowsConfig.bundle.resources.includes('icons/markdown-file.ico'))
@@ -21,12 +21,12 @@ test('Windows bundles register Markdown files with a dedicated document icon', (
   assert.ok(windowsConfig.bundle.windows.wix.componentRefs.includes('MarkdownFileAssociationIcon'))
 
   const hooks = read('src-tauri/windows/markdown-file-association.nsh')
-  assert.match(hooks, /MarkitDown\.Markdown\\DefaultIcon/)
+  assert.match(hooks, /Zeditor\.Markdown\\DefaultIcon/)
   assert.match(hooks, /markdown-file\.ico/)
   assert.match(hooks, /UPDATEFILEASSOC/)
 
   const wix = read('src-tauri/windows/markdown-file-association.wxs')
-  assert.match(wix, /MarkitDown\.Markdown\\DefaultIcon/)
+  assert.match(wix, /Zeditor\.Markdown\\DefaultIcon/)
   assert.match(wix, /markdown-file\.ico,0/)
 })
 

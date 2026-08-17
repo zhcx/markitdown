@@ -60,7 +60,7 @@ function applyThemeToDocument(preference: string) {
   root.classList.add('theme-switching');
   root.setAttribute('data-theme', resolvedTheme);
   root.style.colorScheme = resolvedTheme.endsWith('-dark') ? 'dark' : 'light';
-  window.dispatchEvent(new CustomEvent('markitdown-theme-change', { detail: resolvedTheme }));
+  window.dispatchEvent(new CustomEvent('zeditor-theme-change', { detail: resolvedTheme }));
   themeSwitchFrame = window.requestAnimationFrame(() => {
     root.classList.remove('theme-switching');
     themeSwitchFrame = null;

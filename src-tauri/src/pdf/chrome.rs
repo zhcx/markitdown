@@ -188,7 +188,7 @@ pub fn wrap_html_with_fonts(body: &str, margin_mm: f32, font_config: &FontConfig
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>MarkitDown Export</title>
+<title>Zeditor Export</title>
 <style>
 @page {{ margin: {margin}mm; }}
 * {{ box-sizing: border-box; }}
@@ -324,7 +324,7 @@ struct TempHtmlFile {
 impl TempHtmlFile {
     fn new(html: &str) -> PdfResult<Self> {
         let path =
-            std::env::temp_dir().join(format!("markitdown_export_{}.html", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("zeditor_export_{}.html", uuid::Uuid::new_v4()));
         std::fs::write(&path, html.as_bytes())?;
         Ok(Self { path })
     }
@@ -375,7 +375,7 @@ mod tests {
     #[test]
     fn embed_images_continues_after_img_without_src() {
         let temp_dir =
-            std::env::temp_dir().join(format!("markitdown_pdf_test_{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("zeditor_pdf_test_{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&temp_dir).unwrap();
         let image_path = temp_dir.join("image.png");
         std::fs::write(&image_path, [0_u8, 1, 2, 3]).unwrap();

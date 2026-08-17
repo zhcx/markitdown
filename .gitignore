@@ -17,12 +17,15 @@ src-tauri/target
 src-tauri/target-*
 /target
 src-tauri/resources/document_converter.exe
+converter/target/
 .converter-build/
 .converter-keys/
 converter-dist/
 converter-work/
 converter-package/
+converter-package-*/
 converter-package-test.zip
+zeditor-converter-*.zip
 
 # Local UI verification screenshots
 /*-preview.png

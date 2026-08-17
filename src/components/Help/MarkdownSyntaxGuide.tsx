@@ -16,11 +16,11 @@ const SYNTAX_ITEMS: SyntaxItem[] = [
   { id: 'heading', group: '基础排版', title: '标题', summary: '在行首输入 1～6 个 #，# 越少，标题级别越高。# 后必须留一个空格。', code: '# 一级标题\n## 二级标题\n### 三级标题\n#### 四级标题\n##### 五级标题\n###### 六级标题', result: '显示六级层次分明的标题，并自动进入文档大纲。', tip: '一篇文章通常只使用一个一级标题。' },
   { id: 'paragraph', group: '基础排版', title: '段落与换行', summary: '空一行开始新段落；行尾输入两个空格再回车，可以只换行而不分段。', code: '这是第一段。\n\n这是第二段。\n这一行末尾有两个空格  \n所以这里只换行。', result: '第一、第二段之间有段落间距，最后两行仍属于同一段。' },
   { id: 'emphasis', group: '基础排版', title: '粗体、斜体与删除线', summary: '用成对的标记包住文字。标记和文字之间不要留空格。', code: '**粗体**\n*斜体*\n***粗斜体***\n~~删除线~~', result: '分别显示粗体、斜体、粗斜体和带删除线的文字。' },
-  { id: 'extended-text', group: '基础排版', title: '高亮、下划线、上标与下标', summary: '这些是 MarkitDown 支持的扩展写法，适合重点和公式说明。', code: '==高亮文字==\n<u>下划线文字</u>\nX<sup>2</sup>\nH<sub>2</sub>O', result: '显示高亮、下划线、上标和下标效果。', tip: 'HTML 标签属于扩展语法，发布到其他平台前请确认目标平台支持。' },
+  { id: 'extended-text', group: '基础排版', title: '高亮、下划线、上标与下标', summary: '这些是 Zeditor 支持的扩展写法，适合重点和公式说明。', code: '==高亮文字==\n<u>下划线文字</u>\nX<sup>2</sup>\nH<sub>2</sub>O', result: '显示高亮、下划线、上标和下标效果。', tip: 'HTML 标签属于扩展语法，发布到其他平台前请确认目标平台支持。' },
   { id: 'escape', group: '基础排版', title: '转义特殊符号', summary: '如果只想显示 Markdown 符号本身，请在符号前加反斜杠。', code: '\\*这不是斜体\\*\n\\# 这不是标题\n\\[这不是链接\\]', result: '页面会原样显示星号、# 和方括号。' },
 
   { id: 'unordered-list', group: '内容组织', title: '无序列表', summary: '在行首输入 -、+ 或 *，后面留一个空格。缩进两个或四个空格可创建子列表。', code: '- 水果\n  - 苹果\n  - 香蕉\n- 蔬菜', result: '显示带圆点的两级列表。' },
-  { id: 'ordered-list', group: '内容组织', title: '有序列表', summary: '输入“数字 + 英文句点 + 空格”。实际显示时会自动连续编号。', code: '1. 安装 MarkitDown\n2. 新建文档\n3. 开始写作', result: '显示 1、2、3 编号列表。' },
+  { id: 'ordered-list', group: '内容组织', title: '有序列表', summary: '输入“数字 + 英文句点 + 空格”。实际显示时会自动连续编号。', code: '1. 安装 Zeditor\n2. 新建文档\n3. 开始写作', result: '显示 1、2、3 编号列表。' },
   { id: 'tasks', group: '内容组织', title: '任务列表', summary: '在无序列表标记后添加 [ ] 或 [x]，分别代表未完成和已完成。', code: '- [x] 创建文档\n- [ ] 完成初稿\n- [ ] 检查并发布', result: '显示三个带复选框的任务，其中第一项已完成。' },
   { id: 'quote', group: '内容组织', title: '引用与嵌套引用', summary: '在行首输入 > 和空格。连续使用多个 > 可以嵌套。', code: '> 这是引用内容。\n>\n> 引用中也能分段。\n>> 这是嵌套引用。', result: '显示一段带左侧引导线的引用，其中包含二级引用。' },
   { id: 'divider', group: '内容组织', title: '分隔线', summary: '单独一行输入三个或更多 -、* 或 _。前后最好各空一行。', code: '上半部分\n\n---\n\n下半部分', result: '两段文字之间显示一条水平分隔线。' },
@@ -29,11 +29,11 @@ const SYNTAX_ITEMS: SyntaxItem[] = [
 
   { id: 'link', group: '链接与媒体', title: '链接', summary: '方括号中写显示文字，紧跟的圆括号中写网址；网址后可加可选标题。', code: '[访问 GitHub](https://github.com "GitHub 首页")\n\n<https://github.com>', result: '第一行显示命名链接，第二行直接把网址变成可点击链接。' },
   { id: 'image', group: '链接与媒体', title: '图片', summary: '在链接语法前加 !。替代文字用于图片加载失败和无障碍阅读。', code: '![一张风景图片](https://example.com/photo.jpg "可选标题")', result: '显示图片；无法加载时显示“一张风景图片”。', tip: '也可点击工具栏“图片”，或直接把图片粘贴到编辑器。' },
-  { id: 'video', group: '链接与媒体', title: '在线视频', summary: '使用 MarkitDown 的视频扩展语法插入 B站、YouTube 或 Vimeo 链接。', code: '@[video](https://www.youtube.com/watch?v=VIDEO_ID)', result: '预览中显示响应式视频播放器。', tip: '推荐点击工具栏“插入视频”，粘贴链接后自动生成语法。' },
+  { id: 'video', group: '链接与媒体', title: '在线视频', summary: '使用 Zeditor 的视频扩展语法插入 B站、YouTube 或 Vimeo 链接。', code: '@[video](https://www.youtube.com/watch?v=VIDEO_ID)', result: '预览中显示响应式视频播放器。', tip: '推荐点击工具栏“插入视频”，粘贴链接后自动生成语法。' },
   { id: 'emoji', group: '链接与媒体', title: 'Emoji', summary: 'Emoji 可以像普通文字一样直接插入标题、段落和列表。', code: '## 今日进度 🚀\n\n- [x] 完成初稿 ✅\n- [ ] 发布文章 📣', result: '显示包含原生 Emoji 的标题和任务列表。' },
 
   { id: 'inline-code', group: '代码与数据', title: '行内代码', summary: '用一对反引号包住短命令、变量名或文件名。', code: '运行 `npm run build` 构建项目。', result: 'npm run build 会以等宽字体和代码背景显示。' },
-  { id: 'code-block', group: '代码与数据', title: '代码块与语法高亮', summary: '用三反引号包住多行代码，开头反引号后写语言名称可启用高亮。', code: fence('javascript', 'function greet(name) {', '  return `你好，${name}！`;', '}', '', "console.log(greet('MarkitDown'));"), result: '显示带 JavaScript 语法高亮的代码块。', tip: '常见语言标记包括 javascript、typescript、python、bash、json、css 和 html。' },
+  { id: 'code-block', group: '代码与数据', title: '代码块与语法高亮', summary: '用三反引号包住多行代码，开头反引号后写语言名称可启用高亮。', code: fence('javascript', 'function greet(name) {', '  return `你好，${name}！`;', '}', '', "console.log(greet('Zeditor'));"), result: '显示带 JavaScript 语法高亮的代码块。', tip: '常见语言标记包括 javascript、typescript、python、bash、json、css 和 html。' },
   { id: 'table', group: '代码与数据', title: '表格与对齐', summary: '第一行是表头，第二行用 --- 分隔。冒号控制左对齐、居中和右对齐。', code: '| 项目 | 状态 | 进度 |\n| :--- | :---: | ---: |\n| 需求 | 完成 | 100% |\n| 开发 | 进行中 | 60% |', result: '显示三列表格：第一列左对齐，第二列居中，第三列右对齐。', tip: '也可点击工具栏的表格网格，拖动选择行列数。' },
 
   { id: 'math', group: '图表与扩展', title: '数学公式', summary: '单个 $ 用于行内公式，两个 $$ 用于独占一行的块级公式，语法采用 LaTeX。', code: '质能方程是 $E = mc^2$。\n\n$$\n\\sum_{i=1}^{n} i = \\frac{n(n+1)}{2}\n$$', result: '第一条公式嵌入句子，求和公式居中独立显示。' },

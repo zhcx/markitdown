@@ -77,7 +77,7 @@ const md = new MarkdownIt({
   },
 });
 
-const APP_NAME = 'MarkitDown';
+const APP_NAME = 'Zeditor';
 
 function HelpModal({ type, updateInfo, updateError, downloadProgress, downloadDone, onDownloadAndInstall, onClose }: HelpModalProps) {
   const content = {
@@ -151,9 +151,9 @@ graph TD
       `
     },
     about: {
-      title: '关于 MarkitDown',
+      title: '关于 Zeditor',
       body: `
-**MarkitDown v0.3.6**
+**Zeditor v0.3.7**
 
 一款现代化的 Markdown 编辑器
 
@@ -178,7 +178,7 @@ Tauri 2.0 + React 18 + TypeScript + Monaco Editor + markdown-it
 [七月](https://github.com/zhcx)
 
 **项目地址**
-https://github.com/zhcx/markitdown
+https://github.com/zhcx/zeditor
       `
     },
     update: {
@@ -255,7 +255,7 @@ https://github.com/zhcx/markitdown
                 <div className="update-badge current">检查更新失败</div>
                 <p className="update-installer-summary">{updateError}</p>
                 <div className="update-actions">
-                  <button className="update-cancel-btn" onClick={() => open('https://github.com/zhcx/markitdown/releases')}>前往 GitHub Release</button>
+                  <button className="update-cancel-btn" onClick={() => open('https://github.com/zhcx/zeditor/releases')}>前往 GitHub Release</button>
                   <button className="update-cancel-btn" onClick={onClose}>关闭</button>
                 </div>
               </div>
@@ -581,8 +581,8 @@ export function MenuBar() {
       const format = (event as CustomEvent<{ format?: 'pdf' | 'html' | 'word' }>).detail?.format;
       if (format) void handleExport(format);
     };
-    window.addEventListener('markitdown-export-request', handleExportRequest);
-    return () => window.removeEventListener('markitdown-export-request', handleExportRequest);
+    window.addEventListener('zeditor-export-request', handleExportRequest);
+    return () => window.removeEventListener('zeditor-export-request', handleExportRequest);
   });
 
   const menus: MenuGroup[] = [
@@ -595,7 +595,7 @@ export function MenuBar() {
         { divider: true, label: '' },
         { label: '检查更新', action: handleCheckUpdates },
         { divider: true, label: '' },
-        { label: '关于 MarkitDown', action: () => setHelpModal('about') },
+        { label: '关于 Zeditor', action: () => setHelpModal('about') },
       ],
     },
     {
@@ -802,7 +802,7 @@ export function MenuBar() {
         />
       )}
       {imageExportOpen && <ImageExportDialog content={content} onClose={() => setImageExportOpen(false)} />}
-      {weChatExportOpen && <WeChatExportDialog content={content} title={getActiveTab()?.title?.replace(/\.md$/i, '') || 'MarkItDown 文章'} onClose={() => setWeChatExportOpen(false)} />}
+        {weChatExportOpen && <WeChatExportDialog content={content} title={getActiveTab()?.title?.replace(/\.md$/i, '') || 'Zeditor 文章'} onClose={() => setWeChatExportOpen(false)} />}
     </>
   );
 }
