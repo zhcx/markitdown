@@ -153,7 +153,7 @@ graph TD
     about: {
       title: '关于 Zeditor',
       body: `
-**Zeditor v0.3.7**
+**Zeditor v0.3.8**
 
 一款现代化的 Markdown 编辑器
 
@@ -386,6 +386,19 @@ export function MenuBar() {
   const [downloadError, setDownloadError] = useState<string | null>(null);
   const menubarRef = useRef<HTMLDivElement>(null);
   const mouseOverMenuRef = useRef(false);
+  // 菜单收回的意图判定定时器：鼠标短暂移出（斜向移向下拉、经过
+  // 间隙）不应立即收回，350ms 内回到菜单区域则取消关闭。
+  const menuCloseTimerRef = useRef<number | null>(null);
+  const MENU_CLOSE_DELAY_MS = 350;
+
+  const cancelMenuClose = () => {
+    if (menuCloseTimerRef.current !== null) {
+      window.clearTimeout(menuCloseTimerRef.current);
+      menuCloseTimerRef.current = null;
+    }
+  };
+
+  useEffect(() => cancelMenuClose, []);
 
   const handleNewFile = () => {
     addTab();
@@ -416,14 +429,32 @@ export function MenuBar() {
     const unlistenProgress = await listen<DownloadProgress>('update-download-progress', (event) => {
       setDownloadProgress(event.payload);
     });
-    const unlistenComplete = await listen('update-download-complete', () => {
+    // 下载完成后：先保存未落盘的编辑，再触发安装（后端下载命令现在
+    // 只下载并返回路径，安装与退出由 finalize_update_install 执行，
+    // 避免进程在事件送达/保存完成前被直接终止导致内容丢失）。
+    const unlistenComplete = await listen<{ path: string }>('update-download-complete', async (event) => {
       setDownloadDone(true);
+      try {
+        const activeTab = getActiveTab();
+        if (activeTab?.modified && currentFile) {
+          await saveFile(currentFile);
+        }
+      } catch (error) {
+        console.warn('安装前保存当前文档失败：', error);
+      }
+      try {
+        await invoke('finalize_update_install', { installerPath: event.payload.path });
+      } catch (error) {
+        console.error('启动安装程序失败:', error);
+        setDownloadError(`启动安装程序失败：${String(error)}`);
+      }
     });
 
     try {
       await invoke('download_and_install_update', {
         downloadUrl: updateInfo.asset_download_url,
         fileName: updateInfo.asset_name,
+        assetSize: updateInfo.asset_size,
       });
     } catch (error) {
       console.error('下载更新失败:', error);
@@ -638,33 +669,13 @@ export function MenuBar() {
         {
           label: '主题',
           children: [
-            { label: 'VS Code 深色主题', action: () => {
+            { label: '深色主题', action: () => {
               setSettings({ ...settings, appearance: { ...settings.appearance, theme: 'vscode-dark' } });
               setActiveMenu(null);
               setMenuOpen(false);
             }},
-            { label: 'VS Code 浅色主题', action: () => {
+            { label: '浅色主题', action: () => {
               setSettings({ ...settings, appearance: { ...settings.appearance, theme: 'vscode-light' } });
-              setActiveMenu(null);
-              setMenuOpen(false);
-            }},
-            { label: 'Claude 浅色主题', action: () => {
-              setSettings({ ...settings, appearance: { ...settings.appearance, theme: 'claude-light' } });
-              setActiveMenu(null);
-              setMenuOpen(false);
-            }},
-            { label: 'Claude 深色主题', action: () => {
-              setSettings({ ...settings, appearance: { ...settings.appearance, theme: 'claude-dark' } });
-              setActiveMenu(null);
-              setMenuOpen(false);
-            }},
-            { label: 'Notion 浅色主题', action: () => {
-              setSettings({ ...settings, appearance: { ...settings.appearance, theme: 'notion-light' } });
-              setActiveMenu(null);
-              setMenuOpen(false);
-            }},
-            { label: 'Notion 深色主题', action: () => {
-              setSettings({ ...settings, appearance: { ...settings.appearance, theme: 'notion-dark' } });
               setActiveMenu(null);
               setMenuOpen(false);
             }},
@@ -700,15 +711,17 @@ export function MenuBar() {
   return (
     <>
       <div className="menubar" ref={menubarRef}
-        onMouseEnter={() => { mouseOverMenuRef.current = true; }}
+        onMouseEnter={() => { mouseOverMenuRef.current = true; cancelMenuClose(); }}
         onMouseLeave={() => {
           mouseOverMenuRef.current = false;
-          setTimeout(() => {
+          cancelMenuClose();
+          menuCloseTimerRef.current = window.setTimeout(() => {
+            menuCloseTimerRef.current = null;
             if (!mouseOverMenuRef.current) {
               setActiveMenu(null);
               setMenuOpen(false);
             }
-          }, 150);
+          }, MENU_CLOSE_DELAY_MS);
         }}
       >
         {menus.map((menu) => {

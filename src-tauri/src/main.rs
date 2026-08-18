@@ -12,6 +12,7 @@ mod ai;
 mod commands;
 mod converter;
 mod image;
+mod imaging;
 mod pdf;
 
 #[tauri::command]
@@ -86,7 +87,11 @@ fn take_pending_open_files(state: State<'_, PendingOpenFiles>) -> Vec<String> {
 // clippy::unwrap_used is not enabled globally; this is a targeted hardening.
 
 fn main() {
-    let args: Vec<String> = std::env::args().collect();
+    // 使用 args_os：args() 在遇到非 UTF-8 参数（如路径含非法字节的
+    // 文件拖入）时会直接 panic；与上方 initial_open_files 保持一致。
+    let args: Vec<String> = std::env::args_os()
+        .map(|value| value.to_string_lossy().into_owned())
+        .collect();
     if args
         .get(1)
         .is_some_and(|value| value == "--agent-permission-hook")
@@ -112,9 +117,16 @@ fn main() {
             .unwrap_or_else(|| "unknown location".to_string());
         let full = format!("[ZEDITOR PANIC] {location}: {msg}");
         eprintln!("{}", full);
-        // 同时写入文件，方便 Windows GUI 模式下诊断
+        // 同时写入文件，方便 Windows GUI 模式下诊断。
+        // 超过 1 MiB 时轮转重建，避免长期使用无限膨胀。
         let log_path = std::env::temp_dir().join("zeditor_crash.log");
         use std::io::Write;
+        let needs_rotation = std::fs::metadata(&log_path)
+            .map(|meta| meta.len() > 1024 * 1024)
+            .unwrap_or(false);
+        if needs_rotation {
+            let _ = std::fs::remove_file(&log_path);
+        }
         if let Ok(mut f) = std::fs::OpenOptions::new()
             .create(true)
             .append(true)
@@ -184,6 +196,7 @@ fn main() {
             commands::web_search,
             commands::check_for_updates,
             commands::download_and_install_update,
+            commands::finalize_update_install,
             ai::ai_request,
             ai::ai_streaming,
             ai::ai_chat_streaming,

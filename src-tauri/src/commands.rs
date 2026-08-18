@@ -430,107 +430,9 @@ pub async fn upload_image_bytes(
 }
 
 // ── Image embedding ────────────────────────────────────
-
-fn guess_mime(p: &Path) -> &'static str {
-    match p
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("")
-        .to_lowercase()
-        .as_str()
-    {
-        "png" => "image/png",
-        "jpg" | "jpeg" => "image/jpeg",
-        "gif" => "image/gif",
-        "svg" => "image/svg+xml",
-        "webp" => "image/webp",
-        "bmp" => "image/bmp",
-        _ => "image/png",
-    }
-}
-
-fn resolve_image_src(md_file_path: Option<&str>, src: &str) -> Option<String> {
-    if src.starts_with("http://") || src.starts_with("https://") || src.starts_with("data:") {
-        return None;
-    }
-    let p = Path::new(src);
-    let resolved = if p.is_absolute() {
-        p.to_path_buf()
-    } else if let Some(md) = md_file_path {
-        Path::new(md)
-            .parent()
-            .map(|d| d.join(p))
-            .unwrap_or(p.to_path_buf())
-    } else {
-        return None;
-    };
-    if !resolved.exists() {
-        return None;
-    }
-    let data = std::fs::read(&resolved).ok()?;
-    let mime = guess_mime(&resolved);
-    Some(format!(
-        "data:{};base64,{}",
-        mime,
-        general_purpose::STANDARD.encode(&data)
-    ))
-}
-
-/// Replace every local <img src="..."> with a base64 data URL.
-fn embed_images(html: &str, md_file_path: Option<&str>) -> String {
-    let mut result = String::with_capacity(html.len());
-    let mut rest = html;
-
-    loop {
-        let tag_start = match rest.find("<img") {
-            Some(i) => i,
-            None => {
-                result.push_str(rest);
-                break;
-            }
-        };
-        result.push_str(&rest[..tag_start]);
-        let after_tag = &rest[tag_start..];
-
-        // find src="..."
-        let src_key = match after_tag.find("src=\"") {
-            Some(i) => i + 5,
-            None => {
-                result.push_str(after_tag);
-                break;
-            }
-        };
-        let src_end = match after_tag[src_key..].find('"') {
-            Some(i) => src_key + i,
-            None => {
-                result.push_str(after_tag);
-                break;
-            }
-        };
-        let src_val = &after_tag[src_key..src_end];
-
-        // find closing >
-        let tag_end = match after_tag.find('>') {
-            Some(i) => i + 1,
-            None => {
-                result.push_str(after_tag);
-                break;
-            }
-        };
-
-        if let Some(data_url) = resolve_image_src(md_file_path, src_val) {
-            // reconstruct the tag with the new src
-            result.push_str(&after_tag[..src_key]);
-            result.push_str(&data_url);
-            result.push_str(&after_tag[src_end..tag_end]);
-        } else {
-            result.push_str(&after_tag[..tag_end]);
-        }
-
-        rest = &after_tag[tag_end..];
-    }
-    result
-}
+// 实现已抽取到 crate::imaging，与 PDF 导出共享（此前两份实现漂移，
+// 且本文件版本会在 <img> 无 src 时错误匹配到后续标签的属性）。
+use crate::imaging::{embed_images, file_url_from_path, guess_mime};
 
 // ── HTML page wrapper ──────────────────────────────────
 
@@ -639,7 +541,11 @@ pub async fn export_html(
     settings: ExportSettings,
     file_path: Option<String>,
 ) -> Result<String, String> {
-    let with_images = embed_images(&html_body, file_path.as_deref());
+    // 图片内嵌是同步磁盘 IO，放到阻塞线程池执行。
+    let with_images =
+        tokio::task::spawn_blocking(move || embed_images(&html_body, file_path.as_deref()))
+            .await
+            .map_err(|e| e.to_string())?;
     Ok(wrap_html_page(&with_images, settings.pdf_margin))
 }
 
@@ -649,7 +555,10 @@ pub async fn export_word(
     settings: ExportSettings,
     file_path: Option<String>,
 ) -> Result<String, String> {
-    let with_images = embed_images(&html_body, file_path.as_deref());
+    let with_images =
+        tokio::task::spawn_blocking(move || embed_images(&html_body, file_path.as_deref()))
+            .await
+            .map_err(|e| e.to_string())?;
     Ok(wrap_word_page(&with_images, settings.pdf_margin))
 }
 
@@ -659,14 +568,17 @@ pub async fn export_pdf(
     settings: ExportSettings,
     file_path: Option<String>,
 ) -> Result<String, String> {
-    let with_images = embed_images(&html_body, file_path.as_deref());
+    let with_images =
+        tokio::task::spawn_blocking(move || embed_images(&html_body, file_path.as_deref()))
+            .await
+            .map_err(|e| e.to_string())?;
     let full = wrap_html_page(&with_images, settings.pdf_margin);
     let temp_dir = std::env::temp_dir();
     let temp_html = temp_dir.join(format!("zeditor_export_{}.html", uuid::Uuid::new_v4()));
     std::fs::write(&temp_html, full).map_err(|e| format!("{}", e))?;
-    // Return as file:// URL so the shell plugin can open it
-    let url = format!("file:///{}", temp_html.to_string_lossy().replace('\\', "/"));
-    Ok(url)
+    // Return as file:// URL so the shell plugin can open it.
+    // 路径必须百分号编码：含空格/#/中文的路径直接拼接会产生无效 URL。
+    Ok(file_url_from_path(&temp_html))
 }
 
 async fn read_utf8_text_file(path: &str, max_bytes: Option<u64>) -> Result<String, String> {
@@ -929,6 +841,9 @@ fn is_workspace_file(name: &str) -> bool {
 
 #[tauri::command]
 pub async fn read_folder(path: String) -> Result<Vec<FileNode>, String> {
+    // 打开的文件夹注册为授权根：后续删除/重命名/复制等破坏性命令
+    // 仅允许作用于授权根内部（见 ensure_fs_authorized）。
+    register_authorized_root(&path);
     tokio::task::spawn_blocking(move || {
         let mut nodes = Vec::new();
         for entry in std::fs::read_dir(&path).map_err(|e| e.to_string())? {
@@ -960,8 +875,59 @@ pub async fn read_folder(path: String) -> Result<Vec<FileNode>, String> {
     .map_err(|error| format!("读取文件夹任务异常：{error}"))?
 }
 
+/// 已授权的文件操作根目录（进程内有效）。
+/// 目的：即使 webview 发生脚本注入，invoke 破坏性文件命令也只能触达
+/// 用户明确打开过的工作区文件夹，无法任意删除/改写系统文件。
+static AUTHORIZED_FS_ROOTS: Mutex<Vec<PathBuf>> = Mutex::new(Vec::new());
+
+fn lock_authorized_roots() -> std::sync::MutexGuard<'static, Vec<PathBuf>> {
+    AUTHORIZED_FS_ROOTS
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+fn register_authorized_root(path: &str) {
+    if let Ok(canonical) = std::fs::canonicalize(path) {
+        let mut roots = lock_authorized_roots();
+        if !roots.contains(&canonical) {
+            roots.push(canonical);
+            // 防御性上限，防止长期运行累积。
+            if roots.len() > 16 {
+                roots.remove(0);
+            }
+        }
+    }
+}
+
+/// 目标路径不存在时（如重命名/新建的目标），规范化其父目录再拼接文件名。
+fn canonicalize_or_parent(path: &str) -> Result<PathBuf, String> {
+    let candidate = Path::new(path);
+    if let Ok(canonical) = std::fs::canonicalize(candidate) {
+        return Ok(canonical);
+    }
+    let parent = candidate.parent().ok_or_else(|| "无效路径".to_string())?;
+    let file_name = candidate
+        .file_name()
+        .ok_or_else(|| "无效路径".to_string())?;
+    let parent = std::fs::canonicalize(parent).map_err(|e| format!("无法访问路径：{e}"))?;
+    Ok(parent.join(file_name))
+}
+
+fn ensure_fs_authorized(path: &str, operation: &str) -> Result<(), String> {
+    let canonical = canonicalize_or_parent(path)?;
+    let roots = lock_authorized_roots();
+    if roots.iter().any(|root| canonical.starts_with(root)) {
+        Ok(())
+    } else {
+        Err(format!(
+            "出于安全考虑，{operation} 仅允许作用于已通过资源管理器打开的文件夹内部"
+        ))
+    }
+}
+
 #[tauri::command]
 pub async fn create_file(path: String, content: Option<String>) -> Result<(), String> {
+    ensure_fs_authorized(&path, "新建文件")?;
     let parent = Path::new(&path)
         .parent()
         .ok_or_else(|| "无法获取父目录路径".to_string())?;
@@ -982,6 +948,7 @@ pub async fn create_file(path: String, content: Option<String>) -> Result<(), St
 
 #[tauri::command]
 pub async fn create_directory(path: String) -> Result<(), String> {
+    ensure_fs_authorized(&path, "新建文件夹")?;
     tokio::fs::create_dir_all(&path)
         .await
         .map_err(|e| format!("创建文件夹失败：{e}"))
@@ -989,6 +956,7 @@ pub async fn create_directory(path: String) -> Result<(), String> {
 
 #[tauri::command]
 pub async fn delete_fs_item(path: String) -> Result<(), String> {
+    ensure_fs_authorized(&path, "删除")?;
     let meta = tokio::fs::metadata(&path)
         .await
         .map_err(|e| format!("无法获取文件信息：{e}"))?;
@@ -1005,6 +973,8 @@ pub async fn delete_fs_item(path: String) -> Result<(), String> {
 
 #[tauri::command]
 pub async fn rename_fs_item(old_path: String, new_path: String) -> Result<(), String> {
+    ensure_fs_authorized(&old_path, "重命名")?;
+    ensure_fs_authorized(&new_path, "重命名")?;
     tokio::fs::rename(&old_path, &new_path)
         .await
         .map_err(|e| format!("重命名失败：{e}"))
@@ -1012,11 +982,13 @@ pub async fn rename_fs_item(old_path: String, new_path: String) -> Result<(), St
 
 #[tauri::command]
 pub async fn copy_fs_item(source: String, destination: String) -> Result<(), String> {
+    ensure_fs_authorized(&source, "复制")?;
+    ensure_fs_authorized(&destination, "复制")?;
     let src_meta = tokio::fs::metadata(&source)
         .await
         .map_err(|e| format!("无法读取源文件信息：{e}"))?;
     if src_meta.is_dir() {
-        copy_dir_recursive(&source, &destination).await
+        copy_dir_recursive(Path::new(&source), Path::new(&destination)).await
     } else {
         tokio::fs::copy(&source, &destination)
             .await
@@ -1025,7 +997,7 @@ pub async fn copy_fs_item(source: String, destination: String) -> Result<(), Str
     }
 }
 
-async fn copy_dir_recursive(src: &str, dst: &str) -> Result<(), String> {
+async fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), String> {
     tokio::fs::create_dir_all(dst)
         .await
         .map_err(|e| format!("创建目标目录失败：{e}"))?;
@@ -1033,15 +1005,21 @@ async fn copy_dir_recursive(src: &str, dst: &str) -> Result<(), String> {
         .await
         .map_err(|e| format!("读取源目录失败：{e}"))?;
     while let Some(entry) = entries.next_entry().await.map_err(|e| e.to_string())? {
-        let file_name = entry.file_name().to_string_lossy().to_string();
-        let src_path = format!("{}/{}", src, file_name);
-        let dst_path = format!("{}/{}", dst, file_name);
-        if entry.metadata().await.map_err(|e| e.to_string())?.is_dir() {
+        let meta = entry.metadata().await.map_err(|e| e.to_string())?;
+        // 跳过符号链接：跟随复制可能造成目录循环或越过授权根复制。
+        if meta.is_symlink() {
+            continue;
+        }
+        // 使用 Path::join 而非字符串拼接：拼接在 Windows 尾部反斜杠的
+        // 目录上会产生 "\\"，且无法处理非 ASCII 分隔符场景。
+        let src_path = src.join(entry.file_name());
+        let dst_path = dst.join(entry.file_name());
+        if meta.is_dir() {
             Box::pin(copy_dir_recursive(&src_path, &dst_path)).await?;
         } else {
-            tokio::fs::copy(&src_path, &dst_path)
-                .await
-                .map_err(|e| format!("复制文件 {file_name} 失败：{e}"))?;
+            tokio::fs::copy(&src_path, &dst_path).await.map_err(|e| {
+                format!("复制文件 {} 失败：{e}", entry.file_name().to_string_lossy())
+            })?;
         }
     }
     Ok(())
@@ -1652,10 +1630,7 @@ async fn check_updates_from_atom(
             .map_err(|error| format!("Release feed body: {}", error))?,
     )?;
     let has_update = compare_versions(&latest, &current)?;
-    let download_url = format!(
-        "https://github.com/zhcx/zeditor/releases/tag/v{}",
-        latest
-    );
+    let download_url = format!("https://github.com/zhcx/zeditor/releases/tag/v{}", latest);
 
     Ok(UpdateInfo {
         has_update,
@@ -1694,27 +1669,11 @@ fn extract_latest_tag_from_atom(feed: &str) -> Result<String, String> {
 }
 
 fn compare_versions(latest: &str, current: &str) -> Result<bool, String> {
-    let parse = |v: &str| -> Result<Vec<u32>, String> {
-        v.split('.')
-            .map(|s| s.parse::<u32>().map_err(|e| format!("{}", e)))
-            .collect()
-    };
-    let mut lp = parse(latest)?;
-    let mut cp = parse(current)?;
-    while lp.len() < cp.len() {
-        lp.push(0);
-    }
-    while cp.len() < lp.len() {
-        cp.push(0);
-    }
-    for (l, c) in lp.iter().zip(cp.iter()) {
-        if l > c {
-            return Ok(true);
-        } else if l < c {
-            return Ok(false);
-        }
-    }
-    Ok(false)
+    // 复用 semver crate（已是依赖），替代此前的手写逐段比较。
+    let latest = semver::Version::parse(latest).map_err(|e| format!("无效版本号 {latest}：{e}"))?;
+    let current =
+        semver::Version::parse(current).map_err(|e| format!("无效版本号 {current}：{e}"))?;
+    Ok(latest > current)
 }
 
 #[cfg(test)]
@@ -1748,7 +1707,8 @@ mod update_tests {
         assert!(validate_update_download(
             "https://github.com/zhcx/zeditor/releases/download/v0.3.7/Zeditor_0.3.7_x64-setup.exe",
             "Zeditor_0.3.7_x64-setup.exe",
-        ).is_ok());
+        )
+        .is_ok());
         assert!(validate_update_download(
             "http://github.com/zhcx/zeditor/releases/download/v1/app.exe",
             "app.exe"
@@ -1862,9 +1822,7 @@ fn validate_update_download(download_url: &str, file_name: &str) -> Result<reqwe
     let url = reqwest::Url::parse(download_url).map_err(|_| "更新下载地址无效".to_string())?;
     let valid_release = url.scheme() == "https"
         && url.host_str() == Some("github.com")
-        && url
-            .path()
-            .starts_with("/zhcx/zeditor/releases/download/")
+        && url.path().starts_with("/zhcx/zeditor/releases/download/")
         && url.query().is_none()
         && url.fragment().is_none();
     if !valid_release {
@@ -1893,7 +1851,8 @@ pub async fn download_and_install_update(
     app: AppHandle,
     download_url: String,
     file_name: String,
-) -> Result<(), String> {
+    asset_size: Option<u64>,
+) -> Result<String, String> {
     const MAX_UPDATE_BYTES: u64 = 1024 * 1024 * 1024;
     let download_url = validate_update_download(&download_url, &file_name)?;
     let temp_dir = std::env::temp_dir().join("zeditor_update");
@@ -1955,19 +1914,49 @@ pub async fn download_and_install_update(
 
     drop(file);
 
-    // Launch installer and quit app
+    // 下载完整性：与 Release 元数据声明的 asset_size 一致（如已知）。
+    if let Some(expected) = asset_size.filter(|value| *value > 0) {
+        if downloaded != expected {
+            let _ = std::fs::remove_file(&installer_path);
+            return Err(format!(
+                "更新包大小校验失败：期望 {expected} 字节，实际 {downloaded} 字节"
+            ));
+        }
+    }
+
     let installer = installer_path.to_string_lossy().to_string();
+    // 只通知前端；安装与退由前端在保存未落盘内容后调用
+    // finalize_update_install 触发。此前在 emit 之后立即启动安装器并
+    // process::exit，事件尚未送达前端，未保存的编辑会直接丢失。
     app.emit(
         "update-download-complete",
         serde_json::json!({ "path": &installer }),
     )
     .ok();
+    Ok(installer)
+}
+
+/// 前端确认（保存未落盘内容）后调用：启动更新安装器并退出应用。
+#[tauri::command]
+pub async fn finalize_update_install(installer_path: String) -> Result<(), String> {
+    // 校验安装包位于受控临时目录且扩展名合法，防止任意路径执行。
+    let canonical =
+        std::fs::canonicalize(&installer_path).map_err(|e| format!("无法访问安装包：{e}"))?;
+    let update_dir = std::env::temp_dir().join("zeditor_update");
+    let update_dir = std::fs::canonicalize(&update_dir).unwrap_or(update_dir);
+    if !canonical.starts_with(&update_dir) {
+        return Err("安装包路径无效".into());
+    }
+    let lower = canonical.to_string_lossy().to_ascii_lowercase();
+    if !(lower.ends_with(".exe") || lower.ends_with(".msi")) {
+        return Err("仅支持 .exe 或 .msi 安装包".into());
+    }
 
     // Launch the installer directly. `cmd /c start` is unreliable when the
     // path contains spaces and can leave the update UI appearing unresponsive.
     #[cfg(target_os = "windows")]
     {
-        let lower = installer.to_ascii_lowercase();
+        let installer = canonical.to_string_lossy().to_string();
         let mut command = if lower.ends_with(".msi") {
             let mut command = std::process::Command::new("msiexec.exe");
             command.args(["/i", &installer]);

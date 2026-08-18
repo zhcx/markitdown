@@ -36,14 +36,29 @@ pub fn ensure_git_workspace(root: &Path) -> Result<(), String> {
 }
 
 fn file_hash(path: &Path) -> Result<Option<String>, String> {
+    use std::io::Read;
     if !path.exists() {
         return Ok(None);
     }
     if path.is_dir() {
         return Ok(None);
     }
-    let data = fs::read(path).map_err(|error| format!("读取 {} 失败：{error}", path.display()))?;
-    Ok(Some(hex::encode(Sha256::digest(data))))
+    // 流式分块读取：此前 fs::read 整文件载入内存，大文件（GB 级）会
+    // 触发内存峰值/OOM。
+    let mut file =
+        fs::File::open(path).map_err(|error| format!("读取 {} 失败：{error}", path.display()))?;
+    let mut hasher = Sha256::new();
+    let mut buffer = [0u8; 64 * 1024];
+    loop {
+        let read = file
+            .read(&mut buffer)
+            .map_err(|error| format!("读取 {} 失败：{error}", path.display()))?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read]);
+    }
+    Ok(Some(hex::encode(hasher.finalize())))
 }
 
 fn tracked_and_untracked(root: &Path) -> Result<Vec<String>, String> {
@@ -134,6 +149,79 @@ fn status_name(code: &str) -> (&'static str, bool) {
     }
 }
 
+/// 解析 `git status --porcelain=v1 -z` 输出。
+/// -z 模式下每条记录为 `XY PATH\0`，重命名/复制条目额外跟一个
+/// `ORIG_PATH\0` 字段。此前的实现把 ORIG_PATH 残段当作独立条目处理，
+/// 会在变更列表里产生一个不存在的“幽灵文件”（状态回退为 modified、
+/// 行数 0、diff 为空）。这里通过校验条目格式并显式消费第二字段修复。
+fn parse_porcelain_z(status: &str) -> Vec<(String, &'static str)> {
+    let mut entries = Vec::new();
+    let mut fields = status.split('\0').filter(|field| !field.is_empty());
+    while let Some(field) = fields.next() {
+        let bytes = field.as_bytes();
+        // 合法条目形如 "XY PATH"（第 3 个字符为空格，路径至少 1 字符）。
+        if bytes.len() < 4 || !(bytes[2] as char).is_ascii_whitespace() {
+            continue;
+        }
+        let code = &field[..2];
+        // 状态码必须由合法 porcelain 字符组成，防止把碰巧以
+        // "字母字母空格" 开头的普通路径（rename 的 ORIG_PATH 残段）误判。
+        let code_valid = code
+            .chars()
+            .all(|c| c.is_ascii_uppercase() || c == '?' || c == '!' || c == ' ');
+        if !code_valid {
+            continue;
+        }
+        let path = field[3..].to_string();
+        if code.starts_with('R') || code.starts_with('C') {
+            // rename/copy 条目后面紧跟 ORIG_PATH 字段，跳过。
+            fields.next();
+        }
+        let (state, _) = status_name(code);
+        entries.push((path, state));
+    }
+    entries
+}
+
+/// 从一次性 `git diff --cached` 输出中按文件拆分 diff 块。
+/// 键为路径（取 "diff --git a/PATH b/PATH" 中的 PATH，即新路径）。
+fn split_diff_by_path(diff: &str) -> HashMap<String, String> {
+    use std::collections::HashMap;
+
+    let mut result: HashMap<String, String> = HashMap::new();
+    let mut current_path: Option<String> = None;
+    let mut current_body = String::new();
+    for line in diff.split_inclusive('\n') {
+        if let Some(rest) = line.strip_prefix("diff --git ") {
+            if let Some(path) = extract_diffgit_path(rest) {
+                if let Some(previous) = current_path.take() {
+                    result.insert(previous, current_body.clone());
+                }
+                current_path = Some(path);
+                current_body.clear();
+                current_body.push_str(line);
+                continue;
+            }
+        }
+        if current_path.is_some() {
+            current_body.push_str(line);
+        }
+    }
+    if let Some(path) = current_path {
+        result.insert(path, current_body);
+    }
+    result
+}
+
+/// 从 "a/PATH b/PATH" 尾部提取 PATH（两侧相同；含空格路径也能命中，
+/// 引号包裹的异常路径返回 None，由调用方跳过该块）。
+fn extract_diffgit_path(rest: &str) -> Option<String> {
+    let a_start = rest.find("a/")?;
+    let after_a = &rest[a_start + 2..];
+    let relative = after_a.find(" b/")?;
+    Some(after_a[..relative].to_string())
+}
+
 pub fn get_changes(session: &AgentSession) -> Result<AgentChangeSet, String> {
     let worktree = Path::new(
         session
@@ -145,39 +233,50 @@ pub fn get_changes(session: &AgentSession) -> Result<AgentChangeSet, String> {
     // tree makes additions, deletions and binary files available to one diff.
     git(worktree, &["add", "-A"])?;
     let status = git(worktree, &["status", "--porcelain=v1", "-z"])?;
+
+    // 性能：此前每个文件分别启动 2 个 git 进程（numstat + diff），
+    // 100 个文件即 200 次进程调用。这里改为 3 次调用批量获取。
+    let numstat = git(worktree, &["diff", "--cached", "--numstat", "HEAD"]).unwrap_or_default();
+    let stats_by_path: HashMap<&str, (&str, &str)> = numstat
+        .lines()
+        .filter_map(|line| {
+            let mut columns = line.split('\t');
+            let additions = columns.next()?;
+            let deletions = columns.next()?;
+            // rename 记录为 "adds\tdels\tNEW\tOLD"，第三列即新路径。
+            let path = columns.next()?;
+            Some((path, (additions, deletions)))
+        })
+        .collect();
+    let diff_by_path = if stats_by_path
+        .values()
+        .any(|(additions, _)| *additions != "-")
+    {
+        // 存在文本 diff 时才需要全量 diff 输出。
+        let full =
+            git(worktree, &["diff", "--cached", "--no-ext-diff", "HEAD"]).unwrap_or_default();
+        split_diff_by_path(&full)
+    } else {
+        HashMap::new()
+    };
+
     let mut files = Vec::new();
-    for entry in status.split('\0').filter(|item| item.len() >= 4) {
-        let code = &entry[..2];
-        let path = entry[3..].to_string();
-        let (mut state, _) = status_name(code);
-        let numstat = git(
-            worktree,
-            &["diff", "--cached", "--numstat", "HEAD", "--", &path],
-        )
-        .unwrap_or_default();
-        let columns: Vec<&str> = numstat.split_whitespace().collect();
-        let binary = columns.first().is_some_and(|value| *value == "-");
+    for (path, state) in parse_porcelain_z(&status) {
+        let mut state = state;
+        let (additions_str, deletions_str) = stats_by_path
+            .get(path.as_str())
+            .copied()
+            .unwrap_or(("0", "0"));
+        let binary = additions_str == "-";
         if binary {
             state = "binary";
         }
-        let additions = columns
-            .first()
-            .and_then(|value| value.parse().ok())
-            .unwrap_or(0);
-        let deletions = columns
-            .get(1)
-            .and_then(|value| value.parse().ok())
-            .unwrap_or(0);
+        let additions = additions_str.parse().unwrap_or(0);
+        let deletions = deletions_str.parse().unwrap_or(0);
         let diff = if binary {
             None
         } else {
-            Some(
-                git(
-                    worktree,
-                    &["diff", "--cached", "--no-ext-diff", "HEAD", "--", &path],
-                )
-                .unwrap_or_default(),
-            )
+            Some(diff_by_path.get(&path).cloned().unwrap_or_default())
         };
         files.push(AgentFileChange {
             path,
@@ -284,6 +383,32 @@ pub fn session_worktree_path(storage_root: &Path, session_id: &str) -> PathBuf {
 mod tests {
     use super::*;
     use crate::agent::{AgentApprovalMode, AgentBackendId, AgentSessionStatus};
+
+    #[test]
+    fn porcelain_z_rename_entry_does_not_produce_ghost_file() {
+        // -z 格式：rename 条目 "R  NEW\0OLD\0"。OLD 残段不得被解析为
+        // 额外的 modified 条目。
+        let status = "R  renamed.md\0original.md\0M  notes.md\0";
+
+        let entries = parse_porcelain_z(status);
+
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0], ("renamed.md".to_string(), "renamed"));
+        assert_eq!(entries[1], ("notes.md".to_string(), "modified"));
+    }
+
+    #[test]
+    fn split_diff_by_path_splits_on_file_boundaries() {
+        let diff = "diff --git a/one.md b/one.md\n--- a/one.md\n+++ b/one.md\n@@\n-x\n+y\n\
+                    diff --git a/two.md b/two.md\n--- a/two.md\n+++ b/two.md\n@@\n-z\n";
+
+        let result = split_diff_by_path(diff);
+
+        assert_eq!(result.len(), 2);
+        assert!(result["one.md"].starts_with("diff --git a/one.md"));
+        assert!(result["one.md"].contains("-x"));
+        assert!(result["two.md"].contains("-z"));
+    }
 
     fn run(root: &Path, args: &[&str]) {
         let output = process::system_command("git")

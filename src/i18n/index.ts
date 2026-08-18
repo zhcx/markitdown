@@ -118,19 +118,13 @@ const entries: Record<string, Translation> = {
   'API Key': { 'zh-CN': 'API 密钥', 'zh-TW': 'API 密鑰', en: 'API Key' },
   'Access Key ID': { 'zh-CN': '访问密钥 ID', 'zh-TW': '存取密鑰 ID', en: 'Access Key ID' },
   'Access Key Secret': { 'zh-CN': '访问密钥', 'zh-TW': '存取密鑰', en: 'Access Key Secret' },
-  'VS Code Dark Theme': { 'zh-CN': 'VS Code 深色主题', 'zh-TW': 'VS Code 深色主題', en: 'VS Code Dark Theme' },
-  'VS Code Light Theme': { 'zh-CN': 'VS Code 浅色主题', 'zh-TW': 'VS Code 淺色主題', en: 'VS Code Light Theme' },
-  'Claude Light Theme': { 'zh-CN': 'Claude 浅色主题', 'zh-TW': 'Claude 淺色主題', en: 'Claude Light Theme' },
-  'Claude Dark Theme': { 'zh-CN': 'Claude 深色主题', 'zh-TW': 'Claude 深色主題', en: 'Claude Dark Theme' },
-  'Notion Light Theme': { 'zh-CN': 'Notion 浅色主题', 'zh-TW': 'Notion 淺色主題', en: 'Notion Light Theme' },
-  'Notion Dark Theme': { 'zh-CN': 'Notion 深色主题', 'zh-TW': 'Notion 深色主題', en: 'Notion Dark Theme' },
+  'Dark Theme': { 'zh-CN': '深色主题', 'zh-TW': '深色主題', en: 'Dark Theme' },
+  'Light Theme': { 'zh-CN': '浅色主题', 'zh-TW': '淺色主題', en: 'Light Theme' },
 };
 
 const englishEntries: Record<string, string> = {
   '入门指南': 'BEGINNER GUIDE', '基础': 'Basic', '快速': 'Fast', '高级': 'Advanced', '极速': 'Ultra fast',
-  'VS Code 深色主题': 'VS Code Dark Theme', 'VS Code 浅色主题': 'VS Code Light Theme',
-  'Claude 深色主题': 'Claude Dark Theme', 'Claude 浅色主题': 'Claude Light Theme',
-  'Notion 深色主题': 'Notion Dark Theme', 'Notion 浅色主题': 'Notion Light Theme',
+  '深色主题': 'Dark Theme', '浅色主题': 'Light Theme',
   '云名称': 'Cloud Name', 'API 密钥': 'API Secret', '服务端点': 'Endpoint', '存储桶名称': 'Bucket name', '地域': 'Region', '访问密钥 ID': 'Access Key ID', '访问密钥': 'Access Key Secret',
   '功能导航': 'Feature navigation', '选择沉浸模式': 'Choose focus mode', '返回分屏模式': 'Return to split view',
   '隐藏编辑器，专注阅读预览': 'Hide the editor and focus on reading', '隐藏预览与侧栏，专注写作': 'Hide preview and sidebar and focus on writing',

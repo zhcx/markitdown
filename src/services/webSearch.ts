@@ -61,6 +61,9 @@ export async function performWebSearch(query: string, settings: WebSearchSetting
     return normalizeWebSearchResponse(await invoke<WebSearchResponse>('web_search', { query: normalizedQuery, settings }));
   }
 
+  // 说明：此代理仅存在于本地开发服务（vite dev server），用于在浏览器
+  // 模式下调试搜索功能；桌面端走上方 invoke 的 Rust 实现。
+  // 请勿将 /api/web-search 暴露到任何生产构建——它无鉴权地转发 API Key。
   let response: Response;
   try {
     response = await fetch('/api/web-search', {

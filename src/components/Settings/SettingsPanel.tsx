@@ -339,12 +339,8 @@ export function SettingsPanel() {
                     })
                   }
                 >
-                  <option value="vscode-dark">VS Code 深色主题</option>
-                  <option value="vscode-light">VS Code 浅色主题</option>
-                  <option value="claude-light">Claude 浅色主题</option>
-                  <option value="claude-dark">Claude 深色主题</option>
-                  <option value="notion-light">Notion 浅色主题</option>
-                  <option value="notion-dark">Notion 深色主题</option>
+                  <option value="vscode-dark">深色主题</option>
+                  <option value="vscode-light">浅色主题</option>
                   <option value="system">跟随系统</option>
                 </select>
               </div>

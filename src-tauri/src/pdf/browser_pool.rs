@@ -1,22 +1,37 @@
 use headless_chrome::browser::LaunchOptionsBuilder;
 use headless_chrome::Browser;
 use std::net::TcpListener;
-use std::sync::OnceLock;
+use std::sync::{Arc, Mutex};
 
 use super::error::{PdfError, PdfResult};
 
-static BROWSER_POOL: OnceLock<Browser> = OnceLock::new();
+/// 浏览器槽位。相比之前的 `OnceLock<Browser>`：
+/// 1. `Mutex` 串行化初始化，消除并发 `get_browser` 各自启动 Chrome、
+///    `set()` 失败一方被丢弃而产生孤儿 Chrome 进程的竞态；
+/// 2. Chrome 崩溃后可通过 `invalidate_browser()` 清空槽位并重建，
+///    之前 OnceLock 一旦写入便永远无法恢复。
+static BROWSER_SLOT: Mutex<Option<Arc<Browser>>> = Mutex::new(None);
 
-pub fn get_browser() -> PdfResult<&'static Browser> {
-    if let Some(browser) = BROWSER_POOL.get() {
-        return Ok(browser);
+fn lock_slot() -> std::sync::MutexGuard<'static, Option<Arc<Browser>>> {
+    BROWSER_SLOT
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+pub fn get_browser() -> PdfResult<Arc<Browser>> {
+    let mut slot = lock_slot();
+    if let Some(browser) = slot.as_ref() {
+        return Ok(browser.clone());
     }
+    let browser = Arc::new(launch_browser()?);
+    *slot = Some(browser.clone());
+    Ok(browser)
+}
 
-    let browser = launch_browser()?;
-    let _ = BROWSER_POOL.set(browser);
-    BROWSER_POOL
-        .get()
-        .ok_or_else(|| PdfError::ChromeInit("failed to initialize browser instance".to_string()))
+/// Chrome 实例失效（崩溃/被杀）后调用：丢弃池化实例，
+/// 下次 `get_browser` 将重新启动浏览器。
+pub fn invalidate_browser() {
+    *lock_slot() = None;
 }
 
 fn launch_browser() -> PdfResult<Browser> {
@@ -24,6 +39,10 @@ fn launch_browser() -> PdfResult<Browser> {
         std::ffi::OsString::from("--disable-gpu"),
         std::ffi::OsString::from("--disable-software-rasterizer"),
         std::ffi::OsString::from("--disable-dev-shm-usage"),
+        // 沙箱说明：Linux 无特权容器/CI 环境下默认沙箱无法启动，故保留
+        // --no-sandbox。安全上依赖 PDF 渲染前通过 CDP 禁用页面 JavaScript
+        // （见 chrome.rs generate_pdf_via_chrome），阻止文档内嵌脚本在
+        // file:// 源下执行。
         std::ffi::OsString::from("--no-sandbox"),
         std::ffi::OsString::from("--disable-setuid-sandbox"),
         std::ffi::OsString::from("--disable-extensions"),

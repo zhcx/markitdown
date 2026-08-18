@@ -75,7 +75,7 @@
 - **写作辅助** - Markdown 检查与格式化、完整语法指南、原生 Emoji 和常用表情
 
 ### 🎯 界面设计
-- **多主题支持** - Claude Light/Dark Theme 与 Notion Light/Dark Theme，可从“功能 → 主题”菜单切换
+- **多主题支持** - 内置「深色主题」与「浅色主题」两套简约配色，可从“功能 → 主题”菜单切换
 - **编辑增强** - 编辑器行号、可拖动网格选择并插入 Markdown 表格
 - **图片导出** - 支持 1:1、4:3、16:9、9:16、A4 比例预览并导出 PNG
 - **现代化设计** - Notion 风格的简洁界面
@@ -154,34 +154,32 @@ Agent 默认关闭，需要先在“设置 → AI 助手”中启用。Zeditor �
 
 ## 🚀 快速开始
 
-## v0.3.7 更新
+## v0.3.8 更新
 
 ### 更新日志
 
-- **转换引擎替换**：文档转换模块升级至 v1.2.0，改用 Firecrawl AnyDoc 原生 Rust 引擎，支持 DOC/DOCX、PPT/PPTX、XLS/XLSX、ODF、RTF、EPUB、CSV 和 PDF。
-- **打开入口统一**：菜单、资源管理器、拖放和系统启动参数共用同一套格式识别；二进制文档会自动进入转换流程，可编辑文本直接打开。
-- **图片降级转换**：未配置 LLM 或 ExifTool 时，JPG/JPEG/PNG 仍可生成包含本地图片引用、尺寸、颜色模式和可用 EXIF 信息的 Markdown。
-- **主题弹窗**：安装确认、错误提示、卸载确认全部改用主题弹窗，自动适配明暗主题。
-- **资源管理器增强**：右键菜单、近期记录面板、文件树自动刷新（v0.3.4 延续）。
-- **编辑预览联动**：双向高亮定位、统一滚动条（v0.3.4 延续）。
+- **主题体系精简**：移除 Claude 与 Notion 共四套主题，仅保留「深色主题」与「浅色主题」两套简约配色，并统一色彩饱和度与对比度、精简冗余变量、优化语法高亮层级。
+- **菜单栏交互修复**：修复鼠标移出时菜单过快收回、二级子菜单难以触达的问题；收回延迟调整为 350ms 并在菜单间加入透明桥接区域。
+- **质量加固**：修复 PDF 导出浏览器池资源泄漏、文件命令授权与符号链接遍历、并发下载竞态，以及 Agent 持久化、事件上限与流式输出等逻辑；收紧 Tauri 内容安全策略。
+- **转换模块**：继续沿用 AnyDoc v1.2.0（本版本未变更转换引擎）。
 
-### v0.3.7 平台安装包对照
+### v0.3.8 平台安装包对照
 
-> 以下链接指向 v0.3.7 Release 资产；安装包由 GitHub Actions 根据 v0.3.7 标签源码构建。
+> 以下链接指向 v0.3.8 Release 资产；安装包由 GitHub Actions 根据 v0.3.8 标签源码构建。
 
 | 操作系统 | 架构 | 最低系统版本 | 推荐安装包 | 适用场景 |
 | --- | --- | --- | --- | --- |
-| Windows | x86_64 | Windows 10 1809+ | [NSIS `.exe`](https://github.com/zhcx/zeditor/releases/download/v0.3.7/Zeditor_0.3.7_x64-setup.exe) | 推荐大多数用户使用，按向导安装 |
-| Windows | x86_64 | Windows 10 1809+ | [MSI](https://github.com/zhcx/zeditor/releases/download/v0.3.7/Zeditor_0.3.7_x64_en-US.msi) | 企业部署、系统管理或静默安装 |
-| macOS Apple Silicon | arm64 | macOS 12+ | [DMG](https://github.com/zhcx/zeditor/releases/download/v0.3.7/Zeditor_0.3.7_aarch64.dmg) | M1、M2、M3、M4 等 Apple 芯片 |
-| macOS Apple Silicon | arm64 | macOS 12+ | [APP 压缩包](https://github.com/zhcx/zeditor/releases/download/v0.3.7/Zeditor_aarch64.app.tar.gz) | 手动解压或更新 |
-| macOS Intel | x86_64 | macOS 12+ | [DMG](https://github.com/zhcx/zeditor/releases/download/v0.3.7/Zeditor_0.3.7_x64.dmg) | Intel 芯片 Mac |
-| macOS Intel | x86_64 | macOS 12+ | [APP 压缩包](https://github.com/zhcx/zeditor/releases/download/v0.3.7/Zeditor_x64.app.tar.gz) | 手动解压或更新 |
-| Ubuntu / Debian | x86_64 | Ubuntu 20.04+ / Debian 11+ | [DEB](https://github.com/zhcx/zeditor/releases/download/v0.3.7/Zeditor_0.3.7_amd64.deb) | Ubuntu、Debian、Linux Mint 等 |
-| Fedora / RHEL / openSUSE | x86_64 | Fedora 38+ / RHEL 9+ | [RPM](https://github.com/zhcx/zeditor/releases/download/v0.3.7/Zeditor-0.3.7-1.x86_64.rpm) | RPM 系发行版 |
-| 通用 Linux | x86_64 | 需 webkit2gtk-4.1 | [AppImage](https://github.com/zhcx/zeditor/releases/download/v0.3.7/Zeditor_0.3.7_amd64.AppImage) | 无需安装，赋予执行权限后运行 |
+| Windows | x86_64 | Windows 10 1809+ | [NSIS `.exe`](https://github.com/zhcx/zeditor/releases/download/v0.3.8/Zeditor_0.3.8_x64-setup.exe) | 推荐大多数用户使用，按向导安装 |
+| Windows | x86_64 | Windows 10 1809+ | [MSI](https://github.com/zhcx/zeditor/releases/download/v0.3.8/Zeditor_0.3.8_x64_en-US.msi) | 企业部署、系统管理或静默安装 |
+| macOS Apple Silicon | arm64 | macOS 12+ | [DMG](https://github.com/zhcx/zeditor/releases/download/v0.3.8/Zeditor_0.3.8_aarch64.dmg) | M1、M2、M3、M4 等 Apple 芯片 |
+| macOS Apple Silicon | arm64 | macOS 12+ | [APP 压缩包](https://github.com/zhcx/zeditor/releases/download/v0.3.8/Zeditor_aarch64.app.tar.gz) | 手动解压或更新 |
+| macOS Intel | x86_64 | macOS 12+ | [DMG](https://github.com/zhcx/zeditor/releases/download/v0.3.8/Zeditor_0.3.8_x64.dmg) | Intel 芯片 Mac |
+| macOS Intel | x86_64 | macOS 12+ | [APP 压缩包](https://github.com/zhcx/zeditor/releases/download/v0.3.8/Zeditor_x64.app.tar.gz) | 手动解压或更新 |
+| Ubuntu / Debian | x86_64 | Ubuntu 20.04+ / Debian 11+ | [DEB](https://github.com/zhcx/zeditor/releases/download/v0.3.8/Zeditor_0.3.8_amd64.deb) | Ubuntu、Debian、Linux Mint 等 |
+| Fedora / RHEL / openSUSE | x86_64 | Fedora 38+ / RHEL 9+ | [RPM](https://github.com/zhcx/zeditor/releases/download/v0.3.8/Zeditor-0.3.8-1.x86_64.rpm) | RPM 系发行版 |
+| 通用 Linux | x86_64 | 需 webkit2gtk-4.1 | [AppImage](https://github.com/zhcx/zeditor/releases/download/v0.3.8/Zeditor_0.3.8_amd64.AppImage) | 无需安装，赋予执行权限后运行 |
 
-完整更新说明、转换模块下载与安装提示见 [`docs/releases/v0.3.7.md`](docs/releases/v0.3.7.md)。
+完整更新说明、转换模块下载与安装提示见 [`docs/releases/v0.3.8.md`](docs/releases/v0.3.8.md)。
 
 ## Contributors
 

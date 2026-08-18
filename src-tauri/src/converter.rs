@@ -199,6 +199,14 @@ fn verify_signature(payload: &[u8], encoded_signature: &[u8]) -> Result<(), Stri
     if let Some(key) = public_key() {
         verify_signature_with_key(&key, payload, encoded_signature)
     } else {
+        // 未配置公钥时仅在首次跳过时告警一次：完整性完全依赖 HTTPS，
+        // 发布构建应通过 CONVERTER_MANIFEST_PUBLIC_KEY 启用签名验证。
+        static WARNED: std::sync::Once = std::sync::Once::new();
+        WARNED.call_once(|| {
+            eprintln!(
+                "WARN: CONVERTER_MANIFEST_PUBLIC_KEY 未设置，跳过转换模块签名验证（仅依赖 HTTPS 传输完整性）"
+            );
+        });
         Ok(())
     }
 }
@@ -217,6 +225,55 @@ fn sha256_file(path: &Path) -> Result<String, String> {
         hasher.update(&buffer[..read]);
     }
     Ok(hex::encode(hasher.finalize()))
+}
+
+/// 已验证文件的哈希缓存：以 (路径, 长度, 修改时间) 为键。
+/// 仅用于反复校验同一个已安装的可执行文件；下载安装等一次性校验
+/// 仍直接使用 `sha256_file` 实算。
+fn sha256_file_cached(path: &Path) -> Result<String, String> {
+    use std::collections::HashMap;
+    use std::time::SystemTime;
+
+    struct CacheKey {
+        path: PathBuf,
+        len: u64,
+        modified: SystemTime,
+    }
+    impl PartialEq for CacheKey {
+        fn eq(&self, other: &Self) -> bool {
+            self.path == other.path && self.len == other.len && self.modified == other.modified
+        }
+    }
+    impl Eq for CacheKey {}
+    impl std::hash::Hash for CacheKey {
+        fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+            self.path.hash(state);
+            self.len.hash(state);
+            self.modified.hash(state);
+        }
+    }
+
+    static CACHE: std::sync::Mutex<Option<HashMap<CacheKey, String>>> = std::sync::Mutex::new(None);
+    let metadata = std::fs::metadata(path).map_err(|error| error.to_string())?;
+    let key = CacheKey {
+        path: path.to_path_buf(),
+        len: metadata.len(),
+        modified: metadata.modified().unwrap_or(SystemTime::UNIX_EPOCH),
+    };
+    let mut cache = CACHE
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if let Some(cached) = cache.as_ref().and_then(|map| map.get(&key)) {
+        return Ok(cached.clone());
+    }
+    let digest = sha256_file(path)?;
+    let entry = cache.get_or_insert_with(HashMap::new);
+    // 防御性上限：正常情况只有一个模块可执行文件，多个版本并存也不多。
+    if entry.len() > 16 {
+        entry.clear();
+    }
+    entry.insert(key, digest.clone());
+    Ok(digest)
 }
 
 fn validate_metadata(metadata: &ModuleMetadata) -> Result<(), String> {
@@ -270,7 +327,10 @@ fn verify_installed_module(root: &Path, metadata: &ModuleMetadata) -> Result<u64
     if !executable.is_file() {
         return Err("转换模块可执行文件不存在。".into());
     }
-    let digest = sha256_file(&executable)?;
+    // 使用缓存哈希：转换器是几十 MB 的可执行文件，而本函数在每次文档
+    // 转换与前端状态轮询时都会调用，全量重算 SHA-256 开销显著。
+    // 缓存键为 (路径, 长度, mtime)，文件被替换（长度/mtime 变化）时重算。
+    let digest = sha256_file_cached(&executable)?;
     if !digest.eq_ignore_ascii_case(&metadata.executable_sha256) {
         return Err("转换模块 SHA-256 校验失败。".into());
     }
@@ -846,6 +906,15 @@ pub async fn convert_document(app: AppHandle, path: String) -> Result<String, St
     let executable = executable.expect("converter checked above");
     tokio::task::spawn_blocking(move || {
         let started = Instant::now();
+        // 失败路径（进程退出非零/启动失败）也会清理临时 markdown 文件，
+        // 避免临时目录累积残留。
+        struct TempCleanup<'a>(&'a Path);
+        impl Drop for TempCleanup<'_> {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_file(self.0);
+            }
+        }
+        let _cleanup = TempCleanup(&markdown_path);
         let mut command = Command::new(executable);
         hide_converter_window(&mut command);
         let output = command

@@ -36,11 +36,7 @@ interface DragDropPayload {
 }
 
 const DEFAULT_EDITOR_RATIO = 0.5;
-const SUPPORTED_THEMES = new Set([
-  'vscode-light', 'vscode-dark',
-  'claude-light', 'claude-dark',
-  'notion-light', 'notion-dark',
-]);
+const SUPPORTED_THEMES = new Set(['vscode-light', 'vscode-dark']);
 let themeSwitchFrame: number | null = null;
 
 function resolveThemePreference(preference: string) {
@@ -49,7 +45,9 @@ function resolveThemePreference(preference: string) {
   }
   if (preference === 'dark') return 'vscode-dark';
   if (preference === 'light') return 'vscode-light';
-  return SUPPORTED_THEMES.has(preference) ? preference : 'vscode-dark';
+  if (SUPPORTED_THEMES.has(preference)) return preference;
+  // 已下线主题（claude-*/notion-*）按明暗迁移到对应的新主题。
+  return preference.endsWith('-light') ? 'vscode-light' : 'vscode-dark';
 }
 
 function applyThemeToDocument(preference: string) {

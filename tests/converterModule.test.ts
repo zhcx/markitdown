@@ -20,7 +20,8 @@ test('converter manager verifies metadata and hashes before activation', () => {
   assert.match(manager, /CONVERTER_MANIFEST_PUBLIC_KEY/)
   assert.match(manager, /sha256_file\(&staged_executable\)/)
   assert.match(manager, /enclosed_name\(\)/)
-  assert.match(manager, /starts_with\("\/zhcx\/markitdown\/releases\/download\/"\)/)
+  // 上游仓库由 zhcx/markitdown 更名为 zhcx/zeditor，转换器发布 URL 同步更新
+  assert.match(manager, /starts_with\("\/zhcx\/zeditor\/releases\/download\/"\)/)
   assert.match(manager, /health_check\(&staged_executable/)
   assert.match(manager, /converter_module_missing/)
   // Ed25519 签名验证可选：有公钥时验证，无公钥时跳过

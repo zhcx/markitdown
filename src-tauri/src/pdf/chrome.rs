@@ -1,8 +1,6 @@
-use base64::Engine;
 use headless_chrome::types::PrintToPdfOptions;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use tauri::{Emitter, WebviewWindow};
 
 use super::browser_pool;
@@ -10,6 +8,7 @@ use super::engine::PdfInput;
 use super::error::{PdfError, PdfResult};
 use super::fonts::FontConfig;
 use super::PdfExportOptions;
+use crate::imaging::{embed_images, file_url_from_path};
 
 /// 进度事件
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -53,132 +52,8 @@ impl ChromeEngine {
     }
 }
 
-/// 将本地图片转换为 base64 data URL
-fn embed_images(html: &str, md_file_path: Option<&str>) -> String {
-    let mut result = String::with_capacity(html.len());
-    let mut rest = html;
-    let base_dir = md_file_path
-        .and_then(|md| Path::new(md).parent())
-        .map(Path::to_path_buf);
-    let mut image_cache: HashMap<PathBuf, Option<String>> = HashMap::new();
-
-    loop {
-        let tag_start = match rest.find("<img") {
-            Some(i) => i,
-            None => {
-                result.push_str(rest);
-                break;
-            }
-        };
-        result.push_str(&rest[..tag_start]);
-        let after_tag = &rest[tag_start..];
-
-        let tag_end = match after_tag.find('>') {
-            Some(i) => i + 1,
-            None => {
-                result.push_str(after_tag);
-                break;
-            }
-        };
-        let tag = &after_tag[..tag_end];
-
-        if let Some((src_key, src_end)) = find_img_src_range(tag) {
-            let src_val = &tag[src_key..src_end];
-            if let Some(data_url) =
-                resolve_image_src(base_dir.as_deref(), src_val, &mut image_cache)
-            {
-                result.push_str(&tag[..src_key]);
-                result.push_str(&data_url);
-                result.push_str(&tag[src_end..]);
-            } else {
-                result.push_str(tag);
-            }
-        } else {
-            result.push_str(tag);
-        }
-
-        rest = &after_tag[tag_end..];
-    }
-    result
-}
-
-fn find_img_src_range(tag: &str) -> Option<(usize, usize)> {
-    for quote in ['"', '\''] {
-        let pattern = if quote == '"' { "src=\"" } else { "src='" };
-        if let Some(start) = tag.find(pattern) {
-            let value_start = start + pattern.len();
-            let value_end = tag[value_start..]
-                .find(quote)
-                .map(|index| value_start + index)?;
-            return Some((value_start, value_end));
-        }
-    }
-    None
-}
-
-fn resolve_image_src(
-    base_dir: Option<&Path>,
-    src: &str,
-    image_cache: &mut HashMap<PathBuf, Option<String>>,
-) -> Option<String> {
-    if src.starts_with("http://") || src.starts_with("https://") || src.starts_with("data:") {
-        return None;
-    }
-
-    let p = std::path::Path::new(src);
-    let resolved = if p.is_absolute() {
-        p.to_path_buf()
-    } else if let Some(base_dir) = base_dir {
-        base_dir.join(p)
-    } else {
-        return None;
-    };
-    let cache_key = std::fs::canonicalize(&resolved).unwrap_or(resolved);
-
-    if let Some(cached) = image_cache.get(&cache_key) {
-        return cached.clone();
-    }
-
-    if !cache_key.exists() {
-        image_cache.insert(cache_key, None);
-        return None;
-    }
-
-    let data = match std::fs::read(&cache_key) {
-        Ok(data) => data,
-        Err(_) => {
-            image_cache.insert(cache_key, None);
-            return None;
-        }
-    };
-    let mime = guess_mime(&cache_key);
-    let data_url = format!(
-        "data:{};base64,{}",
-        mime,
-        base64::engine::general_purpose::STANDARD.encode(&data)
-    );
-    image_cache.insert(cache_key, Some(data_url.clone()));
-    Some(data_url)
-}
-
-fn guess_mime(p: &Path) -> &'static str {
-    match p
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("")
-        .to_lowercase()
-        .as_str()
-    {
-        "png" => "image/png",
-        "jpg" | "jpeg" => "image/jpeg",
-        "gif" => "image/gif",
-        "svg" => "image/svg+xml",
-        "webp" => "image/webp",
-        "bmp" => "image/bmp",
-        _ => "image/png",
-    }
-}
-
+/// 将本地图片转换为 base64 data URL 的实现见 crate::imaging（与
+/// HTML/Word 导出共享，避免两份实现漂移）。
 pub fn wrap_html_with_fonts(body: &str, margin_mm: f32, font_config: &FontConfig) -> String {
     let font_family_css = font_config.generate_font_family_css();
 
@@ -188,8 +63,8 @@ pub fn wrap_html_with_fonts(body: &str, margin_mm: f32, font_config: &FontConfig
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Zeditor Export</title>
-<style>
+<meta http-equiv="Content-Security-Policy" content="script-src 'none'">
+<title>Zeditor Export</title><style>
 @page {{ margin: {margin}mm; }}
 * {{ box-sizing: border-box; }}
 body {{
@@ -241,6 +116,35 @@ fn emit_progress(window: Option<&WebviewWindow>, stage: &str, progress: u8, mess
     }
 }
 
+/// RAII 守卫：确保错误路径（navigate/evaluate/print 提前返回）也会关闭
+/// 标签页，避免异常导出后浏览器 tab 泄漏累积。
+struct TabGuard<'a> {
+    tab: &'a headless_chrome::Tab,
+    released: std::cell::Cell<bool>,
+}
+
+impl<'a> TabGuard<'a> {
+    fn new(tab: &'a headless_chrome::Tab) -> Self {
+        Self {
+            tab,
+            released: std::cell::Cell::new(false),
+        }
+    }
+
+    /// 成功路径显式关闭标签页后调用，避免二次 close。
+    fn release(&self) {
+        self.released.set(true);
+    }
+}
+
+impl Drop for TabGuard<'_> {
+    fn drop(&mut self) {
+        if !self.released.get() {
+            self.tab.close(false).ok();
+        }
+    }
+}
+
 fn generate_pdf_via_chrome(
     html: &str,
     options: &PdfExportOptions,
@@ -249,15 +153,25 @@ fn generate_pdf_via_chrome(
     // 进度: 初始化
     emit_progress(window, "init", 10, "初始化浏览器...");
 
-    // 使用浏览器池获取复用的浏览器实例
+    // 使用浏览器池获取复用的浏览器实例；new_tab 失败通常意味着池化的
+    // Chrome 已崩溃，此时丢弃实例并重启一次。
     let browser = browser_pool::get_browser()?;
+    let tab = match browser.new_tab() {
+        Ok(tab) => tab,
+        Err(first_error) => {
+            browser_pool::invalidate_browser();
+            let browser = browser_pool::get_browser().map_err(|e| {
+                PdfError::ChromeInit(format!("browser restart failed after: {first_error}; {e}"))
+            })?;
+            browser
+                .new_tab()
+                .map_err(|e| PdfError::ChromeInit(e.to_string()))?
+        }
+    };
+    let _guard = TabGuard::new(tab.as_ref());
 
     // 进度: 加载内容
     emit_progress(window, "load", 30, "加载内容...");
-
-    let tab = browser
-        .new_tab()
-        .map_err(|e| PdfError::ChromeInit(e.to_string()))?;
 
     let temp_html = TempHtmlFile::new(html)?;
     let file_url = temp_html.file_url();
@@ -267,18 +181,19 @@ fn generate_pdf_via_chrome(
     tab.wait_until_navigated()
         .map_err(|e| PdfError::Navigation(e.to_string()))?;
 
-    // 智能等待：检查文档就绪状态
-    let ready = tab
-        .evaluate("document.readyState === 'complete'", false)
-        .map_err(|e| PdfError::Navigation(e.to_string()))?;
-
-    // 如果文档未就绪，短暂等待
-    if let Some(obj) = ready.value {
-        if obj.as_bool().unwrap_or(false) {
-            // 文档已就绪
-        } else {
-            std::thread::sleep(std::time::Duration::from_millis(100));
+    // 智能等待：轮询文档就绪状态（最多 10 秒）。此前只检查一次并固定
+    // 睡眠 100ms，JS 延迟渲染的内容（图表等）可能缺失。
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    loop {
+        let ready = tab
+            .evaluate("document.readyState === 'complete'", false)
+            .ok()
+            .and_then(|result| result.value)
+            .is_some_and(|value| value.as_bool().unwrap_or(false));
+        if ready || std::time::Instant::now() >= deadline {
+            break;
         }
+        std::thread::sleep(std::time::Duration::from_millis(100));
     }
 
     // 进度: 渲染
@@ -310,6 +225,7 @@ fn generate_pdf_via_chrome(
 
     // 关闭标签页以释放资源
     tab.close(false).ok();
+    _guard.release();
 
     // 进度: 完成
     emit_progress(window, "complete", 100, "导出完成");
@@ -337,57 +253,5 @@ impl TempHtmlFile {
 impl Drop for TempHtmlFile {
     fn drop(&mut self) {
         std::fs::remove_file(&self.path).ok();
-    }
-}
-
-fn file_url_from_path(path: &Path) -> String {
-    let mut path = path.to_string_lossy().replace('\\', "/");
-    if !path.starts_with('/') {
-        path = format!("/{path}");
-    }
-    format!("file://{}", encode_file_url_path(&path))
-}
-
-fn encode_file_url_path(path: &str) -> String {
-    let mut encoded = String::with_capacity(path.len());
-    for byte in path.bytes() {
-        match byte {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'/' | b':' | b'-' | b'_' | b'.' | b'~' => {
-                encoded.push(byte as char)
-            }
-            _ => encoded.push_str(&format!("%{byte:02X}")),
-        }
-    }
-    encoded
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn file_url_from_path_encodes_spaces_and_unicode() {
-        let url = file_url_from_path(Path::new(r"C:\Temp Dir\中文.html"));
-
-        assert_eq!(url, "file:///C:/Temp%20Dir/%E4%B8%AD%E6%96%87.html");
-    }
-
-    #[test]
-    fn embed_images_continues_after_img_without_src() {
-        let temp_dir =
-            std::env::temp_dir().join(format!("zeditor_pdf_test_{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&temp_dir).unwrap();
-        let image_path = temp_dir.join("image.png");
-        std::fs::write(&image_path, [0_u8, 1, 2, 3]).unwrap();
-
-        let md_path = temp_dir.join("doc.md");
-        let html = r#"<p>A</p><img alt="cover"><p>B</p><img src="image.png"><p>C</p>"#;
-        let output = embed_images(html, Some(&md_path.to_string_lossy()));
-
-        assert!(output.contains(r#"<img alt="cover">"#));
-        assert!(output.contains("data:image/png;base64,AAECAw=="));
-        assert!(output.contains("<p>C</p>"));
-
-        std::fs::remove_dir_all(temp_dir).ok();
     }
 }

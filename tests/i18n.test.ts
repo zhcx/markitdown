@@ -20,5 +20,6 @@ test('localizes editor context-menu actions and legacy English labels', () => {
   assert.equal(translateUiText('复制', 'zh-TW'), '複製');
   assert.equal(translateUiText('复制', 'en'), 'Copy');
   assert.equal(translateUiText('Basic', 'zh-CN'), '基础');
-  assert.equal(translateUiText('VS Code Dark Theme', 'zh-CN'), 'VS Code 深色主题');
+  assert.equal(translateUiText('Dark Theme', 'zh-CN'), '深色主题');
+  assert.equal(translateUiText('Light Theme', 'zh-TW'), '淺色主題');
 });
