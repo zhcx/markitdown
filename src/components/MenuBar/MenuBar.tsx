@@ -398,12 +398,6 @@ export function MenuBar() {
     }
   };
 
-  const closeMenus = () => {
-    cancelMenuClose();
-    setActiveMenu(null);
-    setMenuOpen(false);
-  };
-
   useEffect(() => cancelMenuClose, []);
 
   const handleNewFile = () => {
@@ -443,7 +437,7 @@ export function MenuBar() {
       try {
         const activeTab = getActiveTab();
         if (activeTab?.modified && currentFile) {
-          await saveFile();
+          await saveFile(currentFile);
         }
       } catch (error) {
         console.warn('安装前保存当前文档失败：', error);
