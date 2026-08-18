@@ -28,8 +28,10 @@ pub fn system_command(program: impl AsRef<OsStr>) -> Command {
 /// 扩展目录，而状态面板等调用方高频轮询。缓存 30 秒，新安装的 CLI 最迟
 /// 在下一次 TTL 过期后可见（或重启应用）。
 const DISCOVERY_CACHE_TTL: Duration = Duration::from_secs(30);
-static DISCOVERY_CACHE: Mutex<Option<(Instant, HashMap<String, Option<PathBuf>>)>> =
-    Mutex::new(None);
+
+/// 可执行文件发现结果缓存条目：CLI 名称 → 找到的绝对路径（未找到为 None）。
+type DiscoveryEntries = HashMap<String, Option<PathBuf>>;
+static DISCOVERY_CACHE: Mutex<Option<(Instant, DiscoveryEntries)>> = Mutex::new(None);
 
 pub fn discover_executable(name: &str) -> Option<PathBuf> {
     let mut cache = DISCOVERY_CACHE

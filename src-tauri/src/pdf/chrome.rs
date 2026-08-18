@@ -3,12 +3,12 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use tauri::{Emitter, WebviewWindow};
 
-use crate::imaging::{embed_images, file_url_from_path};
 use super::browser_pool;
 use super::engine::PdfInput;
 use super::error::{PdfError, PdfResult};
 use super::fonts::FontConfig;
 use super::PdfExportOptions;
+use crate::imaging::{embed_images, file_url_from_path};
 
 /// 进度事件
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -54,7 +54,6 @@ impl ChromeEngine {
 
 /// 将本地图片转换为 base64 data URL 的实现见 crate::imaging（与
 /// HTML/Word 导出共享，避免两份实现漂移）。
-
 pub fn wrap_html_with_fonts(body: &str, margin_mm: f32, font_config: &FontConfig) -> String {
     let font_family_css = font_config.generate_font_family_css();
 

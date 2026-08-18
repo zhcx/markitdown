@@ -248,10 +248,13 @@ pub fn get_changes(session: &AgentSession) -> Result<AgentChangeSet, String> {
             Some((path, (additions, deletions)))
         })
         .collect();
-    let diff_by_path = if stats_by_path.values().any(|(additions, _)| *additions != "-") {
+    let diff_by_path = if stats_by_path
+        .values()
+        .any(|(additions, _)| *additions != "-")
+    {
         // 存在文本 diff 时才需要全量 diff 输出。
-        let full = git(worktree, &["diff", "--cached", "--no-ext-diff", "HEAD"])
-            .unwrap_or_default();
+        let full =
+            git(worktree, &["diff", "--cached", "--no-ext-diff", "HEAD"]).unwrap_or_default();
         split_diff_by_path(&full)
     } else {
         HashMap::new()

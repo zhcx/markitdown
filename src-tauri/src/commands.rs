@@ -542,11 +542,10 @@ pub async fn export_html(
     file_path: Option<String>,
 ) -> Result<String, String> {
     // 图片内嵌是同步磁盘 IO，放到阻塞线程池执行。
-    let with_images = tokio::task::spawn_blocking(move || {
-        embed_images(&html_body, file_path.as_deref())
-    })
-    .await
-    .map_err(|e| e.to_string())?;
+    let with_images =
+        tokio::task::spawn_blocking(move || embed_images(&html_body, file_path.as_deref()))
+            .await
+            .map_err(|e| e.to_string())?;
     Ok(wrap_html_page(&with_images, settings.pdf_margin))
 }
 
@@ -556,11 +555,10 @@ pub async fn export_word(
     settings: ExportSettings,
     file_path: Option<String>,
 ) -> Result<String, String> {
-    let with_images = tokio::task::spawn_blocking(move || {
-        embed_images(&html_body, file_path.as_deref())
-    })
-    .await
-    .map_err(|e| e.to_string())?;
+    let with_images =
+        tokio::task::spawn_blocking(move || embed_images(&html_body, file_path.as_deref()))
+            .await
+            .map_err(|e| e.to_string())?;
     Ok(wrap_word_page(&with_images, settings.pdf_margin))
 }
 
@@ -570,11 +568,10 @@ pub async fn export_pdf(
     settings: ExportSettings,
     file_path: Option<String>,
 ) -> Result<String, String> {
-    let with_images = tokio::task::spawn_blocking(move || {
-        embed_images(&html_body, file_path.as_deref())
-    })
-    .await
-    .map_err(|e| e.to_string())?;
+    let with_images =
+        tokio::task::spawn_blocking(move || embed_images(&html_body, file_path.as_deref()))
+            .await
+            .map_err(|e| e.to_string())?;
     let full = wrap_html_page(&with_images, settings.pdf_margin);
     let temp_dir = std::env::temp_dir();
     let temp_html = temp_dir.join(format!("zeditor_export_{}.html", uuid::Uuid::new_v4()));
@@ -908,9 +905,7 @@ fn canonicalize_or_parent(path: &str) -> Result<PathBuf, String> {
     if let Ok(canonical) = std::fs::canonicalize(candidate) {
         return Ok(canonical);
     }
-    let parent = candidate
-        .parent()
-        .ok_or_else(|| "无效路径".to_string())?;
+    let parent = candidate.parent().ok_or_else(|| "无效路径".to_string())?;
     let file_name = candidate
         .file_name()
         .ok_or_else(|| "无效路径".to_string())?;
@@ -1022,9 +1017,9 @@ async fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), String> {
         if meta.is_dir() {
             Box::pin(copy_dir_recursive(&src_path, &dst_path)).await?;
         } else {
-            tokio::fs::copy(&src_path, &dst_path)
-                .await
-                .map_err(|e| format!("复制文件 {} 失败：{e}", entry.file_name().to_string_lossy()))?;
+            tokio::fs::copy(&src_path, &dst_path).await.map_err(|e| {
+                format!("复制文件 {} 失败：{e}", entry.file_name().to_string_lossy())
+            })?;
         }
     }
     Ok(())
@@ -1635,10 +1630,7 @@ async fn check_updates_from_atom(
             .map_err(|error| format!("Release feed body: {}", error))?,
     )?;
     let has_update = compare_versions(&latest, &current)?;
-    let download_url = format!(
-        "https://github.com/zhcx/zeditor/releases/tag/v{}",
-        latest
-    );
+    let download_url = format!("https://github.com/zhcx/zeditor/releases/tag/v{}", latest);
 
     Ok(UpdateInfo {
         has_update,
@@ -1678,8 +1670,7 @@ fn extract_latest_tag_from_atom(feed: &str) -> Result<String, String> {
 
 fn compare_versions(latest: &str, current: &str) -> Result<bool, String> {
     // 复用 semver crate（已是依赖），替代此前的手写逐段比较。
-    let latest =
-        semver::Version::parse(latest).map_err(|e| format!("无效版本号 {latest}：{e}"))?;
+    let latest = semver::Version::parse(latest).map_err(|e| format!("无效版本号 {latest}：{e}"))?;
     let current =
         semver::Version::parse(current).map_err(|e| format!("无效版本号 {current}：{e}"))?;
     Ok(latest > current)
@@ -1716,7 +1707,8 @@ mod update_tests {
         assert!(validate_update_download(
             "https://github.com/zhcx/zeditor/releases/download/v0.3.7/Zeditor_0.3.7_x64-setup.exe",
             "Zeditor_0.3.7_x64-setup.exe",
-        ).is_ok());
+        )
+        .is_ok());
         assert!(validate_update_download(
             "http://github.com/zhcx/zeditor/releases/download/v1/app.exe",
             "app.exe"
@@ -1830,9 +1822,7 @@ fn validate_update_download(download_url: &str, file_name: &str) -> Result<reqwe
     let url = reqwest::Url::parse(download_url).map_err(|_| "更新下载地址无效".to_string())?;
     let valid_release = url.scheme() == "https"
         && url.host_str() == Some("github.com")
-        && url
-            .path()
-            .starts_with("/zhcx/zeditor/releases/download/")
+        && url.path().starts_with("/zhcx/zeditor/releases/download/")
         && url.query().is_none()
         && url.fragment().is_none();
     if !valid_release {
@@ -1950,8 +1940,8 @@ pub async fn download_and_install_update(
 #[tauri::command]
 pub async fn finalize_update_install(installer_path: String) -> Result<(), String> {
     // 校验安装包位于受控临时目录且扩展名合法，防止任意路径执行。
-    let canonical = std::fs::canonicalize(&installer_path)
-        .map_err(|e| format!("无法访问安装包：{e}"))?;
+    let canonical =
+        std::fs::canonicalize(&installer_path).map_err(|e| format!("无法访问安装包：{e}"))?;
     let update_dir = std::env::temp_dir().join("zeditor_update");
     let update_dir = std::fs::canonicalize(&update_dir).unwrap_or(update_dir);
     if !canonical.starts_with(&update_dir) {

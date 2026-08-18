@@ -253,8 +253,7 @@ fn sha256_file_cached(path: &Path) -> Result<String, String> {
         }
     }
 
-    static CACHE: std::sync::Mutex<Option<HashMap<CacheKey, String>>> =
-        std::sync::Mutex::new(None);
+    static CACHE: std::sync::Mutex<Option<HashMap<CacheKey, String>>> = std::sync::Mutex::new(None);
     let metadata = std::fs::metadata(path).map_err(|error| error.to_string())?;
     let key = CacheKey {
         path: path.to_path_buf(),

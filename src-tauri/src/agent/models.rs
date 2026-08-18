@@ -318,11 +318,7 @@ fn configured_model(backend: AgentBackendId, workspace_root: Option<&Path>) -> O
             }
             // XDG 配置目录（Linux 桌面常见）。
             if let Some(config) = std::env::var_os("XDG_CONFIG_HOME") {
-                paths.push(
-                    PathBuf::from(config)
-                        .join("opencode")
-                        .join("opencode.json"),
-                );
+                paths.push(PathBuf::from(config).join("opencode").join("opencode.json"));
             }
             if let Some(app_data) = std::env::var_os("APPDATA") {
                 paths.push(

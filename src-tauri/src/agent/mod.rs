@@ -661,8 +661,8 @@ async fn spawn_turn(
             for raw in adapters::line_events(protocol, &value) {
                 process_raw_event(&output_runtime, &output_app, raw, protocol).await;
             }
-            let due = last_persist
-                .is_none_or(|stamp| stamp.elapsed() >= Duration::from_millis(500));
+            let due =
+                last_persist.is_none_or(|stamp| stamp.elapsed() >= Duration::from_millis(500));
             if due {
                 let _ = persist_runtime(&output_storage, &output_runtime).await;
                 last_persist = Some(std::time::Instant::now());
@@ -912,8 +912,8 @@ async fn spawn_opencode_turn(
                     )
                     .await;
                 }
-                let due = last_persist
-                    .is_none_or(|stamp| stamp.elapsed() >= Duration::from_millis(500));
+                let due =
+                    last_persist.is_none_or(|stamp| stamp.elapsed() >= Duration::from_millis(500));
                 if due {
                     let _ = persist_runtime(&event_storage, &event_runtime).await;
                     last_persist = Some(std::time::Instant::now());
