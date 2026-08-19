@@ -7,7 +7,7 @@ use super::{
         BackupIndex, BackupIndexEntry, DocumentManifest, RemoteDocumentPath, WebDavVersion,
         HISTORY_LIMIT,
     },
-    path::normalize_remote_root,
+    path::{normalize_remote_root, validate_canonical_resource_path},
 };
 
 impl DocumentManifest {
@@ -321,15 +321,7 @@ fn append_namespace_path(root: &str, suffix: &str) -> String {
 }
 
 fn validate_canonical_remote_path(path: &str, label: &str) -> Result<(), String> {
-    if !path.starts_with('/') {
-        return Err(format!("Invalid {label}: path must be absolute"));
-    }
-    let normalized =
-        normalize_remote_root(path).map_err(|error| format!("Invalid {label}: {error}"))?;
-    if normalized != path {
-        return Err(format!("Invalid {label}: path is not canonical"));
-    }
-    Ok(())
+    validate_canonical_resource_path(path).map_err(|error| format!("Invalid {label}: {error}"))
 }
 
 fn is_strict_descendant(path: &str, root: &str) -> bool {
@@ -898,5 +890,85 @@ mod tests {
             "/Zeditor"
         )
         .is_err());
+    }
+
+    #[test]
+    fn mapper_resources_with_encoded_data_round_trip_through_namespace_validation() {
+        let expected = crate::webdav::map_remote_document(
+            "/work/报告 #? 100% foo\\bar.md",
+            &["/work".to_string()],
+            "/Zeditor",
+        )
+        .expect("mapped encoded resource");
+        for encoded in ["%23", "%3F", "%25", "%20", "%E6", "%5C"] {
+            assert!(
+                expected.current_path.contains(encoded),
+                "missing encoded data {encoded}"
+            );
+        }
+
+        let version_id = "b".repeat(24);
+        let manifest = DocumentManifest {
+            document_id: expected.document_id.clone(),
+            display_name: expected.display_name.clone(),
+            current_path: expected.current_path.clone(),
+            versions: vec![version(
+                &version_id,
+                "2026-08-19T12:00:00Z",
+                &"c".repeat(64),
+                &format!("{}/{version_id}.md", expected.versions_dir),
+            )],
+        };
+        let index = BackupIndex {
+            documents: vec![BackupIndexEntry {
+                document_id: expected.document_id.clone(),
+                display_name: expected.display_name.clone(),
+                current_path: expected.current_path.clone(),
+                manifest_path: expected.manifest_path.clone(),
+                latest_at: "2026-08-19T12:00:00Z".to_string(),
+            }],
+        };
+
+        validate_manifest_namespace(&manifest, &expected, "/Zeditor")
+            .expect("encoded manifest namespace");
+        validate_index_namespace(&index, "/Zeditor").expect("encoded index namespace");
+    }
+
+    #[test]
+    fn generated_resource_validation_rejects_unsafe_or_noncanonical_encodings() {
+        let valid_expected = namespaced_expected_path();
+        let valid_manifest = namespaced_manifest();
+        let valid_index_entry = namespaced_index_entry(&valid_expected.document_id);
+        for current_path in [
+            "/Zeditor/raw?query.md",
+            "/Zeditor/raw#fragment.md",
+            "/Zeditor/file%2Fchild.md",
+            "/Zeditor/%2E%2E/note.md",
+            "/Zeditor/file%GG.md",
+            "/Zeditor/%41.md",
+            "/Zeditor/file%252Fchild.md",
+        ] {
+            let mut expected = valid_expected.clone();
+            expected.current_path = current_path.to_string();
+            let mut manifest = valid_manifest.clone();
+            manifest.current_path = current_path.to_string();
+            assert!(
+                validate_manifest_namespace(&manifest, &expected, "/Zeditor").is_err(),
+                "manifest accepted resource {current_path}"
+            );
+
+            let mut entry = valid_index_entry.clone();
+            entry.current_path = current_path.to_string();
+            assert!(
+                validate_index_namespace(
+                    &BackupIndex {
+                        documents: vec![entry],
+                    },
+                    "/Zeditor"
+                )
+                .is_err(),
+                "index accepted resource {current_path}"
+            );
+        }
     }
 }

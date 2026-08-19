@@ -57,6 +57,49 @@ pub fn normalize_remote_root(raw: &str) -> Result<String, String> {
     }
 }
 
+pub(super) fn validate_canonical_resource_path(path: &str) -> Result<(), String> {
+    if !path.starts_with('/') {
+        return Err("generated resource path must be absolute".to_string());
+    }
+    if path.contains(['?', '#']) {
+        return Err("generated resource path contains a literal query or fragment".to_string());
+    }
+    if !has_valid_percent_escapes(path) {
+        return Err("generated resource path contains invalid percent encoding".to_string());
+    }
+
+    let mut segments = path.split('/');
+    if segments.next() != Some("") {
+        return Err("generated resource path must be absolute".to_string());
+    }
+    let mut segment_count = 0;
+    for segment in segments {
+        if segment.is_empty() {
+            return Err("generated resource path contains an empty segment".to_string());
+        }
+        segment_count += 1;
+        let decoded = urlencoding::decode(segment)
+            .map_err(|_| "generated resource path contains invalid percent encoding".to_string())?;
+        if matches!(decoded.as_ref(), "." | "..")
+            || decoded.contains('/')
+            || decoded.chars().any(char::is_control)
+        {
+            return Err("generated resource path contains an unsafe segment".to_string());
+        }
+        if decoded.contains('%') && has_valid_percent_escapes(&decoded) {
+            return Err("generated resource path contains double percent encoding".to_string());
+        }
+        if urlencoding::encode(&decoded).as_ref() != segment {
+            return Err("generated resource path is not canonically encoded".to_string());
+        }
+    }
+    if segment_count == 0 {
+        return Err("generated resource path must identify a resource".to_string());
+    }
+
+    Ok(())
+}
+
 pub fn map_remote_document(
     local_path: &str,
     workspace_roots: &[String],
