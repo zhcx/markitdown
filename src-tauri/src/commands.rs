@@ -80,6 +80,8 @@ pub struct Settings {
     pub agent: AgentSettings,
     #[serde(default)]
     pub web_search: WebSearchSettings,
+    #[serde(default)]
+    pub webdav: WebDavSettings,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -232,6 +234,36 @@ impl Default for WebSearchSettings {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WebDavSettings {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub server_url: String,
+    #[serde(default)]
+    pub username: String,
+    #[serde(default)]
+    pub password: String,
+    #[serde(default = "default_webdav_remote_root")]
+    pub remote_root: String,
+}
+
+fn default_webdav_remote_root() -> String {
+    "/Zeditor".into()
+}
+
+impl Default for WebDavSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            server_url: String::new(),
+            username: String::new(),
+            password: String::new(),
+            remote_root: default_webdav_remote_root(),
+        }
+    }
+}
+
 impl Default for Settings {
     fn default() -> Self {
         Settings {
@@ -311,6 +343,7 @@ impl Default for Settings {
                 searxng_time_range: String::new(),
                 searxng_max_results: 5,
             },
+            webdav: WebDavSettings::default(),
         }
     }
 }
@@ -1688,6 +1721,15 @@ mod update_tests {
         assert!(!restored.agent.enabled);
         assert_eq!(restored.agent.backend, "claude_code");
         assert_eq!(restored.agent.backends.len(), 3);
+    }
+
+    #[test]
+    fn settings_without_webdav_use_defaults() {
+        let mut value = serde_json::to_value(Settings::default()).unwrap();
+        value.as_object_mut().unwrap().remove("webdav");
+        let restored: Settings = serde_json::from_value(value).unwrap();
+        assert!(!restored.webdav.enabled);
+        assert_eq!(restored.webdav.remote_root, "/Zeditor");
     }
 
     #[test]

@@ -75,6 +75,13 @@ export interface Settings {
     html_template: string;
   };
   web_search: WebSearchSettings;
+  webdav: {
+    enabled: boolean;
+    server_url: string;
+    username: string;
+    password: string;
+    remote_root: string;
+  };
   ai: {
     enabled: boolean;
     provider: AIProviderId;
@@ -321,6 +328,13 @@ const defaultSettings: Settings = {
     searxng_time_range: '',
     searxng_max_results: 5,
   },
+  webdav: {
+    enabled: false,
+    server_url: '',
+    username: '',
+    password: '',
+    remote_root: '/Zeditor',
+  },
   ai: {
     enabled: false,
     provider: 'openai',
@@ -363,6 +377,7 @@ const normalizeSettings = (saved: Settings): Settings => ({
   image_hosting: { ...defaultSettings.image_hosting, ...saved.image_hosting },
   export: { ...defaultSettings.export, ...saved.export },
   web_search: { ...defaultSettings.web_search, ...saved.web_search },
+  webdav: { ...defaultSettings.webdav, ...saved.webdav },
   ai: { ...defaultSettings.ai, ...saved.ai },
   agent: {
     ...defaultSettings.agent,
