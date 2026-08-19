@@ -3,7 +3,10 @@ use std::{cmp::Ordering, collections::HashSet};
 use chrono::{DateTime, Utc};
 
 use super::{
-    model::{BackupIndex, BackupIndexEntry, DocumentManifest, WebDavVersion, HISTORY_LIMIT},
+    model::{
+        BackupIndex, BackupIndexEntry, DocumentManifest, RemoteDocumentPath, WebDavVersion,
+        HISTORY_LIMIT,
+    },
     path::normalize_remote_root,
 };
 
@@ -140,60 +143,90 @@ pub fn parse_index(bytes: &[u8]) -> Result<BackupIndex, String> {
 
 pub fn validate_manifest_namespace(
     manifest: &DocumentManifest,
-    expected_document_id: &str,
+    expected: &RemoteDocumentPath,
     remote_root: &str,
 ) -> Result<(), String> {
-    if !is_hex_with_len(expected_document_id, 24) {
-        return Err("Expected WebDAV document ID must be 24 hexadecimal characters".to_string());
+    if !is_lower_hex_with_len(&expected.document_id, 24) {
+        return Err(
+            "Expected WebDAV document ID must be 24 lowercase hexadecimal characters".to_string(),
+        );
     }
-    if !is_hex_with_len(&manifest.document_id, 24) {
-        return Err("Manifest document ID must be 24 hexadecimal characters".to_string());
+    if !is_lower_hex_with_len(&manifest.document_id, 24) {
+        return Err("Manifest document ID must be 24 lowercase hexadecimal characters".to_string());
     }
-    if manifest.document_id != expected_document_id {
+    if manifest.document_id != expected.document_id {
         return Err("Manifest document ID does not match the requested document".to_string());
     }
 
     let remote_root = normalize_remote_root(remote_root)
         .map_err(|error| format!("Invalid WebDAV remote root: {error}"))?;
     let history_root = append_namespace_path(&remote_root, ".zeditor-history");
-    let versions_dir = append_namespace_path(
-        &history_root,
-        &format!("documents/{expected_document_id}/versions"),
+    let documents_root = append_namespace_path(&history_root, "documents");
+    let expected_manifest_path = append_namespace_path(
+        &documents_root,
+        &format!("{}/manifest.json", expected.document_id),
+    );
+    let expected_versions_dir = append_namespace_path(
+        &documents_root,
+        &format!("{}/versions", expected.document_id),
     );
 
-    validate_canonical_remote_path(&manifest.current_path, "manifest current path")?;
-    if !is_strict_descendant(&manifest.current_path, &remote_root) {
-        return Err("Manifest current path is outside the configured remote root".to_string());
+    validate_canonical_remote_path(&expected.current_path, "expected current path")?;
+    if !is_strict_descendant(&expected.current_path, &remote_root) {
+        return Err("Expected current path is outside the configured remote root".to_string());
     }
-    if manifest.current_path == history_root
-        || manifest
+    if expected.current_path == history_root
+        || expected
             .current_path
             .strip_prefix(&history_root)
             .is_some_and(|suffix| suffix.starts_with('/'))
     {
-        return Err("Manifest current path must be outside WebDAV history".to_string());
+        return Err("Expected current path must be outside WebDAV history".to_string());
+    }
+    validate_canonical_remote_path(&expected.manifest_path, "expected manifest path")?;
+    if expected.manifest_path != expected_manifest_path {
+        return Err("Expected manifest path does not match its document namespace".to_string());
+    }
+    validate_canonical_remote_path(&expected.versions_dir, "expected versions directory")?;
+    if expected.versions_dir != expected_versions_dir {
+        return Err(
+            "Expected versions directory does not match its document namespace".to_string(),
+        );
+    }
+    if manifest.current_path != expected.current_path {
+        return Err("Manifest current path does not match the expected document path".to_string());
     }
 
-    let snapshot_prefix = format!("{versions_dir}/");
     for version in &manifest.versions {
-        if !is_hex_with_len(&version.id, 24) {
+        if !is_lower_hex_with_len(&version.id, 24) {
             return Err(format!(
-                "WebDAV version ID '{}' must be 24 hexadecimal characters",
+                "WebDAV version ID '{}' must be 24 lowercase hexadecimal characters",
                 version.id
             ));
         }
-        if !is_hex_with_len(&version.sha256, 64) {
+        if !is_lower_hex_with_len(&version.sha256, 64) {
             return Err(format!(
-                "WebDAV version '{}' SHA-256 must be 64 hexadecimal characters",
+                "WebDAV version '{}' SHA-256 must be 64 lowercase hexadecimal characters",
                 version.id
             ));
         }
         validate_canonical_remote_path(&version.snapshot_path, "version snapshot path")?;
-        if !version.snapshot_path.starts_with(&snapshot_prefix)
-            || version.snapshot_path.len() == snapshot_prefix.len()
-        {
+        let Some((parent, basename)) = version.snapshot_path.rsplit_once('/') else {
             return Err(format!(
-                "WebDAV version '{}' snapshot path is outside its document namespace",
+                "WebDAV version '{}' snapshot path has no parent directory",
+                version.id
+            ));
+        };
+        if parent != expected.versions_dir {
+            return Err(format!(
+                "WebDAV version '{}' snapshot is not a direct child of its versions directory",
+                version.id
+            ));
+        }
+        let basename_prefix = format!("{}.", version.id);
+        if !basename.starts_with(&basename_prefix) || basename.len() == basename_prefix.len() {
+            return Err(format!(
+                "WebDAV version '{}' snapshot basename does not match its version ID",
                 version.id
             ));
         }
@@ -202,8 +235,81 @@ pub fn validate_manifest_namespace(
     Ok(())
 }
 
-fn is_hex_with_len(value: &str, expected_len: usize) -> bool {
-    value.len() == expected_len && value.bytes().all(|byte| byte.is_ascii_hexdigit())
+pub fn validate_index_namespace(index: &BackupIndex, remote_root: &str) -> Result<(), String> {
+    let remote_root = normalize_remote_root(remote_root)
+        .map_err(|error| format!("Invalid WebDAV remote root: {error}"))?;
+    let history_root = append_namespace_path(&remote_root, ".zeditor-history");
+    let documents_root = append_namespace_path(&history_root, "documents");
+    let mut document_ids = HashSet::new();
+    let mut current_paths = HashSet::new();
+    let mut manifest_paths = HashSet::new();
+
+    for entry in &index.documents {
+        if !is_lower_hex_with_len(&entry.document_id, 24) {
+            return Err(format!(
+                "WebDAV index document ID '{}' must be 24 lowercase hexadecimal characters",
+                entry.document_id
+            ));
+        }
+        if !document_ids.insert(entry.document_id.clone()) {
+            return Err(format!(
+                "WebDAV index contains duplicate document ID '{}'",
+                entry.document_id
+            ));
+        }
+
+        validate_canonical_remote_path(&entry.current_path, "index current path")?;
+        if !is_strict_descendant(&entry.current_path, &remote_root) {
+            return Err(format!(
+                "WebDAV index current path for '{}' is outside the configured remote root",
+                entry.document_id
+            ));
+        }
+        if entry.current_path == history_root
+            || entry
+                .current_path
+                .strip_prefix(&history_root)
+                .is_some_and(|suffix| suffix.starts_with('/'))
+        {
+            return Err(format!(
+                "WebDAV index current path for '{}' must be outside history",
+                entry.document_id
+            ));
+        }
+        if !current_paths.insert(entry.current_path.clone()) {
+            return Err(format!(
+                "WebDAV index contains duplicate current path for '{}'",
+                entry.document_id
+            ));
+        }
+
+        validate_canonical_remote_path(&entry.manifest_path, "index manifest path")?;
+        let expected_manifest_path = append_namespace_path(
+            &documents_root,
+            &format!("{}/manifest.json", entry.document_id),
+        );
+        if entry.manifest_path != expected_manifest_path {
+            return Err(format!(
+                "WebDAV index manifest path for '{}' does not match its document namespace",
+                entry.document_id
+            ));
+        }
+        if !manifest_paths.insert(entry.manifest_path.clone()) {
+            return Err(format!(
+                "WebDAV index contains duplicate manifest path for '{}'",
+                entry.document_id
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+fn is_lower_hex_with_len(value: &str, expected_len: usize) -> bool {
+    value.len() == expected_len
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || matches!(byte, b'a'..=b'f'))
 }
 
 fn append_namespace_path(root: &str, suffix: &str) -> String {
@@ -259,21 +365,44 @@ mod tests {
         }
     }
 
-    fn namespaced_manifest() -> DocumentManifest {
+    fn namespaced_expected_path() -> crate::webdav::RemoteDocumentPath {
         let document_id = "a".repeat(24);
-        let version_id = "b".repeat(24);
-        DocumentManifest {
+        crate::webdav::RemoteDocumentPath {
             document_id: document_id.clone(),
             display_name: "note.md".to_string(),
             current_path: "/Zeditor/project-1234567890abcdef12345678/note.md".to_string(),
+            manifest_path: format!(
+                "/Zeditor/.zeditor-history/documents/{document_id}/manifest.json"
+            ),
+            versions_dir: format!("/Zeditor/.zeditor-history/documents/{document_id}/versions"),
+        }
+    }
+
+    fn namespaced_manifest() -> DocumentManifest {
+        let expected = namespaced_expected_path();
+        let version_id = "b".repeat(24);
+        DocumentManifest {
+            document_id: expected.document_id.clone(),
+            display_name: "note.md".to_string(),
+            current_path: expected.current_path.clone(),
             versions: vec![version(
                 &version_id,
                 "2026-08-19T12:00:00Z",
                 &"c".repeat(64),
-                &format!(
-                    "/Zeditor/.zeditor-history/documents/{document_id}/versions/{version_id}.md"
-                ),
+                &format!("{}/{version_id}.md", expected.versions_dir),
             )],
+        }
+    }
+
+    fn namespaced_index_entry(document_id: &str) -> BackupIndexEntry {
+        BackupIndexEntry {
+            document_id: document_id.to_string(),
+            display_name: "note.md".to_string(),
+            current_path: format!("/Zeditor/project-{document_id}/note.md"),
+            manifest_path: format!(
+                "/Zeditor/.zeditor-history/documents/{document_id}/manifest.json"
+            ),
+            latest_at: "2026-08-19T12:00:00Z".to_string(),
         }
     }
 
@@ -568,48 +697,47 @@ mod tests {
 
     #[test]
     fn persisted_manifest_namespace_accepts_generated_layout() {
-        let manifest = namespaced_manifest();
+        let expected = namespaced_expected_path();
+        let bytes = serde_json::to_vec(&namespaced_manifest()).expect("manifest JSON");
+        let manifest = parse_manifest(&bytes).expect("parsed manifest");
 
-        validate_manifest_namespace(&manifest, &manifest.document_id, "/Zeditor")
-            .expect("valid manifest namespace");
+        validate_manifest_namespace(&manifest, &expected, "/Zeditor")
+            .expect("valid manifest round trip");
     }
 
     #[test]
     fn persisted_manifest_namespace_rejects_tampered_ids_and_hashes() {
+        let expected = namespaced_expected_path();
         let valid = namespaced_manifest();
 
         let mut mismatched_document = valid.clone();
         mismatched_document.document_id = "d".repeat(24);
-        assert!(
-            validate_manifest_namespace(&mismatched_document, &valid.document_id, "/Zeditor")
-                .is_err()
-        );
+        assert!(validate_manifest_namespace(&mismatched_document, &expected, "/Zeditor").is_err());
 
         let mut malformed_document = valid.clone();
         malformed_document.document_id = "not-a-document-id".to_string();
-        assert!(validate_manifest_namespace(
-            &malformed_document,
-            &malformed_document.document_id,
-            "/Zeditor"
-        )
-        .is_err());
+        assert!(validate_manifest_namespace(&malformed_document, &expected, "/Zeditor").is_err());
 
         let mut malformed_version = valid.clone();
         malformed_version.versions[0].id = "not-a-version-id".to_string();
-        assert!(
-            validate_manifest_namespace(&malformed_version, &valid.document_id, "/Zeditor")
-                .is_err()
-        );
+        assert!(validate_manifest_namespace(&malformed_version, &expected, "/Zeditor").is_err());
+
+        let mut uppercase_version = valid.clone();
+        uppercase_version.versions[0].id = "B".repeat(24);
+        assert!(validate_manifest_namespace(&uppercase_version, &expected, "/Zeditor").is_err());
 
         let mut malformed_hash = valid.clone();
         malformed_hash.versions[0].sha256 = "not-a-sha256".to_string();
-        assert!(
-            validate_manifest_namespace(&malformed_hash, &valid.document_id, "/Zeditor").is_err()
-        );
+        assert!(validate_manifest_namespace(&malformed_hash, &expected, "/Zeditor").is_err());
+
+        let mut uppercase_hash = valid.clone();
+        uppercase_hash.versions[0].sha256 = "C".repeat(64);
+        assert!(validate_manifest_namespace(&uppercase_hash, &expected, "/Zeditor").is_err());
     }
 
     #[test]
     fn persisted_manifest_namespace_rejects_tampered_current_paths() {
+        let expected = namespaced_expected_path();
         let valid = namespaced_manifest();
         for current_path in [
             "/Zeditor/project/../note.md",
@@ -617,11 +745,12 @@ mod tests {
             "/Zeditor/note.md#fragment",
             "/Zeditor/.zeditor-history/documents/hidden.md",
             "/Elsewhere/note.md",
+            "/Zeditor/project-1234567890abcdef12345678/sibling.md",
         ] {
             let mut tampered = valid.clone();
             tampered.current_path = current_path.to_string();
             assert!(
-                validate_manifest_namespace(&tampered, &valid.document_id, "/Zeditor").is_err(),
+                validate_manifest_namespace(&tampered, &expected, "/Zeditor").is_err(),
                 "accepted current path {current_path}"
             );
         }
@@ -629,6 +758,7 @@ mod tests {
 
     #[test]
     fn persisted_manifest_namespace_rejects_tampered_snapshot_paths() {
+        let expected = namespaced_expected_path();
         let valid = namespaced_manifest();
         let expected_prefix = format!(
             "/Zeditor/.zeditor-history/documents/{}/versions",
@@ -647,9 +777,126 @@ mod tests {
             let mut tampered = valid.clone();
             tampered.versions[0].snapshot_path = snapshot_path.clone();
             assert!(
-                validate_manifest_namespace(&tampered, &valid.document_id, "/Zeditor").is_err(),
+                validate_manifest_namespace(&tampered, &expected, "/Zeditor").is_err(),
                 "accepted snapshot path {snapshot_path}"
             );
         }
+    }
+
+    #[test]
+    fn persisted_manifest_namespace_binds_each_version_to_its_direct_snapshot() {
+        let expected = namespaced_expected_path();
+        let valid = namespaced_manifest();
+        let version_id = valid.versions[0].id.clone();
+        let other_version_id = "d".repeat(24);
+        for snapshot_path in [
+            format!("{}/{other_version_id}.md", expected.versions_dir),
+            format!("{}/{version_id}/nested.md", expected.versions_dir),
+            format!("{}/not-{version_id}.md", expected.versions_dir),
+        ] {
+            let mut tampered = valid.clone();
+            tampered.versions[0].snapshot_path = snapshot_path.clone();
+            assert!(
+                validate_manifest_namespace(&tampered, &expected, "/Zeditor").is_err(),
+                "accepted snapshot binding {snapshot_path}"
+            );
+        }
+    }
+
+    #[test]
+    fn persisted_manifest_namespace_rejects_tampered_expected_paths() {
+        let manifest = namespaced_manifest();
+
+        let mut current = namespaced_expected_path();
+        current.current_path.push_str("?download=1");
+        assert!(validate_manifest_namespace(&manifest, &current, "/Zeditor").is_err());
+
+        let mut manifest_path = namespaced_expected_path();
+        manifest_path.manifest_path = "/Elsewhere/manifest.json".to_string();
+        assert!(validate_manifest_namespace(&manifest, &manifest_path, "/Zeditor").is_err());
+
+        let mut versions_dir = namespaced_expected_path();
+        versions_dir.versions_dir.push_str("/nested");
+        assert!(validate_manifest_namespace(&manifest, &versions_dir, "/Zeditor").is_err());
+    }
+
+    #[test]
+    fn persisted_index_namespace_accepts_valid_round_trip() {
+        let index = BackupIndex {
+            documents: vec![namespaced_index_entry(&"a".repeat(24))],
+        };
+        let bytes = serde_json::to_vec(&index).expect("index JSON");
+        let parsed = parse_index(&bytes).expect("parsed index");
+
+        validate_index_namespace(&parsed, "/Zeditor").expect("valid index namespace");
+    }
+
+    #[test]
+    fn persisted_index_namespace_rejects_redirected_manifest_path() {
+        let mut entry = namespaced_index_entry(&"a".repeat(24));
+        entry.manifest_path = "/Elsewhere/manifest.json".to_string();
+        let index = BackupIndex {
+            documents: vec![entry],
+        };
+
+        assert!(validate_index_namespace(&index, "/Zeditor").is_err());
+    }
+
+    #[test]
+    fn persisted_index_namespace_rejects_malformed_or_uppercase_document_id() {
+        for document_id in ["short".to_string(), "A".repeat(24)] {
+            let index = BackupIndex {
+                documents: vec![namespaced_index_entry(&document_id)],
+            };
+            assert!(
+                validate_index_namespace(&index, "/Zeditor").is_err(),
+                "accepted document ID {document_id}"
+            );
+        }
+    }
+
+    #[test]
+    fn persisted_index_namespace_rejects_current_path_outside_current_namespace() {
+        let valid = namespaced_index_entry(&"a".repeat(24));
+        for current_path in [
+            "/Zeditor/.zeditor-history/current.md",
+            "/Elsewhere/note.md",
+            "/Zeditor/project/../note.md",
+            "/Zeditor/note.md?download=1",
+            "/Zeditor/note.md#fragment",
+        ] {
+            let mut entry = valid.clone();
+            entry.current_path = current_path.to_string();
+            let index = BackupIndex {
+                documents: vec![entry],
+            };
+            assert!(
+                validate_index_namespace(&index, "/Zeditor").is_err(),
+                "accepted current path {current_path}"
+            );
+        }
+    }
+
+    #[test]
+    fn persisted_index_namespace_rejects_duplicate_or_mismatched_entries() {
+        let first = namespaced_index_entry(&"a".repeat(24));
+        let duplicate = first.clone();
+        assert!(validate_index_namespace(
+            &BackupIndex {
+                documents: vec![first.clone(), duplicate],
+            },
+            "/Zeditor"
+        )
+        .is_err());
+
+        let mut mismatched = namespaced_index_entry(&"b".repeat(24));
+        mismatched.manifest_path = first.manifest_path.clone();
+        assert!(validate_index_namespace(
+            &BackupIndex {
+                documents: vec![first, mismatched],
+            },
+            "/Zeditor"
+        )
+        .is_err());
     }
 }
