@@ -5,7 +5,7 @@ mod manifest;
 mod model;
 mod path;
 
-pub use manifest::{parse_index, parse_manifest};
+pub use manifest::{parse_index, parse_manifest, validate_manifest_namespace};
 pub use model::{
     BackupIndex, BackupIndexEntry, DocumentManifest, RemoteDocumentPath, WebDavBackupRequest,
     WebDavConnectionResult, WebDavDocumentRef, WebDavDocumentSummary, WebDavDownloadedVersion,
@@ -19,7 +19,8 @@ pub use path::{
 #[cfg(test)]
 mod tests {
     use super::{
-        map_remote_document, normalize_remote_root, parse_index, DocumentManifest, HISTORY_LIMIT,
+        map_remote_document, normalize_remote_root, parse_index, validate_manifest_namespace,
+        DocumentManifest, HISTORY_LIMIT,
     };
 
     #[test]
@@ -29,6 +30,7 @@ mod tests {
         assert!(parse_index(br#"{"documents": []}"#).is_ok());
         let manifest = DocumentManifest::new("doc", "note.md", "/Zeditor/note.md");
         assert!(manifest.versions.is_empty());
+        assert!(validate_manifest_namespace(&manifest, "doc", "/Zeditor").is_err());
         assert!(map_remote_document("/work/note.md", &[], "/Zeditor").is_ok());
     }
 }

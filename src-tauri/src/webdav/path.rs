@@ -166,7 +166,7 @@ fn has_valid_percent_escapes(value: &str) -> bool {
 }
 
 fn root_discriminator(path: &LocalPath) -> String {
-    sha256_hex(path.identity().as_bytes())[..8].to_string()
+    short_digest(path.identity().as_bytes())
 }
 
 fn append_remote_segments(root: &str, segments: &[String]) -> String {
@@ -232,6 +232,15 @@ impl LocalPath {
                     format!("//{}/{}", parts[0], parts[1]).to_lowercase(),
                     parts[2..].to_vec(),
                 )
+            } else if path.starts_with("//") && !path.starts_with("///") {
+                (
+                    PathFlavor::Posix,
+                    "//".to_string(),
+                    path.strip_prefix("//")
+                        .unwrap_or_default()
+                        .split('/')
+                        .collect(),
+                )
             } else if let Some(remainder) = path.strip_prefix('/') {
                 (
                     PathFlavor::Posix,
@@ -282,8 +291,8 @@ impl LocalPath {
 
     fn identity(&self) -> String {
         let segments = self.identity_segments(&self.segments);
-        if self.prefix == "/" {
-            format!("/{segments}")
+        if matches!(self.prefix.as_str(), "/" | "//") {
+            format!("{}{segments}", self.prefix)
         } else if segments.is_empty() {
             self.prefix.clone()
         } else {
@@ -348,7 +357,7 @@ fn normalize_windows_namespace(path: &str) -> Result<Cow<'_, str>, String> {
             if unc.is_empty() {
                 return Err("Extended UNC paths must include a server and share".to_string());
             }
-            return Ok(Cow::Owned(format!("//{unc}")));
+            return Ok(Cow::Owned(format!(r"\\{unc}")));
         }
         if is_windows_drive_path(remainder) {
             return Ok(Cow::Owned(remainder.to_string()));
@@ -375,7 +384,7 @@ fn is_windows_drive_path(path: &str) -> bool {
 }
 
 fn is_windows_unc_path(path: &str) -> bool {
-    path.starts_with("\\\\") || path.starts_with("//")
+    path.starts_with("\\\\")
 }
 
 #[cfg(test)]
@@ -410,7 +419,10 @@ mod tests {
         )
         .expect("workspace mapping");
 
-        assert_eq!(mapped.current_path, "/Zeditor/notes-d713270f/docs/note.md");
+        assert_eq!(
+            mapped.current_path,
+            "/Zeditor/notes-d713270f16af51a80be28e54/docs/note.md"
+        );
     }
 
     #[test]
@@ -509,7 +521,10 @@ mod tests {
 
         assert_eq!(upper.document_id, lower.document_id);
         assert_eq!(upper.current_path, lower.current_path);
-        assert_eq!(upper.current_path, "/Zeditor/notes-d713270f/doc.md");
+        assert_eq!(
+            upper.current_path,
+            "/Zeditor/notes-d713270f16af51a80be28e54/doc.md"
+        );
     }
 
     #[test]
@@ -626,5 +641,45 @@ mod tests {
         assert!(unc.current_path.ends_with("/note.md"));
         assert!(!drive.current_path.contains("//"));
         assert!(!unc.current_path.contains("//"));
+    }
+
+    #[test]
+    fn ninety_six_bit_workspace_discriminator_separates_known_thirty_two_bit_collision() {
+        let first = map_remote_document(
+            "/collision/9545/project/note.md",
+            &["/collision/9545/project".to_string()],
+            "/Zeditor",
+        )
+        .expect("first collision root");
+        let second = map_remote_document(
+            "/collision/18775/project/note.md",
+            &["/collision/18775/project".to_string()],
+            "/Zeditor",
+        )
+        .expect("second collision root");
+
+        assert_ne!(first.current_path, second.current_path);
+        for current_path in [&first.current_path, &second.current_path] {
+            let workspace_segment = current_path
+                .strip_prefix("/Zeditor/project-")
+                .and_then(|remainder| remainder.strip_suffix("/note.md"))
+                .expect("workspace discriminator segment");
+            assert_eq!(workspace_segment.len(), 24);
+            assert!(workspace_segment
+                .chars()
+                .all(|value| value.is_ascii_hexdigit()));
+        }
+    }
+
+    #[test]
+    fn double_slash_absolute_paths_remain_posix() {
+        let double = map_remote_document("//work/note.md", &["//work".to_string()], "/Zeditor")
+            .expect("double-slash POSIX path");
+        let single = map_remote_document("/work/note.md", &["/work".to_string()], "/Zeditor")
+            .expect("single-slash POSIX path");
+
+        assert_eq!(double.display_name, "note.md");
+        assert_ne!(double.document_id, single.document_id);
+        assert_ne!(double.current_path, single.current_path);
     }
 }
