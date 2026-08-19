@@ -45,6 +45,7 @@ test-output/
 
 # Misc
 .superpowers/
+.worktrees/
 .workbuddy/
 docs/superpowers/
 *.png.bak
