@@ -93,7 +93,31 @@ pub struct WebDavSyncEvent {
     pub document_id: String,
     pub local_path: String,
     pub phase: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub progress: Option<String>,
     pub timestamp: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sync_event_omits_absent_optional_fields() {
+        let event = WebDavSyncEvent {
+            document_id: "doc".to_string(),
+            local_path: "/work/note.md".to_string(),
+            phase: "queued".to_string(),
+            progress: None,
+            timestamp: "2026-08-19T09:00:00Z".to_string(),
+            error: None,
+        };
+
+        let value = serde_json::to_value(event).expect("serialize sync event");
+
+        assert!(value.get("progress").is_none());
+        assert!(value.get("error").is_none());
+    }
 }
