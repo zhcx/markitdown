@@ -10335,6 +10335,7 @@ html[data-theme] .preview-container,
 .agent-icon-button:disabled { color: var(--text-muted); cursor: default; }
 
 .agent-reference-button {
+  flex: 0 0 auto;
   min-width: 48px;
   padding: 0 6px;
   border: 0;
@@ -10342,6 +10343,7 @@ html[data-theme] .preview-container,
   color: var(--text-secondary);
   background: transparent;
   font: 11px/1 var(--font-sans);
+  white-space: nowrap;
   cursor: pointer;
 }
 .agent-reference-button:disabled { color: var(--text-muted); cursor: default; }

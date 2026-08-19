@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback, useMemo, type PointerEvent as ReactPointerEvent } from 'react';
 import { useAIStore, type ChatMessage, type ReasoningEffort, type WorkspaceContextPayload } from '../../stores/aiStore';
-import { AI_PROVIDER_DEFINITIONS, useAppStore, type AIProviderId, type AIProviderProfile } from '../../stores/appStore';
+import { AI_PROVIDER_DEFINITIONS, useAppStore, type AIProviderId } from '../../stores/appStore';
 import { WorkspaceContextPanel } from './WorkspaceContextPanel';
 import { formatWebSearchContext, formatWebSearchMarkdown, performWebSearch, type WebSearchResponse } from '../../services/webSearch';
 import { open } from '@tauri-apps/plugin-dialog';
@@ -11,6 +11,7 @@ import { sanitizeRenderedHtml } from '../../utils/safeHtml';
 import { AgentPanel, RuntimeTabs } from './AgentPanel';
 import { ChatSelectMenu } from './ChatSelectMenu';
 import type { AIRuntime } from '../../types/agent';
+import { parseAIProviderProfiles } from '../../utils/aiProviderProfiles';
 
 const md = new MarkdownIt({ html: false, breaks: true, linkify: true });
 
@@ -185,13 +186,10 @@ function ApiChatPanel({ onRuntimeChange }: { onRuntimeChange: (runtime: AIRuntim
     sendChatMessage(text, attachments, { provider: chatProvider, model: chatModel, searchContext, searchPreview, workspaceContext });
   }, [inputValue, pendingAttachments, chatbotLoading, sendChatMessage, chatProvider, chatModel, settings.web_search, webSearchActive, webSearchEnabled, webSearchLoading, workspaceContext]);
 
-  const providerProfiles = useMemo<Record<string, AIProviderProfile>>(() => {
-    try {
-      return JSON.parse(settings.ai.provider_profiles || '{}');
-    } catch {
-      return {};
-    }
-  }, [settings.ai.provider_profiles]);
+  const providerProfiles = useMemo(
+    () => parseAIProviderProfiles(settings.ai.provider_profiles),
+    [settings.ai.provider_profiles],
+  );
 
   const selectedProfile = providerProfiles[chatProvider];
   const selectedDefinition = AI_PROVIDER_DEFINITIONS.find((item) => item.id === chatProvider);

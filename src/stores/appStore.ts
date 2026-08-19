@@ -10,6 +10,7 @@ import type { AgentSettings } from '../types/agent';
 import type { ConverterDialogAction } from '../components/ConverterDialog/ConverterDialog';
 import { isConvertibleDocumentName } from '../utils/documentFormats';
 import { isTextFileName } from '../utils/fileIcon';
+import { normalizeAgentBackend } from '../utils/agentSettings';
 
 const isTauriRuntime = () => typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
   const browserSettingsKey = 'zeditor.browser.settings';
@@ -366,6 +367,7 @@ const normalizeSettings = (saved: Settings): Settings => ({
   agent: {
     ...defaultSettings.agent,
     ...saved.agent,
+    backend: normalizeAgentBackend(saved.agent?.backend),
     backends: {
       claude_code: { ...defaultSettings.agent.backends.claude_code, ...saved.agent?.backends?.claude_code },
       codex: { ...defaultSettings.agent.backends.codex, ...saved.agent?.backends?.codex },

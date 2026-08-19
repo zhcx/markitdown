@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type CSSProperties } from 'react';
-import { AI_PROVIDER_DEFINITIONS, useAppStore, type AIProviderId, type AIProviderProfile, type ConverterModuleStatus, type SettingsTab } from '../../stores/appStore';
+import { AI_PROVIDER_DEFINITIONS, useAppStore, type AIProviderId, type ConverterModuleStatus, type SettingsTab } from '../../stores/appStore';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import { FontFamilyPicker } from './FontFamilyPicker';
@@ -12,6 +12,7 @@ import {
 } from '../../utils/appearanceSettings';
 import { LANGUAGE_OPTIONS, normalizeLanguage } from '../../i18n';
 import type { AgentBackendId, AgentBackendStatus } from '../../types/agent';
+import { parseAIProviderProfiles } from '../../utils/aiProviderProfiles';
 
 const isTauriRuntime = () => '__TAURI_INTERNALS__' in window;
 const formatModuleSize = (bytes: number) => bytes > 0 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : '—';
@@ -200,13 +201,7 @@ export function SettingsPanel() {
     }
   };
 
-  const parseProviderProfiles = (): Record<string, AIProviderProfile> => {
-    try {
-      return JSON.parse(localSettings.ai.provider_profiles || '{}');
-    } catch {
-      return {};
-    }
-  };
+  const parseProviderProfiles = () => parseAIProviderProfiles(localSettings.ai.provider_profiles);
 
   const handleSave = () => {
     // 保存前确保当前 API KEY 已记录到映射中

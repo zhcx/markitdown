@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import { parseAIProviderProfiles } from '../src/utils/aiProviderProfiles.ts';
 
 const read = (path: string) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 
@@ -14,6 +15,15 @@ test('AI chat can create, persist, and reopen conversations from the history but
   assert.match(panel, /aria-label="新建 AI 对话"/);
   assert.match(panel, /aria-label="打开 AI 对话历史"/);
   assert.match(panel, /chatbot-history-popover/);
+});
+
+test('AI provider profile storage treats JSON null as an empty profile map', () => {
+  const panel = read('src/components/Chatbot/AIChatbotPanel.tsx');
+  assert.match(panel, /parseAIProviderProfiles\(settings\.ai\.provider_profiles\)/);
+  assert.deepEqual(parseAIProviderProfiles('null'), {});
+  assert.deepEqual(parseAIProviderProfiles('[]'), {});
+  assert.deepEqual(parseAIProviderProfiles('{"openai":{"model":"gpt-test"}}'), { openai: { model: 'gpt-test' } });
+  assert.deepEqual(parseAIProviderProfiles('{malformed'), {});
 });
 
 test('AI actions never log settings, document content, or model responses', () => {

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import { normalizeAgentBackend } from '../src/utils/agentSettings.ts';
 
 const read = (path: string) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 
@@ -10,6 +11,14 @@ test('keeps API AI and local Agent settings in separate compatibility domains', 
   assert.match(store, /ai:\s*\{\s*enabled:\s*false/);
   assert.match(store, /backends:\s*\{[\s\S]*claude_code:[\s\S]*codex:[\s\S]*opencode:/);
   assert.match(store, /saved\.agent\?\.backends/);
+});
+
+test('migrates retired Agent backend IDs before the Agent panel mounts', () => {
+  const store = read('src/stores/appStore.ts');
+  assert.match(store, /backend:\s*normalizeAgentBackend\(saved\.agent\?\.backend\)/);
+  assert.equal(normalizeAgentBackend('deepseek_harness'), 'claude_code');
+  assert.equal(normalizeAgentBackend('codex'), 'codex');
+  assert.equal(normalizeAgentBackend(null), 'claude_code');
 });
 
 test('exposes session-scoped full approval without persisting it in settings', () => {
@@ -78,6 +87,14 @@ test('composer adapts model, effort, permissions, and file context by backend', 
   assert.match(store, /context_paths: input\.contextPaths/);
   assert.match(store, /agent_list_models/);
   assert.match(rust, /"model\/list"/);
+});
+
+test('Agent composer keeps the reference action on one line in narrow panels', () => {
+  const styles = read('src/styles/main.css');
+  const referenceButtonBlocks = [...styles.matchAll(/^\.agent-reference-button\s*\{([^}]*)\}/gm)];
+  const referenceButton = referenceButtonBlocks.at(-1)?.[1] || '';
+  assert.match(referenceButton, /flex:\s*0 0 auto/);
+  assert.match(referenceButton, /white-space:\s*nowrap/);
 });
 
 test('Agent conversation renders safe Markdown and integrates with the active editor', () => {
