@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use reqwest::Url;
 use sha2::{Digest, Sha256};
 
@@ -70,8 +72,10 @@ pub fn map_remote_document(
 
     let workspaces: Vec<_> = workspace_roots
         .iter()
-        .filter_map(|candidate| LocalPath::parse(candidate).ok())
-        .collect();
+        .map(|candidate| {
+            LocalPath::parse(candidate).map_err(|error| format!("Invalid workspace root: {error}"))
+        })
+        .collect::<Result<_, _>>()?;
     let workspace = workspaces
         .iter()
         .filter(|candidate| candidate.contains(&local))
@@ -86,18 +90,8 @@ pub fn map_remote_document(
         let relative_identity = local.identity_segments(relative_segments);
         let identity = format!("{}\0{}", workspace.identity(), relative_identity);
         let document_id = short_digest(identity.as_bytes());
-        let mut workspace_segment = workspace.workspace_remote_segment();
-        let workspace_identity = workspace.identity();
-        let duplicate_name = workspaces.iter().any(|candidate| {
-            candidate.identity() != workspace_identity
-                && candidate.workspace_remote_segment() == workspace_segment
-        });
-        if duplicate_name {
-            workspace_segment.push('-');
-            workspace_segment.push_str(&root_discriminator(workspace));
-        }
         let mut remote_segments = Vec::with_capacity(relative_segments.len() + 1);
-        remote_segments.push(workspace_segment);
+        remote_segments.push(workspace.workspace_remote_segment());
         remote_segments.extend(
             relative_segments
                 .iter()
@@ -199,7 +193,8 @@ struct LocalPath {
 
 impl LocalPath {
     fn parse(raw: &str) -> Result<Self, String> {
-        let path = raw.trim();
+        let normalized_namespace = normalize_windows_namespace(raw)?;
+        let path = normalized_namespace.as_ref();
         if path.is_empty() {
             return Err("Local document path is required".to_string());
         }
@@ -312,11 +307,63 @@ impl LocalPath {
     }
 
     fn workspace_remote_segment(&self) -> String {
-        self.segments
+        let workspace_name = self
+            .segments
             .last()
-            .map(|segment| self.encode_remote_segment(segment))
-            .unwrap_or_else(|| format!("root-{}", root_discriminator(self)))
+            .cloned()
+            .unwrap_or_else(|| self.root_workspace_name());
+        format!(
+            "{}-{}",
+            self.encode_remote_segment(&workspace_name),
+            root_discriminator(self)
+        )
     }
+
+    fn root_workspace_name(&self) -> String {
+        match self.flavor {
+            PathFlavor::Posix => "root".to_string(),
+            PathFlavor::Windows if self.prefix.starts_with("//") => self
+                .prefix
+                .rsplit('/')
+                .next()
+                .filter(|segment| !segment.is_empty())
+                .unwrap_or("root")
+                .to_string(),
+            PathFlavor::Windows => format!("drive-{}", self.prefix.trim_end_matches(':')),
+        }
+    }
+}
+
+fn normalize_windows_namespace(path: &str) -> Result<Cow<'_, str>, String> {
+    if path.starts_with(r"\\.\") || path.starts_with("//./") {
+        return Err("Windows device paths are not supported".to_string());
+    }
+
+    if path.starts_with(r"\\?\") || path.starts_with("//?/") {
+        let normalized = path.replace('\\', "/");
+        let remainder = normalized
+            .strip_prefix("//?/")
+            .ok_or_else(|| "Invalid Windows extended path".to_string())?;
+        if let Some(unc) = strip_prefix_ascii_case(remainder, "UNC/") {
+            if unc.is_empty() {
+                return Err("Extended UNC paths must include a server and share".to_string());
+            }
+            return Ok(Cow::Owned(format!("//{unc}")));
+        }
+        if is_windows_drive_path(remainder) {
+            return Ok(Cow::Owned(remainder.to_string()));
+        }
+        return Err("Windows device paths are not supported".to_string());
+    }
+
+    Ok(Cow::Borrowed(path))
+}
+
+fn strip_prefix_ascii_case<'a>(value: &'a str, prefix: &str) -> Option<&'a str> {
+    value
+        .get(..prefix.len())
+        .filter(|candidate| candidate.eq_ignore_ascii_case(prefix))?;
+    value.get(prefix.len()..)
 }
 
 fn is_windows_drive_path(path: &str) -> bool {
@@ -363,7 +410,7 @@ mod tests {
         )
         .expect("workspace mapping");
 
-        assert_eq!(mapped.current_path, "/Zeditor/notes/docs/note.md");
+        assert_eq!(mapped.current_path, "/Zeditor/notes-d713270f/docs/note.md");
     }
 
     #[test]
@@ -385,7 +432,8 @@ mod tests {
         )
         .expect("longest workspace mapping");
 
-        assert_eq!(mapped.current_path, "/Zeditor/docs/note.md");
+        assert!(mapped.current_path.starts_with("/Zeditor/docs-"));
+        assert!(mapped.current_path.ends_with("/note.md"));
     }
 
     #[test]
@@ -406,7 +454,8 @@ mod tests {
             .expect("POSIX backslash mapping");
 
         assert_eq!(mapped.display_name, "foo\\bar.md");
-        assert_eq!(mapped.current_path, "/Zeditor/work/foo%5Cbar.md");
+        assert!(mapped.current_path.starts_with("/Zeditor/work-"));
+        assert!(mapped.current_path.ends_with("/foo%5Cbar.md"));
     }
 
     #[test]
@@ -423,14 +472,25 @@ mod tests {
     }
 
     #[test]
-    fn duplicate_workspace_names_receive_stable_root_discriminators() {
-        let roots = vec!["/a/project".to_string(), "/b/project".to_string()];
-        let first = map_remote_document("/a/project/note.md", &roots, "/Zeditor")
-            .expect("first duplicate workspace");
-        let second = map_remote_document("/b/project/note.md", &roots, "/Zeditor")
-            .expect("second duplicate workspace");
-        let repeated = map_remote_document("/a/project/note.md", &roots, "/Zeditor")
-            .expect("stable duplicate workspace");
+    fn workspace_identity_is_stable_across_separate_root_lists() {
+        let first = map_remote_document(
+            "/a/project/note.md",
+            &["/a/project".to_string()],
+            "/Zeditor",
+        )
+        .expect("first duplicate workspace");
+        let second = map_remote_document(
+            "/b/project/note.md",
+            &["/b/project".to_string()],
+            "/Zeditor",
+        )
+        .expect("second duplicate workspace");
+        let repeated = map_remote_document(
+            "/a/project/note.md",
+            &["/a/project".to_string(), "/b/project".to_string()],
+            "/Zeditor",
+        )
+        .expect("stable duplicate workspace");
 
         assert_ne!(first.current_path, second.current_path);
         assert!(first.current_path.starts_with("/Zeditor/project-"));
@@ -449,7 +509,7 @@ mod tests {
 
         assert_eq!(upper.document_id, lower.document_id);
         assert_eq!(upper.current_path, lower.current_path);
-        assert_eq!(upper.current_path, "/Zeditor/notes/doc.md");
+        assert_eq!(upper.current_path, "/Zeditor/notes-d713270f/doc.md");
     }
 
     #[test]
@@ -461,14 +521,110 @@ mod tests {
         )
         .expect("encoded workspace mapping");
 
-        assert_eq!(
-            mapped.current_path,
-            "/Zeditor/My%20Notes/hello%20world%23.md"
-        );
+        assert!(mapped.current_path.starts_with("/Zeditor/My%20Notes-"));
+        assert!(mapped.current_path.ends_with("/hello%20world%23.md"));
         assert_eq!(mapped.document_id.len(), 24);
         assert!(mapped
             .document_id
             .chars()
             .all(|character| character.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn posix_file_name_whitespace_is_preserved_in_identity_and_remote_path() {
+        let plain = map_remote_document("/work/note.md", &["/work".to_string()], "/Zeditor")
+            .expect("plain POSIX path");
+        let spaced = map_remote_document("/work/note.md ", &["/work".to_string()], "/Zeditor")
+            .expect("spaced POSIX path");
+
+        assert_ne!(plain.document_id, spaced.document_id);
+        assert_ne!(plain.current_path, spaced.current_path);
+        assert_eq!(spaced.display_name, "note.md ");
+        assert!(spaced.current_path.ends_with("/note.md%20"));
+    }
+
+    #[test]
+    fn windows_extended_drive_path_is_an_alias_of_ordinary_drive_path() {
+        let ordinary =
+            map_remote_document(r"C:\Notes\Doc.md", &[r"C:\Notes".to_string()], "/Zeditor")
+                .expect("ordinary drive path");
+        let extended = map_remote_document(
+            r"\\?\C:\Notes\Doc.md",
+            &[r"\\?\C:\Notes".to_string()],
+            "/Zeditor",
+        )
+        .expect("extended drive path");
+
+        assert_eq!(ordinary.document_id, extended.document_id);
+        assert_eq!(ordinary.current_path, extended.current_path);
+    }
+
+    #[test]
+    fn windows_extended_unc_path_is_an_alias_of_ordinary_unc_path() {
+        let ordinary = map_remote_document(
+            r"\\Server\Share\Notes\Doc.md",
+            &[r"\\Server\Share\Notes".to_string()],
+            "/Zeditor",
+        )
+        .expect("ordinary UNC path");
+        let extended = map_remote_document(
+            r"\\?\UNC\Server\Share\Notes\Doc.md",
+            &[r"\\?\UNC\Server\Share\Notes".to_string()],
+            "/Zeditor",
+        )
+        .expect("extended UNC path");
+
+        assert_eq!(ordinary.document_id, extended.document_id);
+        assert_eq!(ordinary.current_path, extended.current_path);
+    }
+
+    #[test]
+    fn windows_device_paths_are_rejected() {
+        for path in [
+            r"\\.\C:\note.md",
+            r"\\?\GLOBALROOT\Device\HarddiskVolume1\note.md",
+        ] {
+            assert!(map_remote_document(path, &[], "/Zeditor").is_err());
+        }
+    }
+
+    #[test]
+    fn invalid_workspace_roots_are_rejected() {
+        let error = map_remote_document(
+            "/work/note.md",
+            &["relative/workspace".to_string()],
+            "/Zeditor",
+        )
+        .expect_err("invalid workspace root");
+
+        assert!(error.contains("workspace root"));
+    }
+
+    #[test]
+    fn reserved_workspace_names_are_made_safe_by_the_identity_suffix() {
+        let mapped = map_remote_document(r"C:\CON\note.md", &[r"C:\CON".to_string()], "/Zeditor")
+            .expect("reserved workspace name");
+
+        assert!(mapped.current_path.starts_with("/Zeditor/con-"));
+        assert!(!mapped.current_path.contains("/con/"));
+    }
+
+    #[test]
+    fn drive_and_unc_roots_have_visible_non_empty_workspace_names() {
+        let drive = map_remote_document(r"C:\note.md", &[r"C:\".to_string()], "/Zeditor")
+            .expect("drive root");
+        let unc = map_remote_document(
+            r"\\Server\Share\note.md",
+            &[r"\\Server\Share".to_string()],
+            "/Zeditor",
+        )
+        .expect("UNC root");
+
+        assert!(drive.current_path.starts_with("/Zeditor/drive-c-"));
+        assert!(drive.current_path.ends_with("/note.md"));
+        assert!(unc.current_path.starts_with("/Zeditor/share-"));
+        assert!(unc.current_path.ends_with("/note.md"));
+        assert!(!drive.current_path.contains("//"));
+        assert!(!unc.current_path.contains("//"));
     }
 }

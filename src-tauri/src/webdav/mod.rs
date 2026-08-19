@@ -1,17 +1,16 @@
+// Temporary until Tasks 3-6 wire these domain APIs into production consumers.
+#![allow(dead_code)]
+
 mod manifest;
 mod model;
 mod path;
 
-// The domain surface is staged before later WebDAV modules consume every item.
-#[allow(unused_imports)]
 pub use manifest::{parse_index, parse_manifest};
-#[allow(unused_imports)]
 pub use model::{
     BackupIndex, BackupIndexEntry, DocumentManifest, RemoteDocumentPath, WebDavBackupRequest,
     WebDavConnectionResult, WebDavDocumentRef, WebDavDocumentSummary, WebDavDownloadedVersion,
     WebDavQueuedResult, WebDavRetryResult, WebDavSyncEvent, WebDavVersion, HISTORY_LIMIT,
 };
-#[allow(unused_imports)]
 pub use path::{
     deterministic_version_id, map_remote_document, normalize_remote_root, sha256_hex,
     validate_endpoint,

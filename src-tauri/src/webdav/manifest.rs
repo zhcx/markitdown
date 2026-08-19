@@ -28,10 +28,7 @@ impl DocumentManifest {
             !is_duplicate
         });
         self.versions.push(version);
-        self.versions.sort_by(|left, right| {
-            compare_rfc3339_desc(&left.created_at, &right.created_at)
-                .then_with(|| right.id.cmp(&left.id))
-        });
+        sort_versions(&mut self.versions);
 
         if self.versions.len() > HISTORY_LIMIT {
             pruned.extend(self.versions.split_off(HISTORY_LIMIT));
@@ -51,6 +48,14 @@ impl DocumentManifest {
     }
 }
 
+fn sort_versions(versions: &mut [WebDavVersion]) {
+    versions.sort_by(|left, right| {
+        compare_rfc3339_desc(&left.created_at, &right.created_at)
+            .then_with(|| right.id.cmp(&left.id))
+            .then_with(|| right.sha256.cmp(&left.sha256))
+    });
+}
+
 impl BackupIndex {
     pub fn upsert(&mut self, entry: BackupIndexEntry) {
         self.documents
@@ -64,8 +69,8 @@ impl BackupIndex {
 }
 
 fn compare_rfc3339_desc(left: &str, right: &str) -> Ordering {
-    // Valid timestamps are canonicalized to UTC. Invalid legacy values remain readable but sort
-    // after valid timestamps, using their raw representation as a deterministic fallback.
+    // Parsed resources reject invalid values. Directly constructed values still receive a
+    // deterministic fallback so sorting remains total before they reach a persistence boundary.
     match (parse_utc(left), parse_utc(right)) {
         (Some(left), Some(right)) => right.cmp(&left),
         (Some(_), None) => Ordering::Less,
@@ -81,11 +86,58 @@ fn parse_utc(value: &str) -> Option<DateTime<Utc>> {
 }
 
 pub fn parse_manifest(bytes: &[u8]) -> Result<DocumentManifest, String> {
-    serde_json::from_slice(bytes).map_err(|error| format!("Invalid WebDAV manifest: {error}"))
+    let mut manifest: DocumentManifest = serde_json::from_slice(bytes)
+        .map_err(|error| format!("Invalid WebDAV manifest: {error}"))?;
+
+    for version in &manifest.versions {
+        DateTime::parse_from_rfc3339(&version.created_at).map_err(|error| {
+            format!(
+                "Invalid WebDAV manifest timestamp for version '{}': {error}",
+                version.id
+            )
+        })?;
+    }
+
+    sort_versions(&mut manifest.versions);
+    let mut document_ids = HashSet::new();
+    let mut content_hashes = HashSet::new();
+    manifest.versions.retain(|version| {
+        if document_ids.contains(&version.id) || content_hashes.contains(&version.sha256) {
+            false
+        } else {
+            document_ids.insert(version.id.clone());
+            content_hashes.insert(version.sha256.clone());
+            true
+        }
+    });
+    manifest.versions.truncate(HISTORY_LIMIT);
+
+    Ok(manifest)
 }
 
 pub fn parse_index(bytes: &[u8]) -> Result<BackupIndex, String> {
-    serde_json::from_slice(bytes).map_err(|error| format!("Invalid WebDAV backup index: {error}"))
+    let mut index: BackupIndex = serde_json::from_slice(bytes)
+        .map_err(|error| format!("Invalid WebDAV backup index: {error}"))?;
+
+    for entry in &index.documents {
+        DateTime::parse_from_rfc3339(&entry.latest_at).map_err(|error| {
+            format!(
+                "Invalid WebDAV index timestamp for document '{}': {error}",
+                entry.document_id
+            )
+        })?;
+    }
+
+    index.documents.sort_by(|left, right| {
+        compare_rfc3339_desc(&left.latest_at, &right.latest_at)
+            .then_with(|| left.document_id.cmp(&right.document_id))
+    });
+    let mut document_ids = HashSet::new();
+    index
+        .documents
+        .retain(|entry| document_ids.insert(entry.document_id.clone()));
+
+    Ok(index)
 }
 
 #[cfg(test)]
@@ -211,38 +263,6 @@ mod tests {
     }
 
     #[test]
-    fn valid_timestamps_sort_before_invalid_values_with_deterministic_fallback() {
-        let mut manifest = DocumentManifest::new("doc", "note.md", "/Zeditor/note.md");
-        manifest.insert_version(version(
-            "invalid-a",
-            "not-a-time-a",
-            "hash-a",
-            "/history/a.md",
-        ));
-        manifest.insert_version(version(
-            "valid",
-            "2026-08-19T09:00:00Z",
-            "hash-valid",
-            "/history/valid.md",
-        ));
-        manifest.insert_version(version(
-            "invalid-b",
-            "not-a-time-b",
-            "hash-b",
-            "/history/b.md",
-        ));
-
-        assert_eq!(
-            manifest
-                .versions
-                .iter()
-                .map(|version| version.id.as_str())
-                .collect::<Vec<_>>(),
-            vec!["valid", "invalid-b", "invalid-a"]
-        );
-    }
-
-    #[test]
     fn backup_index_upsert_replaces_entries_and_orders_by_utc_instant() {
         let mut index = BackupIndex::default();
         index.upsert(index_entry("doc-a", "2026-08-19T08:00:00Z"));
@@ -259,5 +279,99 @@ mod tests {
     fn malformed_manifest_and_index_json_are_rejected() {
         assert!(parse_manifest(br#"{"document_id": }"#).is_err());
         assert!(parse_index(br#"{"documents": [}"#).is_err());
+    }
+
+    #[test]
+    fn parse_manifest_restores_sort_deduplication_and_retention_invariants() {
+        let mut legacy = DocumentManifest::new("doc", "note.md", "/Zeditor/note.md");
+        for index in 0..22 {
+            legacy.versions.push(version(
+                &format!("v{index:02}"),
+                &format!("2026-08-19T12:{index:02}:00Z"),
+                &format!("hash-{index}"),
+                &format!("/history/v{index:02}.md"),
+            ));
+        }
+        legacy.versions.push(version(
+            "duplicate-hash",
+            "2026-08-19T11:00:00Z",
+            "hash-21",
+            "/history/duplicate-hash.md",
+        ));
+        legacy.versions.push(version(
+            "v20",
+            "2026-08-19T10:00:00Z",
+            "duplicate-id-hash",
+            "/history/duplicate-id.md",
+        ));
+        let bytes = serde_json::to_vec(&legacy).expect("legacy manifest JSON");
+
+        let parsed = parse_manifest(&bytes).expect("normalized legacy manifest");
+
+        assert_eq!(parsed.versions.len(), HISTORY_LIMIT);
+        assert_eq!(parsed.versions[0].id, "v21");
+        assert_eq!(parsed.newest_hash(), Some("hash-21"));
+        assert_eq!(
+            parsed
+                .versions
+                .iter()
+                .filter(|version| version.id == "v20")
+                .count(),
+            1
+        );
+        assert_eq!(
+            parsed
+                .versions
+                .iter()
+                .filter(|version| version.sha256 == "hash-21")
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn parse_index_restores_sort_and_document_deduplication_invariants() {
+        let legacy = BackupIndex {
+            documents: vec![
+                index_entry("doc-a", "2026-08-19T08:00:00Z"),
+                index_entry("doc-b", "2026-08-19T09:00:00Z"),
+                index_entry("doc-a", "2026-08-19T10:30:00+02:00"),
+            ],
+        };
+        let bytes = serde_json::to_vec(&legacy).expect("legacy index JSON");
+
+        let parsed = parse_index(&bytes).expect("normalized legacy index");
+
+        assert_eq!(parsed.documents.len(), 2);
+        assert_eq!(parsed.documents[0].document_id, "doc-b");
+        assert_eq!(parsed.documents[1].document_id, "doc-a");
+        assert_eq!(parsed.documents[1].latest_at, "2026-08-19T10:30:00+02:00");
+    }
+
+    #[test]
+    fn parse_rejects_invalid_timestamps_with_document_context() {
+        let mut manifest = DocumentManifest::new("doc", "note.md", "/Zeditor/note.md");
+        manifest.versions.push(version(
+            "bad-version",
+            "not-rfc3339",
+            "hash",
+            "/history/bad.md",
+        ));
+        let manifest_error = parse_manifest(
+            &serde_json::to_vec(&manifest).expect("invalid timestamp manifest JSON"),
+        )
+        .expect_err("invalid manifest timestamp");
+
+        let index = BackupIndex {
+            documents: vec![index_entry("bad-document", "not-rfc3339")],
+        };
+        let index_error =
+            parse_index(&serde_json::to_vec(&index).expect("invalid timestamp index JSON"))
+                .expect_err("invalid index timestamp");
+
+        assert!(manifest_error.contains("bad-version"));
+        assert!(manifest_error.contains("timestamp"));
+        assert!(index_error.contains("bad-document"));
+        assert!(index_error.contains("timestamp"));
     }
 }

@@ -14,7 +14,7 @@ mod converter;
 mod image;
 mod imaging;
 mod pdf;
-mod webdav;
+pub mod webdav;
 
 #[tauri::command]
 fn exit_application(app: tauri::AppHandle) {
