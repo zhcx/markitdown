@@ -3,6 +3,8 @@
 export type WebDavSyncPhase = 'disabled' | 'idle' | 'queued' | 'syncing' | 'success' | 'error';
 
 export interface WebDavSyncEvent {
+  /** Backend that produced the event (`'webdav'` default, or `'s3'`). */
+  provider?: string;
   document_id: string;
   local_path: string;
   phase: Exclude<WebDavSyncPhase, 'disabled' | 'idle'>;
@@ -18,6 +20,17 @@ export interface WebDavSettings {
   server_url: string;
   username: string;
   password: string;
+  remote_root: string;
+}
+
+export interface S3Settings {
+  enabled: boolean;
+  endpoint: string;
+  bucket: string;
+  region: string;
+  access_key: string;
+  secret_key: string;
+  path_style: boolean;
   remote_root: string;
 }
 

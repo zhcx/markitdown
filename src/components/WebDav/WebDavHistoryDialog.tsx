@@ -1,13 +1,22 @@
 import { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { save } from '@tauri-apps/plugin-dialog';
-import type { WebDavSettings, WebDavVersion } from '../../types/webdav';
+import type {
+  S3Settings,
+  WebDavDownloadedVersion,
+  WebDavSettings,
+  WebDavVersion,
+} from '../../types/webdav';
 import { useWebDavStore } from '../../stores/webdavStore';
+import { useS3Store } from '../../stores/s3Store';
 
 interface WebDavHistoryDialogProps {
   open: boolean;
   mode: 'current' | 'global';
-  settings: WebDavSettings;
+  /** WebDAV or S3 settings; the dialog routes to the matching store. */
+  settings: WebDavSettings | S3Settings;
+  /** Backend provider for this dialog instance. */
+  provider?: 'webdav' | 's3';
   currentDocumentId?: string;
   onClose: () => void;
 }
@@ -18,18 +27,26 @@ export function WebDavHistoryDialog({
   open,
   mode,
   settings,
+  provider = 'webdav',
   currentDocumentId,
   onClose,
 }: WebDavHistoryDialogProps) {
-  const {
-    versions,
-    documents,
-    historyLoading,
-    loadDocuments,
-    loadVersions,
-    downloadVersion,
-    setHistoryOpen,
-  } = useWebDavStore();
+  // Both stores expose the same action shapes; pick by provider so the right
+  // command names (webdav_* / s3_*) are invoked. Both hooks run unconditionally.
+  const webdavState = useWebDavStore();
+  const s3State = useS3Store();
+  const store = provider === 's3' ? s3State : webdavState;
+  const versions = store.versions;
+  const documents = store.documents;
+  const historyLoading = store.historyLoading;
+  const loadDocuments = store.loadDocuments as (settings: WebDavSettings | S3Settings) => Promise<void>;
+  const loadVersions = store.loadVersions as (documentId: string, settings: WebDavSettings | S3Settings) => Promise<void>;
+  const downloadVersion = store.downloadVersion as (
+    documentId: string,
+    versionId: string,
+    settings: WebDavSettings | S3Settings,
+  ) => Promise<WebDavDownloadedVersion>;
+  const setHistoryOpen = store.setHistoryOpen;
   const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [error, setError] = useState('');

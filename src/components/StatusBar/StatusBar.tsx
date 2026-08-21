@@ -179,6 +179,11 @@ export function StatusBar() {
     setSettingsOpen(true);
   };
 
+  const openS3Settings = () => {
+    setSettingsTab('s3');
+    setSettingsOpen(true);
+  };
+
   return (
     <div className="statusbar">
       <div className="statusbar-left">
@@ -300,7 +305,14 @@ export function StatusBar() {
         <WebDavStatusItem
           settings={settings.webdav}
           currentFile={currentFile}
+          provider="webdav"
           onOpenSettings={openWebDavSettings}
+        />
+        <WebDavStatusItem
+          settings={settings.s3}
+          currentFile={currentFile}
+          provider="s3"
+          onOpenSettings={openS3Settings}
         />
       </div>
       <div className="statusbar-right"><span className="status-item">{wordCount}</span><span className="status-divider" aria-hidden="true" /><span className="status-item">UTF-8</span></div>

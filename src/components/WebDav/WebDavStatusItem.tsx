@@ -1,14 +1,17 @@
 import { useState } from 'react';
-import type { WebDavSettings } from '../../types/webdav';
+import type { S3Settings, WebDavSettings } from '../../types/webdav';
 import { useWebDavStore } from '../../stores/webdavStore';
+import { useS3Store } from '../../stores/s3Store';
 import { webDavStatusLabel } from '../../utils/webdavState';
 import { WebDavHistoryDialog } from './WebDavHistoryDialog';
 
 interface WebDavStatusItemProps {
-  settings: WebDavSettings;
+  settings: WebDavSettings | S3Settings;
   currentFile: string | null;
-  /** 打开「设置 → WebDAV 备份」页（未启用时点击触发，与「开启 AI」一致）。 */
+  /** 打开「设置 → WebDAV 备份 / S3 云同步」页（未启用时点击触发）。 */
   onOpenSettings: () => void;
+  /** 状态栏实例对应的后端（决定 store、命令与文案）。 */
+  provider?: 'webdav' | 's3';
 }
 
 /** 云同步图标：与状态栏其他状态图标（SVG fill currentColor）风格一致。 */
@@ -20,11 +23,30 @@ function CloudGlyph() {
   );
 }
 
-/** Compact status-bar item for the current document's WebDAV synchronization. */
-export function WebDavStatusItem({ settings, currentFile, onOpenSettings }: WebDavStatusItemProps) {
-  const { phase, documentId, lastSuccessAt, error, retry, loadVersions, setHistoryOpen } =
-    useWebDavStore();
+/** Compact status-bar item for the current document's remote synchronization. */
+export function WebDavStatusItem({
+  settings,
+  currentFile,
+  onOpenSettings,
+  provider = 'webdav',
+}: WebDavStatusItemProps) {
+  // Both hooks must run unconditionally; pick the matching store by provider.
+  const webdavState = useWebDavStore();
+  const s3State = useS3Store();
+  const store = provider === 's3' ? s3State : webdavState;
+  const phase = store.phase;
+  const documentId = store.documentId;
+  const lastSuccessAt = store.lastSuccessAt;
+  const error = store.error;
+  const setHistoryOpen = store.setHistoryOpen;
+  const retry = store.retry as (settings: WebDavSettings | S3Settings) => Promise<void>;
+  const loadVersions = store.loadVersions as (
+    documentId: string,
+    settings: WebDavSettings | S3Settings,
+  ) => Promise<void>;
   const [popoverOpen, setPopoverOpen] = useState(false);
+
+  const displayName = provider === 's3' ? 'S3 同步' : '云同步';
 
   if (!settings.enabled) {
     // 与「开启 AI」触发器一致：未启用时点击直接进入设置页。
@@ -32,11 +54,11 @@ export function WebDavStatusItem({ settings, currentFile, onOpenSettings }: WebD
       <button
         type="button"
         className="status-item status-button status-webdav"
-        title="WebDAV 备份未启用，点击开启"
+        title={provider === 's3' ? 'S3 云同步未启用，点击开启' : 'WebDAV 备份未启用，点击开启'}
         onClick={onOpenSettings}
       >
         <CloudGlyph />
-        <span>云同步</span>
+        <span>{displayName}</span>
       </button>
     );
   }
@@ -93,6 +115,7 @@ export function WebDavStatusItem({ settings, currentFile, onOpenSettings }: WebD
         <WebDavHistoryDialog
           open={documentId !== '' && !popoverOpen}
           mode="current"
+          provider={provider}
           settings={settings}
           currentDocumentId={documentId || undefined}
           onClose={() => setHistoryOpen(false)}

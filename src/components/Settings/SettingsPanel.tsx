@@ -14,6 +14,7 @@ import { LANGUAGE_OPTIONS, normalizeLanguage } from '../../i18n';
 import type { AgentBackendId, AgentBackendStatus } from '../../types/agent';
 import { parseAIProviderProfiles } from '../../utils/aiProviderProfiles';
 import { WebDavSettings } from '../WebDav/WebDavSettings';
+import { S3Settings } from '../WebDav/S3Settings';
 import { WebDavHistoryDialog } from '../WebDav/WebDavHistoryDialog';
 
 const isTauriRuntime = () => '__TAURI_INTERNALS__' in window;
@@ -132,6 +133,7 @@ export function SettingsPanel() {
   const [converterBusy, setConverterBusy] = useState(false);
   const [converterNotice, setConverterNotice] = useState('');
   const [webdavHistoryOpen, setWebdavHistoryOpen] = useState(false);
+  const [s3HistoryOpen, setS3HistoryOpen] = useState(false);
   const fontSizeGeometry = getRangeMarkerGeometry(
     localSettings.appearance.font_size,
     FONT_SIZE_MIN,
@@ -257,6 +259,7 @@ export function SettingsPanel() {
     { id: 'explorer', label: '资源管理器', description: '文件浏览与工作区管理' },
     { id: 'web_search', label: '网络搜索', description: '搜索服务与结果偏好' },
     { id: 'webdav', label: 'WebDAV 备份', description: '自动云备份与历史版本' },
+    { id: 's3', label: 'S3 云同步', description: '对象存储自动备份' },
   ] as const;
   const activeTabMeta = tabs.find((tab) => tab.id === activeTab) || tabs[0];
 
@@ -1463,6 +1466,16 @@ export function SettingsPanel() {
               />
             </div>
           )}
+
+          {activeTab === 's3' && (
+            <div className="settings-section">
+              <S3Settings
+                value={localSettings.s3}
+                onChange={(s3) => setLocalSettings({ ...localSettings, s3 })}
+                onBrowseHistory={() => setS3HistoryOpen(true)}
+              />
+            </div>
+          )}
         </div>
 
         <div className="settings-footer">
@@ -1478,6 +1491,13 @@ export function SettingsPanel() {
           mode="global"
           settings={localSettings.webdav}
           onClose={() => setWebdavHistoryOpen(false)}
+        />
+        <WebDavHistoryDialog
+          open={s3HistoryOpen}
+          mode="global"
+          provider="s3"
+          settings={localSettings.s3}
+          onClose={() => setS3HistoryOpen(false)}
         />
         </section>
       </div>

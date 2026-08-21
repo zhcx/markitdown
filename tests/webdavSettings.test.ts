@@ -27,3 +27,20 @@ test('Settings exposes WebDAV configuration and global history', () => {
   }
   assert.match(webdav, /webdav_test_connection/);
 });
+
+test('Settings exposes S3 sync configuration', () => {
+  const panel = read('src/components/Settings/SettingsPanel.tsx');
+  const frontend = read('src/stores/appStore.ts');
+  const s3 = read('src/components/WebDav/S3Settings.tsx');
+
+  assert.match(panel, /id:\s*['"]s3['"]/);
+  assert.match(panel, /activeTab === ['"]s3['"]/);
+
+  for (const label of ['服务端点（Endpoint）', '存储桶（Bucket）', '地域（Region）', '访问密钥 ID（Access Key）', '访问密钥（Secret Key）', '路径风格（Path-Style）', '远端根目录（对象前缀）', '测试连接', '浏览全部备份']) {
+    assert.match(s3, new RegExp(label));
+  }
+  assert.match(s3, /s3_test_connection/);
+
+  assert.match(frontend, /s3:\s*\{\s*enabled:\s*false,\s*endpoint:\s*'',\s*bucket:\s*'',\s*region:\s*'',\s*access_key:\s*'',\s*secret_key:\s*'',\s*path_style:\s*false,\s*remote_root:\s*'\/Zeditor',\s*\}/);
+  assert.match(frontend, /s3:\s*\{\s*\.\.\.defaultSettings\.s3,\s*\.\.\.saved\.s3\s*\}/);
+});

@@ -7,6 +7,7 @@ import { DEFAULT_FONT_SIZE, DEFAULT_LINE_HEIGHT } from '../utils/appearanceSetti
 import { applySavedTab } from '../utils/tabPersistence';
 import { readStoredStringArray } from '../utils/storage';
 import { useWebDavStore } from './webdavStore';
+import { useS3Store } from './s3Store';
 import { detectSystemLanguage, normalizeLanguage, type AppLanguage } from '../i18n';
 import type { AgentSettings } from '../types/agent';
 import type { ConverterDialogAction } from '../components/ConverterDialog/ConverterDialog';
@@ -82,6 +83,16 @@ export interface Settings {
     server_url: string;
     username: string;
     password: string;
+    remote_root: string;
+  };
+  s3: {
+    enabled: boolean;
+    endpoint: string;
+    bucket: string;
+    region: string;
+    access_key: string;
+    secret_key: string;
+    path_style: boolean;
     remote_root: string;
   };
   ai: {
@@ -184,7 +195,7 @@ export interface TimelineEntry {
 
 export type UploadStatus = 'idle' | 'uploading' | 'success' | 'error';
 export type ConversionStatus = 'idle' | 'converting' | 'success' | 'error';
-export type SettingsTab = 'appearance' | 'editor' | 'image' | 'export' | 'ai' | 'web_search' | 'explorer' | 'converter' | 'webdav';
+export type SettingsTab = 'appearance' | 'editor' | 'image' | 'export' | 'ai' | 'web_search' | 'explorer' | 'converter' | 'webdav' | 's3';
 
 export interface ConverterModuleStatus {
   state: 'missing' | 'installing' | 'ready' | 'update_available' | 'incompatible' | 'corrupt' | 'error';
@@ -337,6 +348,16 @@ const defaultSettings: Settings = {
     password: '',
     remote_root: '/Zeditor',
   },
+  s3: {
+    enabled: false,
+    endpoint: '',
+    bucket: '',
+    region: '',
+    access_key: '',
+    secret_key: '',
+    path_style: false,
+    remote_root: '/Zeditor',
+  },
   ai: {
     enabled: false,
     provider: 'openai',
@@ -380,6 +401,7 @@ const normalizeSettings = (saved: Settings): Settings => ({
   export: { ...defaultSettings.export, ...saved.export },
   web_search: { ...defaultSettings.web_search, ...saved.web_search },
   webdav: { ...defaultSettings.webdav, ...saved.webdav },
+  s3: { ...defaultSettings.s3, ...saved.s3 },
   ai: { ...defaultSettings.ai, ...saved.ai },
   agent: {
     ...defaultSettings.agent,
@@ -764,14 +786,23 @@ export const useAppStore = create<AppState>((set, get) => ({
 
       // Cloud backup is a background side effect of a successful local save.
       // It must never await remote completion or mark the document dirty again.
+      const workspaceRoots = readStoredStringArray('zeditor.workspace-roots');
       const webdav = get().settings.webdav;
       if (webdav.enabled && isTauriRuntime()) {
-        const workspaceRoots = readStoredStringArray('zeditor.workspace-roots');
         void invoke('webdav_enqueue_backup', {
           request: { local_path: path, workspace_roots: workspaceRoots },
           settings: webdav,
         }).catch(error => {
           useWebDavStore.getState().setEnqueueError(path, String(error));
+        });
+      }
+      const s3 = get().settings.s3;
+      if (s3.enabled && isTauriRuntime()) {
+        void invoke('s3_enqueue_backup', {
+          request: { local_path: path, workspace_roots: workspaceRoots },
+          settings: s3,
+        }).catch(error => {
+          useS3Store.getState().setEnqueueError(path, String(error));
         });
       }
     } finally {

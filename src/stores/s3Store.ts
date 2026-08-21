@@ -2,9 +2,9 @@ import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import type {
+  S3Settings,
   WebDavDocumentSummary,
   WebDavDownloadedVersion,
-  WebDavSettings,
   WebDavSyncEvent,
   WebDavSyncPhase,
   WebDavVersion,
@@ -17,7 +17,7 @@ import {
 const isTauriRuntime = () => typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 let eventUnlisten: UnlistenFn | null = null;
 
-export interface WebDavStoreState {
+export interface S3StoreState {
   phase: WebDavSyncPhase;
   documentId: string;
   localPath: string;
@@ -27,24 +27,24 @@ export interface WebDavStoreState {
   documents: WebDavDocumentSummary[];
   historyLoading: boolean;
   historyOpen: boolean;
-  initialize: (settings: WebDavSettings) => Promise<void>;
+  initialize: (settings: S3Settings) => Promise<void>;
   setCurrentDocument: (path: string | null) => void;
-  retry: (settings: WebDavSettings) => Promise<void>;
-  loadDocuments: (settings: WebDavSettings) => Promise<void>;
-  loadVersions: (documentId: string, settings: WebDavSettings) => Promise<void>;
+  retry: (settings: S3Settings) => Promise<void>;
+  loadDocuments: (settings: S3Settings) => Promise<void>;
+  loadVersions: (documentId: string, settings: S3Settings) => Promise<void>;
   downloadVersion: (
     documentId: string,
     versionId: string,
-    settings: WebDavSettings,
+    settings: S3Settings,
   ) => Promise<WebDavDownloadedVersion>;
   setEnqueueError: (localPath: string, error: string) => void;
   setHistoryOpen: (open: boolean) => void;
 }
 
 const reduceEventIntoStore = (
-  state: WebDavStoreState,
+  state: S3StoreState,
   event: WebDavSyncEvent,
-): Partial<WebDavStoreState> => {
+): Partial<S3StoreState> => {
   const current: WebDavStatusState = {
     document_id: state.documentId,
     local_path: state.localPath,
@@ -62,7 +62,7 @@ const reduceEventIntoStore = (
   };
 };
 
-export const useWebDavStore = create<WebDavStoreState>((set, get) => ({
+export const useS3Store = create<S3StoreState>((set, get) => ({
   phase: 'idle',
   documentId: '',
   localPath: '',
@@ -80,15 +80,15 @@ export const useWebDavStore = create<WebDavStoreState>((set, get) => ({
     }
     if (!eventUnlisten) {
       eventUnlisten = await listen<WebDavSyncEvent>('webdav-sync-status', ({ payload }) => {
-        // Both providers share the sync-status channel; keep only WebDAV events.
-        if (payload.provider !== 'webdav') return;
+        // Both providers share the sync-status channel; keep only S3 events.
+        if (payload.provider !== 's3') return;
         set((state) => reduceEventIntoStore(state, payload));
       });
     }
     set({ phase: settings.enabled ? 'idle' : 'disabled' });
     if (settings.enabled) {
       try {
-        await invoke('webdav_retry_pending', { settings });
+        await invoke('s3_retry_pending', { settings });
       } catch {
         // Startup retry failures surface through the status event stream.
       }
@@ -105,7 +105,7 @@ export const useWebDavStore = create<WebDavStoreState>((set, get) => ({
   retry: async (settings) => {
     if (!isTauriRuntime()) return;
     try {
-      await invoke('webdav_retry_pending', { settings });
+      await invoke('s3_retry_pending', { settings });
     } catch (error) {
       set({ phase: 'error', error: String(error).slice(0, 240) });
     }
@@ -115,7 +115,7 @@ export const useWebDavStore = create<WebDavStoreState>((set, get) => ({
     if (!isTauriRuntime()) return;
     set({ historyLoading: true });
     try {
-      const documents = await invoke<WebDavDocumentSummary[]>('webdav_list_documents', {
+      const documents = await invoke<WebDavDocumentSummary[]>('s3_list_documents', {
         settings,
       });
       set({ documents, historyLoading: false });
@@ -128,7 +128,7 @@ export const useWebDavStore = create<WebDavStoreState>((set, get) => ({
     if (!isTauriRuntime()) return;
     set({ historyLoading: true });
     try {
-      const versions = await invoke<WebDavVersion[]>('webdav_list_versions', {
+      const versions = await invoke<WebDavVersion[]>('s3_list_versions', {
         documentId,
         settings,
       });
@@ -139,7 +139,7 @@ export const useWebDavStore = create<WebDavStoreState>((set, get) => ({
   },
 
   downloadVersion: async (documentId, versionId, settings) => {
-    const downloaded = await invoke<WebDavDownloadedVersion>('webdav_download_version', {
+    const downloaded = await invoke<WebDavDownloadedVersion>('s3_download_version', {
       documentId,
       versionId,
       settings,

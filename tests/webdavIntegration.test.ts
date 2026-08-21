@@ -75,6 +75,21 @@ test('startup initializes WebDAV after settings load', () => {
   );
 });
 
+test('s3 store contract uses s3 commands and filters provider events', () => {
+  const store = readFileSync(new URL('../src/stores/s3Store.ts', import.meta.url), 'utf8');
+  assert.match(store, /s3_retry_pending/);
+  assert.match(store, /s3_list_documents/);
+  assert.match(store, /s3_list_versions/);
+  assert.match(store, /s3_download_version/);
+  assert.match(store, /payload\.provider !== 's3'/);
+  assert.match(store, /listen<WebDavSyncEvent>\('webdav-sync-status'/);
+});
+
+test('webdav store filters out s3 provider events', () => {
+  const store = readFileSync(new URL('../src/stores/webdavStore.ts', import.meta.url), 'utf8');
+  assert.match(store, /payload\.provider !== 'webdav'/);
+});
+
 test('status bar exposes all WebDAV phases and current history', () => {
   const status = readFileSync(new URL('../src/components/WebDav/WebDavStatusItem.tsx', import.meta.url), 'utf8');
   const labels = readFileSync(new URL('../src/utils/webdavState.ts', import.meta.url), 'utf8');
