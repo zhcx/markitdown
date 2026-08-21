@@ -111,14 +111,22 @@ impl WebDavClient {
             .map_err(|error| classify_network_error(&error))?;
 
         let status = response.status();
-        // 201 created; 405/301 mean the collection already exists.
-        if status == StatusCode::CREATED
-            || status == StatusCode::METHOD_NOT_ALLOWED
-            || status == StatusCode::MOVED_PERMANENTLY
-        {
-            Ok(())
-        } else {
-            Err(sanitize_webdav_error(Some(status.as_u16()), ""))
+        match status {
+            // 201: created. 301: redirected to the canonical collection URL.
+            StatusCode::CREATED | StatusCode::MOVED_PERMANENTLY => Ok(()),
+            // 405 is ambiguous: the collection may already exist, or the server
+            // may refuse automatic directory creation (common on NAS WebDAV).
+            // Verify with PROPFIND instead of guessing.
+            StatusCode::METHOD_NOT_ALLOWED => match self.propfind_exists(path).await {
+                Ok(true) => Ok(()),
+                Ok(false) => Err(format!(
+                    "服务器不支持自动创建目录（MKCOL 405）：{path} 不存在。飞牛等 NAS 的 WebDAV 无法自动建目录，请先在 NAS 文件管理器中手动创建该目录，再重新测试连接"
+                )),
+                Err(_) => Err(
+                    "服务器不支持创建远端目录（MKCOL 405），且无法验证目录是否已存在".to_string(),
+                ),
+            },
+            _ => Err(sanitize_webdav_error(Some(status.as_u16()), "")),
         }
     }
 
@@ -228,20 +236,27 @@ impl WebDavClient {
         };
 
         // Ensure the root collection exists
-        self.ensure_collection(remote_root).await?;
+        self.ensure_collection(remote_root)
+            .await
+            .map_err(|error| format!("创建远端目录失败：{error}"))?;
 
         // Write the probe
         let probe_bytes: &[u8] = b"zeditor-webdav-test";
-        self.put(&probe_path, probe_bytes).await?;
+        self.put(&probe_path, probe_bytes)
+            .await
+            .map_err(|error| format!("上传测试文件失败（PUT {probe_path}）：{error}"))?;
 
         // Read and verify
-        let read_back = self.get(&probe_path).await?;
+        let read_back = self
+            .get(&probe_path)
+            .await
+            .map_err(|error| format!("读取测试文件失败（GET {probe_path}）：{error}"))?;
         if read_back.as_slice() != probe_bytes {
             // Attempt cleanup but return the mismatch error
             let _ = self.delete_optional(&probe_path).await;
-            return Err(
-                "WebDAV probe verification failed: read-back content does not match".to_string(),
-            );
+            return Err(format!(
+                "读取测试文件失败（GET {probe_path}）：返回内容与上传不一致"
+            ));
         }
 
         // Clean up the probe (best-effort)
@@ -279,7 +294,7 @@ pub fn sanitize_webdav_error(status: Option<u16>, _text: &str) -> String {
         Some(403) => "WebDAV 权限不足：服务器拒绝了操作".to_string(),
         Some(404) => "WebDAV 资源未找到：远端路径可能已被删除".to_string(),
         Some(405) | Some(501) => {
-            "服务器不支持此连接方式：目标服务器可能未启用 WebDAV 写入支持（如 nginx 的 dav_methods 或 Apache 的 mod_dav），或远端路径指向了非 WebDAV 目录".to_string()
+            "服务器不支持此连接方式（HTTP 405/501）：目标服务器可能未启用 WebDAV 写入支持，或远端路径指向了非 WebDAV 目录".to_string()
         }
         Some(409) => "WebDAV 冲突：远端目标已存在或路径无效".to_string(),
         Some(412) => "WebDAV 前置条件失败".to_string(),
@@ -847,8 +862,8 @@ mod tests {
 
     #[tokio::test]
     async fn ensure_collection_treats_existing_collection_as_success() {
-        // 405 = collection already exists; ensure_collection must continue rather than fail.
-        let server = TestDavServer::start(vec![201, 405, 204]).await;
+        // MKCOL 405, then PROPFIND confirms the collection already exists (207).
+        let server = TestDavServer::start(vec![201, 405, 207, 204]).await;
         let client = WebDavClient::new(&settings_for(&server.url)).expect("client");
         client
             .ensure_collection("/Zeditor/docs")
@@ -858,6 +873,19 @@ mod tests {
             .put("/Zeditor/docs/note.md", b"hi")
             .await
             .expect("put after existing collection");
+    }
+
+    #[tokio::test]
+    async fn ensure_collection_rejects_405_when_collection_does_not_exist() {
+        // MKCOL 405 and PROPFIND confirms absence (404): NAS-style servers that
+        // refuse automatic directory creation must surface a clear diagnostic.
+        let server = TestDavServer::start(vec![201, 405, 404]).await;
+        let client = WebDavClient::new(&settings_for(&server.url)).expect("client");
+        let error = client
+            .ensure_collection("/Zeditor/docs")
+            .await
+            .expect_err("automatic creation refused");
+        assert!(error.contains("手动创建"));
     }
 
     #[test]
