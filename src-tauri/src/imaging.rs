@@ -83,10 +83,9 @@ fn resolve_image_src(
     let p = std::path::Path::new(src);
     let resolved = if p.is_absolute() {
         p.to_path_buf()
-    } else if let Some(base_dir) = base_dir {
-        base_dir.join(p)
     } else {
-        return None;
+        let base_dir = base_dir?;
+        base_dir.join(p)
     };
     let cache_key = std::fs::canonicalize(&resolved).unwrap_or(resolved);
 
