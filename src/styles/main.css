@@ -10604,6 +10604,8 @@ html[data-theme] .preview-container,
 .webdav-version-time { font-size: 13px; }
 .webdav-version-size { font-size: 12px; color: var(--text-secondary); }
 .webdav-version-hash { font-family: var(--font-mono); font-size: 11px; color: var(--text-secondary); }
+.webdav-version-actions { display: flex; align-items: center; gap: 6px; flex: none; }
+.webdav-version-open,
 .webdav-version-download {
   min-height: 30px;
   padding: 0 12px;
@@ -10616,11 +10618,22 @@ html[data-theme] .preview-container,
   cursor: pointer;
   transition: background var(--transition), border-color var(--transition), color var(--transition);
 }
+.webdav-version-open {
+  border-color: var(--accent-color);
+  background: var(--accent-color);
+  color: #fff;
+}
+.webdav-version-open:hover:not(:disabled) {
+  border-color: var(--accent-hover, var(--accent-color));
+  background: var(--accent-hover, var(--accent-color));
+  color: #fff;
+}
 .webdav-version-download:hover:not(:disabled) {
   border-color: var(--border-strong);
   background: var(--bg-hover);
   color: var(--text-color);
 }
+.webdav-version-open:disabled,
 .webdav-version-download:disabled { opacity: .5; cursor: not-allowed; }
 
 @media (max-width: 720px) {

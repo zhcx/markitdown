@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { S3Settings, WebDavSettings } from '../../types/webdav';
+import type { S3Settings, WebDavSettings, WebDavSyncPhase } from '../../types/webdav';
 import { useWebDavStore } from '../../stores/webdavStore';
 import { useS3Store } from '../../stores/s3Store';
 import { webDavStatusLabel } from '../../utils/webdavState';
@@ -124,8 +124,14 @@ export function WebDavStatusItem({
                 const providerSettings = provider === 's3' ? s3Settings : settings;
                 const label = provider === 's3' ? 'S3 对象存储' : 'WebDAV 服务器';
                 const providerEnabled = providerSettings.enabled;
-                const phase = providerEnabled ? store.phase : 'idle';
-                const phaseLabel = providerEnabled ? webDavStatusLabel(store.phase, '') : '未启用';
+                // Store phase is only initialized at app start; once the user
+                // enables a provider later, treat the stale 'disabled' snapshot
+                // as idle so the card never mislabels an enabled backend.
+                const effectivePhase: WebDavSyncPhase = providerEnabled
+                  ? (store.phase === 'disabled' ? 'idle' : store.phase)
+                  : 'idle';
+                const phase = effectivePhase;
+                const phaseLabel = providerEnabled ? webDavStatusLabel(effectivePhase, '') : '未启用';
                 const serverInfo = provider === 's3'
                   ? (providerSettings as S3Settings).endpoint || '未配置端点'
                   : (providerSettings as WebDavSettings).server_url || '未配置地址';
@@ -167,7 +173,9 @@ export function WebDavStatusItem({
                                 ? '↻ 正在同步…'
                                 : phase === 'queued'
                                   ? '⋯ 等待同步'
-                                  : phaseLabel
+                                  : phase === 'idle'
+                                    ? '就绪'
+                                    : phaseLabel
                           }
                         </span>
                         {phase === 'error' && (
