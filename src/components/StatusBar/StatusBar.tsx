@@ -174,6 +174,11 @@ export function StatusBar() {
     setSettingsOpen(true);
   };
 
+  const openWebDavSettings = () => {
+    setSettingsTab('webdav');
+    setSettingsOpen(true);
+  };
+
   return (
     <div className="statusbar">
       <div className="statusbar-left">
@@ -292,7 +297,11 @@ export function StatusBar() {
             {uploadStatus === 'error' && <span className="status-item upload-error"><StatusGlyph name="error" />上传失败: {uploadMessage}</span>}
           </div>
         ) : <span className="status-item">{currentFile ? currentFile.split(/[\\/]/).pop() : '未保存'}</span>}
-        <WebDavStatusItem settings={settings.webdav} currentFile={currentFile} />
+        <WebDavStatusItem
+          settings={settings.webdav}
+          currentFile={currentFile}
+          onOpenSettings={openWebDavSettings}
+        />
       </div>
       <div className="statusbar-right"><span className="status-item">{wordCount}</span><span className="status-divider" aria-hidden="true" /><span className="status-item">UTF-8</span></div>
     </div>

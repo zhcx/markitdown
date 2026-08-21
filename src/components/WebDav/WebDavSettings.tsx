@@ -39,18 +39,23 @@ export function WebDavSettings({ value, onChange, onBrowseHistory }: WebDavSetti
   return (
     <div className="webdav-settings">
       <div className="setting-item setting-toggle-item">
-        <label>
-          <input
-            type="checkbox"
-            checked={value.enabled}
-            onChange={event => update({ enabled: event.target.checked })}
-          />
+        <div className="setting-copy">
           <span>启用 WebDAV 自动备份</span>
-        </label>
-        <p className="setting-hint">
-          本地保存成功后自动上传到远端服务器，保留最近 20 个不同内容版本。
-          云端失败不会影响本地保存。
-        </p>
+          <small>
+            本地保存成功后自动上传到远端服务器，保留最近 20 个不同内容版本。
+            云端失败不会影响本地保存。
+          </small>
+        </div>
+        <button
+          type="button"
+          className={`settings-switch ${value.enabled ? 'is-on' : ''}`}
+          role="switch"
+          aria-checked={value.enabled}
+          aria-label="启用 WebDAV 自动备份"
+          onClick={() => update({ enabled: !value.enabled })}
+        >
+          <span className="settings-switch-thumb" />
+        </button>
       </div>
 
       {value.enabled && (

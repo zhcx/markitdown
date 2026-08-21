@@ -2431,11 +2431,18 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  padding: 0 7px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
+  color: var(--ui-text-secondary);
+  transition: background var(--transition), color var(--transition);
 }
-.status-webdav.syncing { color: var(--ui-accent, var(--accent-color)); }
-.status-webdav.success { color: var(--ui-success, #2e7d32); }
-.status-webdav.error { color: var(--ui-danger, #c62828); }
+.status-webdav svg { fill: currentColor; stroke: none; }
+.status-webdav.is-enabled { color: var(--ui-accent); }
+.status-webdav:hover { background: var(--ui-bg-hover); color: var(--ui-text-primary); }
+.status-webdav.syncing { color: var(--ui-accent); }
+.status-webdav.success { color: var(--ui-success); }
+.status-webdav.error { color: var(--ui-error); }
 
 .webdav-spinner {
   width: 10px;
@@ -2452,15 +2459,17 @@ body {
   z-index: 130;
   width: min(360px, calc(100vw - 24px));
   padding: 12px 14px;
-  border: 1px solid var(--border-color);
-  border-radius: 10px;
-  background: var(--bg-primary);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface-raised);
+  backdrop-filter: blur(12px);
   box-shadow: var(--shadow-lg);
+  animation: fadeIn 0.15s ease-out;
 }
 .webdav-popover-error {
   margin: 0 0 10px;
   font-size: 13px;
-  color: var(--ui-danger, #c62828);
+  color: var(--ui-error);
   word-break: break-all;
 }
 
