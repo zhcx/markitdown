@@ -2524,61 +2524,85 @@ body {
 }
 .status-cloud-close:hover { background: var(--bg-hover); color: var(--text-color); }
 
-.status-cloud-providers { display: flex; flex-direction: column; padding: 6px 0; gap: 2px; }
+.status-cloud-providers { display: flex; flex-direction: column; padding: 7px 0; gap: 4px; }
 .status-cloud-row {
-  display: grid;
-  grid-template-columns: 16px minmax(0, 1fr) auto;
+  display: flex;
   align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 8px 9px;
-  border: 0;
+  gap: 6px;
+  padding: 4px;
   border-radius: var(--radius-sm);
+}
+.status-cloud-row:hover { background: var(--bg-hover); }
+
+/* 主按钮：仿 AI 操作项，图标块 + 主/副文字，整行可点 */
+.status-cloud-row-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 5px 6px;
+  border: 0;
+  border-radius: 5px;
   background: transparent;
   color: var(--text-color);
   text-align: left;
   font: inherit;
-}
-.status-cloud-row:hover { background: var(--bg-hover); }
-.status-cloud-row-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.status-cloud-row-main strong { font-size: 12px; }
-.status-cloud-row-main small { overflow: hidden; color: var(--text-muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
-.status-cloud-row.error small { color: var(--ui-error); }
-
-.status-cloud-row-actions { display: inline-flex; align-items: center; gap: 6px; }
-.status-cloud-view {
-  padding: 3px 9px;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-sm);
-  background: var(--bg-secondary);
-  color: var(--text-secondary);
-  font-size: 11px;
   cursor: pointer;
 }
-.status-cloud-view:hover { border-color: var(--border-strong); color: var(--text-color); }
-.status-cloud-toggle {
-  min-width: 32px;
-  padding: 3px 8px;
+.status-cloud-row-main:hover { background: var(--bg-hover); }
+
+.status-cloud-icon {
+  flex: none;
+  width: 25px;
+  height: 25px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: 1px solid var(--border-color);
-  border-radius: 999px;
-  background: var(--bg-secondary);
-  color: var(--text-secondary);
-  font-size: 11px;
+  border-radius: 5px;
+  color: var(--text-muted);
+  font-size: 12px;
   font-weight: 700;
-  cursor: pointer;
-  transition: background var(--transition), border-color var(--transition), color var(--transition);
+  background: var(--bg-secondary);
 }
-.status-cloud-toggle.is-on {
-  border-color: var(--accent-color);
-  background: var(--accent-color);
-  color: #fff;
-}
+.status-cloud-icon.success { border-color: color-mix(in srgb, var(--ui-success) 45%, transparent); color: var(--ui-success); }
+.status-cloud-icon.error { border-color: color-mix(in srgb, var(--ui-error) 45%, transparent); color: var(--ui-error); }
+.status-cloud-icon.syncing { border-color: color-mix(in srgb, var(--ui-accent) 45%, transparent); color: var(--ui-accent); }
+.status-cloud-icon.queued { border-color: color-mix(in srgb, var(--ui-warning) 45%, transparent); color: var(--ui-warning); }
 
-.status-cloud-dot { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; font-size: 11px; }
-.status-cloud-dot.success { color: var(--ui-success); }
-.status-cloud-dot.error { color: var(--ui-error); }
-.status-cloud-dot.syncing { color: var(--ui-accent); }
-.status-cloud-dot.queued { color: var(--ui-warning); }
+.status-cloud-copy { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.status-cloud-copy strong { overflow: hidden; color: var(--text-color); font-size: 12px; line-height: 1.2; text-overflow: ellipsis; white-space: nowrap; }
+.status-cloud-copy small { overflow: hidden; color: var(--text-muted); font-size: 10px; line-height: 1.2; text-overflow: ellipsis; white-space: nowrap; }
+.status-cloud-row.error .status-cloud-copy small { color: var(--ui-error); }
+
+/* 行内开 / 关：胶囊开关（仿设置页 settings-switch 语义） */
+.status-cloud-row-actions { flex: none; display: inline-flex; align-items: center; padding-right: 4px; }
+.status-cloud-switch {
+  position: relative;
+  width: 38px;
+  height: 21px;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: var(--surface-muted);
+  cursor: pointer;
+  transition: background 160ms ease, border-color 160ms ease;
+}
+.status-cloud-switch:hover { border-color: var(--text-muted); }
+.status-cloud-switch-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 30%);
+  transition: transform 160ms ease, background 160ms ease;
+}
+.status-cloud-switch.is-on { border-color: var(--accent-color); background: var(--accent-color); }
+.status-cloud-switch.is-on .status-cloud-switch-thumb { transform: translateX(17px); background: #fff; }
 
 .status-cloud-settings {
   width: 100%;

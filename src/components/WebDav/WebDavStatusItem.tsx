@@ -115,42 +115,70 @@ export function WebDavStatusItem({
     setMenuOpen(false);
   };
 
+  // 菜单副标题：汇总当前同步状态（WebDAV 与 S3 自动备份）。
+  const cloudSubtitle = (): string => {
+    const bothOff = !settings.enabled && !s3Settings.enabled;
+    if (bothOff) return 'WebDAV 与 S3 自动备份 · 未启用';
+    const hasError = webdavState.phase === 'error' || s3State.phase === 'error';
+    const allSynced =
+      (!settings.enabled || webdavState.phase === 'success') &&
+      (!s3Settings.enabled || s3State.phase === 'success');
+    if (hasError) return '存在同步异常，点击对应项重试';
+    if (allSynced) return '全部已同步 · 保留最近 20 个版本';
+    return '正在同步…';
+  };
+
   const providerRow = (provider: 'webdav' | 's3') => {
     const store = provider === 's3' ? s3State : webdavState;
     const providerSettings = provider === 's3' ? s3Settings : settings;
     const label = provider === 's3' ? 'S3' : 'WebDAV';
-    const statusText = providerSettings.enabled
+    const enabledNow = providerSettings.enabled;
+    const statusText = enabledNow
       ? webDavStatusLabel(store.phase, '')
       : '未启用';
-    const dot = providerSettings.enabled ? statusDot(store.phase) : statusDot('idle');
+    const statusDetail = enabledNow
+      ? store.phase === 'success' && store.lastSuccessAt
+        ? `${statusText} · ${formatClock(store.lastSuccessAt)}`
+        : store.phase === 'error'
+          ? `${statusText} · 点击重试`
+          : statusText
+      : '点击开启';
+    const dot = enabledNow ? statusDot(store.phase) : statusDot('idle');
 
     return (
-      <div className={`status-cloud-row ${providerSettings.enabled && store.phase === 'error' ? 'error' : ''}`}>
-        <span className={`status-cloud-dot ${providerSettings.enabled ? store.phase : ''}`}>{dot}</span>
-        <div className="status-cloud-row-main">
-          <strong>{label}</strong>
-          <small>{statusText}{providerSettings.enabled && store.phase === 'success' && store.lastSuccessAt ? ` · ${formatClock(store.lastSuccessAt)}` : ''}</small>
-        </div>
+      <div
+        className={`status-cloud-row ${enabledNow && store.phase === 'error' ? 'error' : ''}`}
+        role="menuitem"
+      >
+        <button
+          type="button"
+          className="status-cloud-row-main"
+          title={enabledNow ? `查看 ${label} 备份与历史版本` : `开启 ${label} 同步`}
+          onClick={() => {
+            if (enabledNow) {
+              openHistory(provider);
+            } else {
+              toggleProvider(provider, false);
+            }
+          }}
+        >
+          <span className={`status-cloud-icon ${enabledNow ? store.phase : 'idle'}`}>{dot}</span>
+          <span className="status-cloud-copy">
+            <strong>{label}</strong>
+            <small>{statusDetail}</small>
+          </span>
+        </button>
         <div className="status-cloud-row-actions">
-          {providerSettings.enabled && (
-            <button
-              type="button"
-              className="status-cloud-view"
-              title="查看备份与历史版本"
-              onClick={() => openHistory(provider)}
-            >
-              历史
-            </button>
-          )}
           <button
             type="button"
-            className={`status-cloud-toggle${providerSettings.enabled ? ' is-on' : ''}`}
+            className={`status-cloud-switch${enabledNow ? ' is-on' : ''}`}
             role="switch"
-            aria-checked={providerSettings.enabled}
-            title={providerSettings.enabled ? `关闭 ${label} 同步` : `开启 ${label} 同步`}
-            onClick={() => toggleProvider(provider, providerSettings.enabled)}
+            aria-checked={enabledNow}
+            aria-label={`${label} 同步`}
+            title={enabledNow ? `关闭 ${label} 同步` : `开启 ${label} 同步`}
+            onClick={() => toggleProvider(provider, enabledNow)}
           >
-            {providerSettings.enabled ? '开' : '关'}
+            <span className="status-cloud-switch-thumb" />
           </button>
         </div>
       </div>
@@ -180,7 +208,10 @@ export function WebDavStatusItem({
         {menuOpen && (
           <div className="status-cloud-menu" role="menu" aria-label="云同步">
             <div className="status-cloud-menu-header">
-              <div><strong>云同步</strong><small>WebDAV 与 S3 自动备份</small></div>
+              <div>
+                <strong>云同步</strong>
+                <small>{cloudSubtitle()}</small>
+              </div>
               <button type="button" className="status-cloud-close" onClick={() => setMenuOpen(false)}>✕</button>
             </div>
             <div className="status-cloud-providers">
