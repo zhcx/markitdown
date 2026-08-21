@@ -75,4 +75,16 @@ test('startup initializes WebDAV after settings load', () => {
   );
 });
 
+test('status bar exposes all WebDAV phases and current history', () => {
+  const status = readFileSync(new URL('../src/components/WebDav/WebDavStatusItem.tsx', import.meta.url), 'utf8');
+  const labels = readFileSync(new URL('../src/utils/webdavState.ts', import.meta.url), 'utf8');
+  const sources = status + labels;
+  for (const label of ['未启用', '等待同步', '正在同步', '已同步', '同步失败']) {
+    assert.match(sources, new RegExp(label));
+  }
+  assert.match(status, /loadVersions/);
+  assert.match(status, /WebDavHistoryDialog/);
+  assert.match(status, /retry/);
+});
+
 import { readFileSync } from 'node:fs';

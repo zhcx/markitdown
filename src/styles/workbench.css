@@ -2424,3 +2424,51 @@ body {
   cursor: pointer;
 }
 .editor-context-submenu button:hover { background: var(--ui-bg-hover); color: var(--ui-text-primary); }
+
+/* ===== WebDAV status bar ===== */
+
+.status-webdav {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+.status-webdav.syncing { color: var(--ui-accent, var(--accent-color)); }
+.status-webdav.success { color: var(--ui-success, #2e7d32); }
+.status-webdav.error { color: var(--ui-danger, #c62828); }
+
+.webdav-spinner {
+  width: 10px;
+  height: 10px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: webdav-rotate .8s linear infinite;
+}
+@keyframes webdav-rotate { to { transform: rotate(360deg); } }
+
+.webdav-history-popover {
+  position: fixed;
+  z-index: 130;
+  width: min(360px, calc(100vw - 24px));
+  padding: 12px 14px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  background: var(--bg-primary);
+  box-shadow: var(--shadow-lg);
+}
+.webdav-popover-error {
+  margin: 0 0 10px;
+  font-size: 13px;
+  color: var(--ui-danger, #c62828);
+  word-break: break-all;
+}
+
+/* Narrow widths hide the timestamp before the label, then the label before the glyph. */
+@media (max-width: 820px) {
+  .status-webdav .status-webdav-time { display: none; }
+}
+@media (max-width: 560px) {
+  .status-webdav { gap: 0; }
+  .status-webdav .status-webdav-label { display: none; }
+}

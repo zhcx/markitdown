@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useAppStore, type Settings } from '../../stores/appStore';
 import { useAIStore, type AIEditMode } from '../../stores/aiStore';
+import { WebDavStatusItem } from '../WebDav/WebDavStatusItem';
 
 type WritingStyle = Settings['ai']['writing_style'];
 
@@ -291,6 +292,7 @@ export function StatusBar() {
             {uploadStatus === 'error' && <span className="status-item upload-error"><StatusGlyph name="error" />上传失败: {uploadMessage}</span>}
           </div>
         ) : <span className="status-item">{currentFile ? currentFile.split(/[\\/]/).pop() : '未保存'}</span>}
+        <WebDavStatusItem settings={settings.webdav} currentFile={currentFile} />
       </div>
       <div className="statusbar-right"><span className="status-item">{wordCount}</span><span className="status-divider" aria-hidden="true" /><span className="status-item">UTF-8</span></div>
     </div>
