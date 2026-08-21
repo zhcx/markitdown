@@ -63,14 +63,15 @@ impl WebDavClient {
         })
     }
 
+    /// Build the full request URL for a resource path.
+    ///
+    /// Appends the path to the configured endpoint while preserving any base
+    /// sub-path in the endpoint (e.g. `http://host:5005/dav` + `/Zeditor` →
+    /// `/dav/Zeditor`). `Url::join` would silently drop the `/dav` prefix.
     fn request_url(&self, path: &str) -> Result<reqwest::Url, String> {
-        let path = if let Some(decoded) = path.strip_prefix('/') {
-            decoded
-        } else {
-            path
-        };
-        self.endpoint
-            .join(path)
+        let base = self.endpoint.to_string().trim_end_matches('/').to_string();
+        let suffix = path.trim_start_matches('/');
+        reqwest::Url::parse(&format!("{base}/{suffix}"))
             .map_err(|error| format!("Invalid WebDAV resource path: {error}"))
     }
 
@@ -83,6 +84,11 @@ impl WebDavClient {
     }
 
     /// Recursively create a remote collection and all missing parent collections.
+    ///
+    /// Collection requests use a trailing slash: RFC 4918 collection URLs end
+    /// with `/`, and several servers (including fnOS NAS WebDAV) return 405 for
+    /// slash-less MKCOL even though clients like Obsidian create directories
+    /// fine with the trailing slash.
     pub async fn ensure_collection(&self, path: &str) -> Result<(), String> {
         let segments: Vec<&str> = path
             .trim_start_matches('/')
@@ -100,7 +106,8 @@ impl WebDavClient {
     }
 
     async fn mkcol(&self, path: &str) -> Result<(), String> {
-        let url = self.request_url(path)?;
+        let collection_path = format!("{}/", path.trim_end_matches('/'));
+        let url = self.request_url(&collection_path)?;
         let request = self
             .client
             .request(reqwest::Method::from_bytes(b"MKCOL").unwrap(), url);
@@ -117,10 +124,10 @@ impl WebDavClient {
             // 405 is ambiguous: the collection may already exist, or the server
             // may refuse automatic directory creation (common on NAS WebDAV).
             // Verify with PROPFIND instead of guessing.
-            StatusCode::METHOD_NOT_ALLOWED => match self.propfind_exists(path).await {
+            StatusCode::METHOD_NOT_ALLOWED => match self.propfind_exists(&collection_path).await {
                 Ok(true) => Ok(()),
                 Ok(false) => Err(format!(
-                    "服务器不支持自动创建目录（MKCOL 405）：{path} 不存在。飞牛等 NAS 的 WebDAV 无法自动建目录，请先在 NAS 文件管理器中手动创建该目录，再重新测试连接"
+                    "服务器不支持自动创建目录（MKCOL 405）：{path} 不存在。请先在 NAS 文件管理器中手动创建该目录，再重新测试连接"
                 )),
                 Err(_) => Err(
                     "服务器不支持创建远端目录（MKCOL 405），且无法验证目录是否已存在".to_string(),
