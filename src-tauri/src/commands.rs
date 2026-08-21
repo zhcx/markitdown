@@ -82,6 +82,8 @@ pub struct Settings {
     pub web_search: WebSearchSettings,
     #[serde(default)]
     pub webdav: WebDavSettings,
+    #[serde(default)]
+    pub s3: S3Settings,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -234,7 +236,7 @@ impl Default for WebSearchSettings {
     }
 }
 
-pub use crate::webdav::WebDavSettings;
+pub use crate::webdav::{S3Settings, WebDavSettings};
 
 impl Default for Settings {
     fn default() -> Self {
@@ -316,6 +318,7 @@ impl Default for Settings {
                 searxng_max_results: 5,
             },
             webdav: WebDavSettings::default(),
+            s3: S3Settings::default(),
         }
     }
 }

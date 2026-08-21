@@ -186,6 +186,10 @@ pub struct WebDavDownloadedVersion {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WebDavSyncEvent {
+    /// Backend that produced the event (`"webdav"` or `"s3"`). Defaults to
+    /// `"webdav"` so events serialized before S3 support still parse.
+    #[serde(default = "default_sync_provider")]
+    pub provider: String,
     pub document_id: String,
     pub local_path: String,
     pub phase: String,
@@ -196,6 +200,10 @@ pub struct WebDavSyncEvent {
     pub error: Option<String>,
 }
 
+fn default_sync_provider() -> String {
+    "webdav".to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -203,6 +211,7 @@ mod tests {
     #[test]
     fn sync_event_omits_absent_optional_fields() {
         let event = WebDavSyncEvent {
+            provider: "webdav".to_string(),
             document_id: "doc".to_string(),
             local_path: "/work/note.md".to_string(),
             phase: "queued".to_string(),
@@ -215,5 +224,16 @@ mod tests {
 
         assert!(value.get("progress").is_none());
         assert!(value.get("error").is_none());
+        assert_eq!(
+            value.get("provider").and_then(|v| v.as_str()),
+            Some("webdav")
+        );
+    }
+
+    #[test]
+    fn sync_event_provider_defaults_to_webdav_for_legacy_json() {
+        let legacy = br#"{"document_id":"doc","local_path":"/work/note.md","phase":"queued","timestamp":"2026-08-19T09:00:00Z"}"#;
+        let event: WebDavSyncEvent = serde_json::from_slice(legacy).expect("legacy event");
+        assert_eq!(event.provider, "webdav");
     }
 }

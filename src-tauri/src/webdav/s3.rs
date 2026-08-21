@@ -15,7 +15,7 @@ use super::sigv4::{
 /// bucket, signing every request with AWS Signature Version 4. Supports both
 /// path-style (`host/bucket/key`, MinIO and self-hosted) and virtual-hosted
 /// style (`bucket.host/key`, AWS and most clouds).
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct S3Client {
     client: reqwest::Client,
     scheme: String,
@@ -176,6 +176,13 @@ impl S3Client {
         } else {
             Err(sanitize_webdav_error(Some(status.as_u16()), ""))
         }
+    }
+
+    /// Read an object; returns an error when the object is absent.
+    pub async fn get(&self, path: &str) -> Result<Vec<u8>, String> {
+        self.get_optional(path)
+            .await?
+            .ok_or_else(|| format!("S3 object not found: {path}"))
     }
 }
 

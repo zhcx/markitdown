@@ -8,7 +8,7 @@ mod s3;
 mod sigv4;
 
 pub use client::{sanitize_webdav_error, RemoteClient, RemoteSyncClient, WebDavClient};
-pub use manager::{WebDavEventSink, WebDavSyncManager};
+pub use manager::{S3SyncManager, SyncProvider, WebDavEventSink, WebDavSyncManager};
 pub use manifest::{
     parse_index, parse_manifest, validate_index_namespace, validate_manifest_namespace,
 };
@@ -175,6 +175,126 @@ fn expected_for_download(
         current_path: current_path.to_string(),
         manifest_path: document_manifest_path(remote_root, document_id),
         versions_dir: document_versions_dir(remote_root, document_id),
+    })
+}
+
+/// Test the configured S3 endpoint with a real write-read-delete probe.
+#[tauri::command]
+pub async fn s3_test_connection(settings: S3Settings) -> Result<WebDavConnectionResult, String> {
+    let client = S3Client::new(&settings)?;
+    client.test_connection(&settings.remote_root).await?;
+    Ok(WebDavConnectionResult {
+        message: "S3 连接测试成功".to_string(),
+    })
+}
+
+/// Durable enqueue of a saved document's S3 backup task.
+#[tauri::command]
+pub async fn s3_enqueue_backup(
+    manager: State<'_, S3SyncManager>,
+    request: WebDavBackupRequest,
+    settings: S3Settings,
+) -> Result<WebDavQueuedResult, String> {
+    manager.enqueue(request, settings).await
+}
+
+/// Re-run every persisted pending S3 backup task.
+#[tauri::command]
+pub async fn s3_retry_pending(
+    manager: State<'_, S3SyncManager>,
+    settings: S3Settings,
+) -> Result<WebDavRetryResult, String> {
+    manager.retry_pending(settings).await
+}
+
+/// List all documents in the S3 backup index.
+#[tauri::command]
+pub async fn s3_list_documents(settings: S3Settings) -> Result<Vec<WebDavDocumentSummary>, String> {
+    let client = S3Client::new(&settings)?;
+    let remote_root = normalize_remote_root(&settings.remote_root)?;
+    let index_path = history_index_path(&remote_root);
+    let Some(bytes) = client.get_optional(&index_path).await? else {
+        return Ok(Vec::new());
+    };
+    let index = parse_index(&bytes)?;
+    validate_index_namespace(&index, &remote_root)?;
+    Ok(index
+        .documents
+        .into_iter()
+        .map(|entry| WebDavDocumentSummary {
+            document_id: entry.document_id,
+            display_name: entry.display_name,
+            current_path: entry.current_path,
+            latest_at: entry.latest_at,
+        })
+        .collect())
+}
+
+/// List the historical versions of one S3-backed document.
+#[tauri::command]
+pub async fn s3_list_versions(
+    document_id: String,
+    settings: S3Settings,
+) -> Result<Vec<WebDavVersion>, String> {
+    let client = S3Client::new(&settings)?;
+    let remote_root = normalize_remote_root(&settings.remote_root)?;
+    let manifest_path = document_manifest_path(&remote_root, &document_id);
+    let Some(bytes) = client.get_optional(&manifest_path).await? else {
+        return Ok(Vec::new());
+    };
+    let manifest = parse_manifest(&bytes)?;
+    let expected = expected_for_download(
+        &remote_root,
+        &document_id,
+        &manifest.display_name,
+        &manifest.current_path,
+    )?;
+    validate_manifest_namespace(&manifest, &expected, &remote_root)?;
+    Ok(manifest.versions)
+}
+
+/// Download one S3 historical version after verifying its SHA-256.
+#[tauri::command]
+pub async fn s3_download_version(
+    document_id: String,
+    version_id: String,
+    settings: S3Settings,
+) -> Result<WebDavDownloadedVersion, String> {
+    let client = S3Client::new(&settings)?;
+    let remote_root = normalize_remote_root(&settings.remote_root)?;
+    let manifest_path = document_manifest_path(&remote_root, &document_id);
+    let bytes = client.get(&manifest_path).await?;
+    let manifest = parse_manifest(&bytes)?;
+    validate_manifest_namespace(
+        &manifest,
+        &expected_for_download(
+            &remote_root,
+            &document_id,
+            &manifest.display_name,
+            &manifest.current_path,
+        )?,
+        &remote_root,
+    )?;
+    let version = manifest
+        .versions
+        .iter()
+        .find(|candidate| candidate.id == version_id)
+        .ok_or_else(|| format!("S3 version '{version_id}' was not found"))?;
+
+    let content = client.get(&version.snapshot_path).await?;
+    let actual_hash = sha256_hex(&content);
+    if actual_hash != version.sha256 {
+        return Err("S3 下载校验失败：内容哈希与清单不一致".to_string());
+    }
+    let size = content.len() as u64;
+    let text =
+        String::from_utf8(content).map_err(|_| "S3 下载内容不是有效的 UTF-8 文本".to_string())?;
+
+    Ok(WebDavDownloadedVersion {
+        filename: manifest.display_name,
+        content: text,
+        size,
+        sha256: version.sha256.clone(),
     })
 }
 

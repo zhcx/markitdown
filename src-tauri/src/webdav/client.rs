@@ -7,7 +7,7 @@ use super::model::WebDavSettings;
 /// Provides HTTP methods for WebDAV operations: MKCOL, PUT, GET, DELETE, PROPFIND.
 /// Implements connection testing, error sanitization, and timeout enforcement.
 /// The `new` constructor succeeds only when the server URL is valid.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct WebDavClient {
     client: reqwest::Client,
     endpoint: reqwest::Url,
@@ -330,6 +330,7 @@ impl RemoteSyncClient for WebDavClient {
 /// An enum instead of a trait object keeps the async futures concrete (and
 /// always Send) while still letting the manager run one transaction against
 /// either protocol.
+#[derive(Clone)]
 pub enum RemoteClient {
     WebDav(WebDavClient),
     S3(crate::webdav::S3Client),
