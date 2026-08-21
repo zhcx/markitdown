@@ -8,8 +8,8 @@ use super::model::{
 };
 use super::queue::PendingTaskStore;
 use super::{
-    deterministic_version_id, map_remote_document, normalize_remote_root, parse_index,
-    parse_manifest, sha256_hex, validate_index_namespace, validate_manifest_namespace,
+    deterministic_version_id, history_index_path, map_remote_document, normalize_remote_root,
+    parse_index, parse_manifest, sha256_hex, validate_index_namespace, validate_manifest_namespace,
     WebDavClient,
 };
 
@@ -284,14 +284,6 @@ impl WebDavSyncManager {
 
 fn now_rfc3339() -> String {
     chrono::Utc::now().to_rfc3339()
-}
-
-fn history_index_path(remote_root: &str) -> String {
-    if remote_root == "/" {
-        "/.zeditor-history/index.json".to_string()
-    } else {
-        format!("{remote_root}/.zeditor-history/index.json")
-    }
 }
 
 fn parent_path(path: &str) -> String {

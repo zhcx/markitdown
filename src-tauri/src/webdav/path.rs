@@ -178,6 +178,40 @@ pub fn deterministic_version_id(created_at: &str, sha256: &str) -> String {
     short_digest(format!("{created_at}\0{sha256}").as_bytes())
 }
 
+/// Remote path of the global backup catalog under a normalized root.
+pub fn history_index_path(remote_root: &str) -> String {
+    append_remote_segments(
+        remote_root,
+        &[".zeditor-history".to_string(), "index.json".to_string()],
+    )
+}
+
+/// Remote path of a document's manifest under a normalized root.
+pub fn document_manifest_path(remote_root: &str, document_id: &str) -> String {
+    append_remote_segments(
+        remote_root,
+        &[
+            ".zeditor-history".to_string(),
+            "documents".to_string(),
+            document_id.to_string(),
+            "manifest.json".to_string(),
+        ],
+    )
+}
+
+/// Remote directory holding a document's snapshots under a normalized root.
+pub fn document_versions_dir(remote_root: &str, document_id: &str) -> String {
+    append_remote_segments(
+        remote_root,
+        &[
+            ".zeditor-history".to_string(),
+            "documents".to_string(),
+            document_id.to_string(),
+            "versions".to_string(),
+        ],
+    )
+}
+
 fn short_digest(bytes: &[u8]) -> String {
     sha256_hex(bytes)[..24].to_string()
 }

@@ -300,6 +300,10 @@ fn cap_message(message: &str, max_len: usize) -> String {
 
 #[cfg(test)]
 pub(crate) mod test_support {
+    // Fields are read by manager/integration test consumers beyond the client
+    // module itself; keep the fixture structs whole.
+    #![allow(dead_code)]
+
     use super::*;
     use std::collections::HashMap;
     use std::collections::VecDeque;
