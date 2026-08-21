@@ -466,9 +466,8 @@ mod tests {
 
     #[test]
     fn maps_literal_percent_filename_to_double_encoded_remote_segment() {
-        let mapped =
-            map_remote_document("/work/foo%20bar.md", &["/work".to_string()], "/Zeditor")
-                .expect("literal percent mapping");
+        let mapped = map_remote_document("/work/foo%20bar.md", &["/work".to_string()], "/Zeditor")
+            .expect("literal percent mapping");
 
         assert_eq!(mapped.display_name, "foo%20bar.md");
         assert!(mapped.current_path.ends_with("/foo%2520bar.md"));

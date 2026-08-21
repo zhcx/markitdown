@@ -234,35 +234,7 @@ impl Default for WebSearchSettings {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WebDavSettings {
-    #[serde(default)]
-    pub enabled: bool,
-    #[serde(default)]
-    pub server_url: String,
-    #[serde(default)]
-    pub username: String,
-    #[serde(default)]
-    pub password: String,
-    #[serde(default = "default_webdav_remote_root")]
-    pub remote_root: String,
-}
-
-fn default_webdav_remote_root() -> String {
-    "/Zeditor".into()
-}
-
-impl Default for WebDavSettings {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            server_url: String::new(),
-            username: String::new(),
-            password: String::new(),
-            remote_root: default_webdav_remote_root(),
-        }
-    }
-}
+pub use crate::webdav::WebDavSettings;
 
 impl Default for Settings {
     fn default() -> Self {

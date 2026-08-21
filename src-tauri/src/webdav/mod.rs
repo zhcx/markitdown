@@ -1,17 +1,20 @@
 // Temporary until Tasks 3-6 wire these domain APIs into production consumers.
 #![allow(dead_code)]
 
+mod client;
 mod manifest;
 mod model;
 mod path;
 
+pub use client::WebDavClient;
 pub use manifest::{
     parse_index, parse_manifest, validate_index_namespace, validate_manifest_namespace,
 };
 pub use model::{
     BackupIndex, BackupIndexEntry, DocumentManifest, RemoteDocumentPath, WebDavBackupRequest,
     WebDavConnectionResult, WebDavDocumentRef, WebDavDocumentSummary, WebDavDownloadedVersion,
-    WebDavQueuedResult, WebDavRetryResult, WebDavSyncEvent, WebDavVersion, HISTORY_LIMIT,
+    WebDavQueuedResult, WebDavRetryResult, WebDavSettings, WebDavSyncEvent, WebDavVersion,
+    HISTORY_LIMIT,
 };
 pub use path::{
     deterministic_version_id, map_remote_document, normalize_remote_root, sha256_hex,
