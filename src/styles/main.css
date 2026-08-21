@@ -10626,3 +10626,17 @@ html[data-theme] .preview-container,
 @media (max-width: 720px) {
   .webdav-history-dialog-body { grid-template-columns: 1fr; }
 }
+
+/* ===== 云同步设置：WebDAV / S3 分区标题 ===== */
+
+.settings-section-title {
+  margin: 2px 0 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border-soft);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+.settings-section-divider { height: 1px; margin: 18px 0; background: var(--border-soft); }

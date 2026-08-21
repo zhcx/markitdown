@@ -195,7 +195,7 @@ export interface TimelineEntry {
 
 export type UploadStatus = 'idle' | 'uploading' | 'success' | 'error';
 export type ConversionStatus = 'idle' | 'converting' | 'success' | 'error';
-export type SettingsTab = 'appearance' | 'editor' | 'image' | 'export' | 'ai' | 'web_search' | 'explorer' | 'converter' | 'webdav' | 's3';
+export type SettingsTab = 'appearance' | 'editor' | 'image' | 'export' | 'ai' | 'web_search' | 'explorer' | 'converter' | 'cloud';
 
 export interface ConverterModuleStatus {
   state: 'missing' | 'installing' | 'ready' | 'update_available' | 'incompatible' | 'corrupt' | 'error';
@@ -788,7 +788,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       // It must never await remote completion or mark the document dirty again.
       const workspaceRoots = readStoredStringArray('zeditor.workspace-roots');
       const webdav = get().settings.webdav;
-      if (webdav.enabled && isTauriRuntime()) {
+      if (webdav?.enabled && isTauriRuntime()) {
         void invoke('webdav_enqueue_backup', {
           request: { local_path: path, workspace_roots: workspaceRoots },
           settings: webdav,
@@ -797,7 +797,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         });
       }
       const s3 = get().settings.s3;
-      if (s3.enabled && isTauriRuntime()) {
+      if (s3?.enabled && isTauriRuntime()) {
         void invoke('s3_enqueue_backup', {
           request: { local_path: path, workspace_roots: workspaceRoots },
           settings: s3,

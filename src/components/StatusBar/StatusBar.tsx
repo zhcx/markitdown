@@ -174,13 +174,8 @@ export function StatusBar() {
     setSettingsOpen(true);
   };
 
-  const openWebDavSettings = () => {
-    setSettingsTab('webdav');
-    setSettingsOpen(true);
-  };
-
-  const openS3Settings = () => {
-    setSettingsTab('s3');
+  const openCloudSettings = () => {
+    setSettingsTab('cloud');
     setSettingsOpen(true);
   };
 
@@ -304,15 +299,9 @@ export function StatusBar() {
         ) : <span className="status-item">{currentFile ? currentFile.split(/[\\/]/).pop() : '未保存'}</span>}
         <WebDavStatusItem
           settings={settings.webdav}
+          s3Settings={settings.s3}
           currentFile={currentFile}
-          provider="webdav"
-          onOpenSettings={openWebDavSettings}
-        />
-        <WebDavStatusItem
-          settings={settings.s3}
-          currentFile={currentFile}
-          provider="s3"
-          onOpenSettings={openS3Settings}
+          onOpenSettings={openCloudSettings}
         />
       </div>
       <div className="statusbar-right"><span className="status-item">{wordCount}</span><span className="status-divider" aria-hidden="true" /><span className="status-item">UTF-8</span></div>

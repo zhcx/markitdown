@@ -113,6 +113,9 @@ function SettingsNavIcon({ type }: { type: SettingsTab }) {
   if (type === 'converter') {
     return <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 3h7l3 3v11H5zM12 3v3h3M7.5 10h5M10 8v4M7.5 14h5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg>;
   }
+  if (type === 'cloud') {
+    return <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5.8 15.5h8.5a3 3 0 0 0 .6-5.95 5.1 5.1 0 0 0-10.1.9 3.25 3.25 0 0 0 1 5.05Z" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" /></svg>;
+  }
   return <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.6 11.5 7l4.4 1.5-4.4 1.5-1.5 4.4L8.5 10 4.1 8.5 8.5 7zM15.5 13l.7 2 .8.3-.8.3-.7 2-.7-2-.8-.3.8-.3z" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" /></svg>;
 }
 
@@ -258,8 +261,7 @@ export function SettingsPanel() {
     { id: 'ai', label: 'AI 助手', description: '模型、提示与伴写设置' },
     { id: 'explorer', label: '资源管理器', description: '文件浏览与工作区管理' },
     { id: 'web_search', label: '网络搜索', description: '搜索服务与结果偏好' },
-    { id: 'webdav', label: 'WebDAV 备份', description: '自动云备份与历史版本' },
-    { id: 's3', label: 'S3 云同步', description: '对象存储自动备份' },
+    { id: 'cloud', label: '云同步', description: 'WebDAV 与 S3 自动备份' },
   ] as const;
   const activeTabMeta = tabs.find((tab) => tab.id === activeTab) || tabs[0];
 
@@ -1457,18 +1459,16 @@ export function SettingsPanel() {
             </div>
           )}
 
-          {activeTab === 'webdav' && (
+          {activeTab === 'cloud' && (
             <div className="settings-section">
+              <div className="settings-section-title">WebDAV</div>
               <WebDavSettings
                 value={localSettings.webdav}
                 onChange={(webdav) => setLocalSettings({ ...localSettings, webdav })}
                 onBrowseHistory={() => setWebdavHistoryOpen(true)}
               />
-            </div>
-          )}
-
-          {activeTab === 's3' && (
-            <div className="settings-section">
+              <div className="settings-section-divider" />
+              <div className="settings-section-title">S3 对象存储</div>
               <S3Settings
                 value={localSettings.s3}
                 onChange={(s3) => setLocalSettings({ ...localSettings, s3 })}

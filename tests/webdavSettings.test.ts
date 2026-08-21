@@ -20,8 +20,9 @@ test('defines backward-compatible WebDAV settings in Rust and TypeScript', () =>
 test('Settings exposes WebDAV configuration and global history', () => {
   const panel = read('src/components/Settings/SettingsPanel.tsx');
   const webdav = read('src/components/WebDav/WebDavSettings.tsx');
-  assert.match(panel, /id:\s*['"]webdav['"]/);
-  assert.match(panel, /activeTab === ['"]webdav['"]/);
+  // WebDAV 与 S3 合并进「云同步」tab
+  assert.match(panel, /id:\s*['"]cloud['"]/);
+  assert.match(panel, /activeTab === ['"]cloud['"]/);
   for (const label of ['服务器地址', '用户名', '密码 / 应用密码', '远端根目录', '测试连接', '浏览全部备份']) {
     assert.match(webdav, new RegExp(label));
   }
@@ -33,8 +34,8 @@ test('Settings exposes S3 sync configuration', () => {
   const frontend = read('src/stores/appStore.ts');
   const s3 = read('src/components/WebDav/S3Settings.tsx');
 
-  assert.match(panel, /id:\s*['"]s3['"]/);
-  assert.match(panel, /activeTab === ['"]s3['"]/);
+  assert.match(panel, /id:\s*['"]cloud['"]/);
+  assert.match(panel, /activeTab === ['"]cloud['"]/);
 
   for (const label of ['服务端点（Endpoint）', '存储桶（Bucket）', '地域（Region）', '访问密钥 ID（Access Key）', '访问密钥（Secret Key）', '路径风格（Path-Style）', '远端根目录（对象前缀）', '测试连接', '浏览全部备份']) {
     assert.match(s3, new RegExp(label));
