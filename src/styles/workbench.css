@@ -2530,10 +2530,12 @@ body {
   display: flex;
   align-items: center;
   gap: 14px;
+  min-width: 0;
 }
+.cloud-panel-title > div { min-width: 0; }
 .cloud-panel-title svg { flex: none; color: var(--ui-accent); }
-.cloud-panel-title h3 { margin: 0; font-size: 16px; font-weight: 700; }
-.cloud-panel-subtitle { margin: 3px 0 0; color: var(--text-muted); font-size: 12px; }
+.cloud-panel-title h3 { margin: 0; font-size: 16px; font-weight: 700; white-space: nowrap; }
+.cloud-panel-subtitle { margin: 3px 0 0; color: var(--text-muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cloud-panel-close {
   flex: none;
   display: inline-flex;
@@ -2562,6 +2564,8 @@ body {
 
 /* Provider Card */
 .cloud-card {
+  flex: none;
+  width: 100%;
   border: 1px solid var(--border-color);
   border-radius: 10px;
   overflow: hidden;
@@ -2583,8 +2587,13 @@ body {
   align-items: center;
   gap: 10px;
   min-width: 0;
+  flex: 1;
 }
-.cloud-card-info strong { display: block; font-size: 13px; }
+.cloud-card-info > div {
+  min-width: 0;
+  flex: 1;
+}
+.cloud-card-info strong { display: block; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cloud-card-info small { display: block; overflow: hidden; color: var(--text-muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 
 .cloud-card-dot {
@@ -2640,9 +2649,13 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
   padding: 4px 10px;
   border-radius: 999px;
   font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   background: var(--surface-muted);
   color: var(--text-secondary);
 }
@@ -2651,6 +2664,7 @@ body {
 .cloud-status-badge.error { background: color-mix(in srgb, var(--ui-error) 10%, transparent); color: var(--ui-error); }
 .cloud-status-badge.queued { background: color-mix(in srgb, var(--ui-warning) 10%, transparent); color: var(--ui-warning); }
 .cloud-card-retry {
+  flex: none;
   padding: 4px 10px;
   border: 1px solid color-mix(in srgb, var(--ui-error) 30%, transparent);
   border-radius: 6px;
@@ -2659,6 +2673,7 @@ body {
   font-size: 11px;
   font-weight: 600;
   cursor: pointer;
+  white-space: nowrap;
   transition: background var(--transition);
 }
 .cloud-card-retry:hover { background: color-mix(in srgb, var(--ui-error) 8%, transparent); }
@@ -2666,21 +2681,22 @@ body {
 /* Action Buttons */
 .cloud-card-actions {
   display: flex;
-  gap: 1px;
   border-top: 1px solid var(--border-color);
 }
 .cloud-card-action {
   flex: 1;
+  min-width: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
-  padding: 11px 12px;
+  padding: 11px 10px;
   border: 0;
   background: transparent;
   color: var(--text-secondary);
   font-size: 12px;
   cursor: pointer;
+  white-space: nowrap;
   transition: background var(--transition), color var(--transition);
 }
 .cloud-card-action:hover:not(:disabled) { background: var(--bg-hover); color: var(--text-color); }
