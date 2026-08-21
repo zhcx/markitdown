@@ -5,6 +5,8 @@ import type { EditorController } from '../types/editor';
 import { formatTextStatistics } from '../utils/textStatistics';
 import { DEFAULT_FONT_SIZE, DEFAULT_LINE_HEIGHT } from '../utils/appearanceSettings';
 import { applySavedTab } from '../utils/tabPersistence';
+import { readStoredStringArray } from '../utils/storage';
+import { useWebDavStore } from './webdavStore';
 import { detectSystemLanguage, normalizeLanguage, type AppLanguage } from '../i18n';
 import type { AgentSettings } from '../types/agent';
 import type { ConverterDialogAction } from '../components/ConverterDialog/ConverterDialog';
@@ -759,6 +761,19 @@ export const useAppStore = create<AppState>((set, get) => ({
         tabs: applySavedTab(state.tabs, tabId, path, tab.content),
         currentFile: state.activeTabId === tabId ? path : state.currentFile,
       }));
+
+      // Cloud backup is a background side effect of a successful local save.
+      // It must never await remote completion or mark the document dirty again.
+      const webdav = get().settings.webdav;
+      if (webdav.enabled && isTauriRuntime()) {
+        const workspaceRoots = readStoredStringArray('zeditor.workspace-roots');
+        void invoke('webdav_enqueue_backup', {
+          request: { local_path: path, workspace_roots: workspaceRoots },
+          settings: webdav,
+        }).catch(error => {
+          useWebDavStore.getState().setEnqueueError(path, String(error));
+        });
+      }
     } finally {
       set({ isSaving: false });
     }
