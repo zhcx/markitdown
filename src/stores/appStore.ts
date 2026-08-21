@@ -184,7 +184,7 @@ export interface TimelineEntry {
 
 export type UploadStatus = 'idle' | 'uploading' | 'success' | 'error';
 export type ConversionStatus = 'idle' | 'converting' | 'success' | 'error';
-export type SettingsTab = 'appearance' | 'editor' | 'image' | 'export' | 'ai' | 'web_search' | 'explorer' | 'converter';
+export type SettingsTab = 'appearance' | 'editor' | 'image' | 'export' | 'ai' | 'web_search' | 'explorer' | 'converter' | 'webdav';
 
 export interface ConverterModuleStatus {
   state: 'missing' | 'installing' | 'ready' | 'update_available' | 'incompatible' | 'corrupt' | 'error';

@@ -13,6 +13,8 @@ import {
 import { LANGUAGE_OPTIONS, normalizeLanguage } from '../../i18n';
 import type { AgentBackendId, AgentBackendStatus } from '../../types/agent';
 import { parseAIProviderProfiles } from '../../utils/aiProviderProfiles';
+import { WebDavSettings } from '../WebDav/WebDavSettings';
+import { WebDavHistoryDialog } from '../WebDav/WebDavHistoryDialog';
 
 const isTauriRuntime = () => '__TAURI_INTERNALS__' in window;
 const formatModuleSize = (bytes: number) => bytes > 0 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : '—';
@@ -129,6 +131,7 @@ export function SettingsPanel() {
   const [converterStatus, setConverterStatus] = useState<ConverterModuleStatus | null>(null);
   const [converterBusy, setConverterBusy] = useState(false);
   const [converterNotice, setConverterNotice] = useState('');
+  const [webdavHistoryOpen, setWebdavHistoryOpen] = useState(false);
   const fontSizeGeometry = getRangeMarkerGeometry(
     localSettings.appearance.font_size,
     FONT_SIZE_MIN,
@@ -253,6 +256,7 @@ export function SettingsPanel() {
     { id: 'ai', label: 'AI 助手', description: '模型、提示与伴写设置' },
     { id: 'explorer', label: '资源管理器', description: '文件浏览与工作区管理' },
     { id: 'web_search', label: '网络搜索', description: '搜索服务与结果偏好' },
+    { id: 'webdav', label: 'WebDAV 备份', description: '自动云备份与历史版本' },
   ] as const;
   const activeTabMeta = tabs.find((tab) => tab.id === activeTab) || tabs[0];
 
@@ -1449,6 +1453,16 @@ export function SettingsPanel() {
               )}
             </div>
           )}
+
+          {activeTab === 'webdav' && (
+            <div className="settings-section">
+              <WebDavSettings
+                value={localSettings.webdav}
+                onChange={(webdav) => setLocalSettings({ ...localSettings, webdav })}
+                onBrowseHistory={() => setWebdavHistoryOpen(true)}
+              />
+            </div>
+          )}
         </div>
 
         <div className="settings-footer">
@@ -1459,6 +1473,12 @@ export function SettingsPanel() {
             保存
           </button>
         </div>
+        <WebDavHistoryDialog
+          open={webdavHistoryOpen}
+          mode="global"
+          settings={localSettings.webdav}
+          onClose={() => setWebdavHistoryOpen(false)}
+        />
         </section>
       </div>
     </div>

@@ -16,3 +16,14 @@ test('defines backward-compatible WebDAV settings in Rust and TypeScript', () =>
   assert.match(model, /pub struct WebDavSettings\s*\{\s*#\[serde\(default\)\]\s*pub enabled:\s*bool,\s*#\[serde\(default\)\]\s*pub server_url:\s*String,\s*#\[serde\(default\)\]\s*pub username:\s*String,\s*#\[serde\(default\)\]\s*pub password:\s*String,\s*#\[serde\(default = "default_webdav_remote_root"\)\]\s*pub remote_root:\s*String,\s*\}/);
   assert.match(rust, /#\[serde\(default\)\]\s*pub webdav:\s*WebDavSettings,/);
 });
+
+test('Settings exposes WebDAV configuration and global history', () => {
+  const panel = read('src/components/Settings/SettingsPanel.tsx');
+  const webdav = read('src/components/WebDav/WebDavSettings.tsx');
+  assert.match(panel, /id:\s*['"]webdav['"]/);
+  assert.match(panel, /activeTab === ['"]webdav['"]/);
+  for (const label of ['服务器地址', '用户名', '密码 / 应用密码', '远端根目录', '测试连接', '浏览全部备份']) {
+    assert.match(webdav, new RegExp(label));
+  }
+  assert.match(webdav, /webdav_test_connection/);
+});
