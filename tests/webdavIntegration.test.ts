@@ -97,9 +97,11 @@ test('status bar exposes all WebDAV phases and current history', () => {
   for (const label of ['未启用', '等待同步', '正在同步', '已同步', '同步失败']) {
     assert.match(sources, new RegExp(label));
   }
-  assert.match(status, /loadVersions/);
+  // 面板通过 viewAllBackups 打开全局历史弹窗，不直接调用 loadVersions
+  assert.match(status, /viewAllBackups/);
   assert.match(status, /WebDavHistoryDialog/);
   assert.match(status, /retry/);
+  assert.match(status, /panelOpen/);
 });
 
 import { readFileSync } from 'node:fs';

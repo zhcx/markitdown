@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { S3Settings, WebDavSettings } from '../../types/webdav';
 import { useWebDavStore } from '../../stores/webdavStore';
 import { useS3Store } from '../../stores/s3Store';
@@ -8,80 +8,51 @@ import { WebDavHistoryDialog } from './WebDavHistoryDialog';
 interface CloudStatusItemProps {
   settings: WebDavSettings;
   s3Settings: S3Settings;
-  currentFile: string | null;
-  /** 打开「设置 → 云同步」页（未启用时点击触发，与「开启 AI」一致）。 */
+  /** 打开「设置 → 云同步」页（未启用时点击触发）。 */
   onOpenSettings: () => void;
   /** 直接启用 / 停用某个后端（写入设置并持久化）。 */
   onToggleProvider: (provider: 'webdav' | 's3', enabled: boolean) => void;
 }
 
-/** 云同步图标：与状态栏其他状态图标（SVG fill currentColor）风格一致。 */
-function CloudGlyph() {
+function CloudGlyph({ size = 13 }: { size?: number }) {
   return (
-    <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
+    <svg viewBox="0 0 16 16" width={size} height={size} aria-hidden="true">
       <path d="M4.8 12.5h6.6a2.4 2.4 0 0 0 .5-4.75 4.1 4.1 0 0 0-8.1.7A2.6 2.6 0 0 0 4.8 12.5Z" />
     </svg>
   );
 }
 
-function statusDot(phase: string): string {
-  return phase === 'success'
-    ? '✓'
-    : phase === 'error'
-      ? '✕'
-      : phase === 'syncing'
-        ? '↻'
-        : phase === 'queued'
-          ? '⋯'
-          : '·';
-}
-
 /**
- * Aggregated status-bar item for cloud backup (WebDAV + S3).
+ * 聚合云同步状态栏项 + 完整云同步面板弹窗。
  *
- * Enabled when either provider is on. Clicking opens a menu (like the AI
- * trigger) listing each provider's live status with inline toggle and a
- * history entry point.
+ * 点击状态栏按钮打开居中弹窗（不是下拉菜单），弹窗内含两个后端
+ * 状态卡片 + 开关 + 查看全部备份 + 设置入口。
  */
 export function WebDavStatusItem({
   settings,
   s3Settings,
-  currentFile,
   onOpenSettings,
   onToggleProvider,
 }: CloudStatusItemProps) {
-  // Both hooks must run unconditionally; pick the matching store by provider.
   const webdavState = useWebDavStore();
   const s3State = useS3Store();
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [popoverOpen, setPopoverOpen] = useState(false);
-  const controlRef = useRef<HTMLDivElement>(null);
-
-  // 点击菜单外部或按 Esc 时关闭，与 AI 菜单行为一致。
-  useEffect(() => {
-    if (!menuOpen && !popoverOpen) return;
-    const handlePointerDown = (event: PointerEvent) => {
-      const target = event.target as Node;
-      if (menuOpen && !controlRef.current?.contains(target)) setMenuOpen(false);
-      if (popoverOpen && !controlRef.current?.contains(target)) setPopoverOpen(false);
-    };
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setMenuOpen(false);
-        setPopoverOpen(false);
-      }
-    };
-    document.addEventListener('pointerdown', handlePointerDown);
-    document.addEventListener('keydown', handleKeyDown);
-    return () => {
-      document.removeEventListener('pointerdown', handlePointerDown);
-      document.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [menuOpen, popoverOpen]);
+  const [panelOpen, setPanelOpen] = useState(false);
+  // 哪个后端打开了「查看全部备份」弹窗
+  const [globalHistoryProvider, setGlobalHistoryProvider] = useState<'webdav' | 's3' | null>(null);
 
   const enabled = settings.enabled || s3Settings.enabled;
   const anyError = webdavState.phase === 'error' || s3State.phase === 'error';
   const anySyncing = webdavState.phase === 'syncing' || s3State.phase === 'syncing';
+
+  // Esc 关闭面板
+  useEffect(() => {
+    if (!panelOpen) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setPanelOpen(false);
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [panelOpen]);
 
   if (!enabled) {
     return (
@@ -97,171 +68,159 @@ export function WebDavStatusItem({
     );
   }
 
-  const openHistory = (provider: 'webdav' | 's3') => {
-    const store = provider === 's3' ? s3State : webdavState;
-    const providerSettings: WebDavSettings | S3Settings =
-      provider === 's3' ? s3Settings : settings;
-    const loadVersions = store.loadVersions as (
-      id: string,
-      s: WebDavSettings | S3Settings,
-    ) => Promise<void>;
-    if (store.documentId) void loadVersions(store.documentId, providerSettings);
-    store.setHistoryOpen(true);
-    setMenuOpen(false);
+  const viewAllBackups = (provider: 'webdav' | 's3') => {
+    setGlobalHistoryProvider(provider);
+    setPanelOpen(false);
   };
 
-  const toggleProvider = (provider: 'webdav' | 's3', providerEnabled: boolean) => {
-    onToggleProvider(provider, !providerEnabled);
-    setMenuOpen(false);
-  };
-
-  // 菜单副标题：汇总当前同步状态（WebDAV 与 S3 自动备份）。
-  const cloudSubtitle = (): string => {
+  const summaryText = (): string => {
     const bothOff = !settings.enabled && !s3Settings.enabled;
-    if (bothOff) return 'WebDAV 与 S3 自动备份 · 未启用';
+    if (bothOff) return '未启用';
     const hasError = webdavState.phase === 'error' || s3State.phase === 'error';
     const allSynced =
       (!settings.enabled || webdavState.phase === 'success') &&
       (!s3Settings.enabled || s3State.phase === 'success');
-    if (hasError) return '存在同步异常，点击对应项重试';
-    if (allSynced) return '全部已同步 · 保留最近 20 个版本';
-    return '正在同步…';
-  };
-
-  const providerRow = (provider: 'webdav' | 's3') => {
-    const store = provider === 's3' ? s3State : webdavState;
-    const providerSettings = provider === 's3' ? s3Settings : settings;
-    const label = provider === 's3' ? 'S3' : 'WebDAV';
-    const enabledNow = providerSettings.enabled;
-    const statusText = enabledNow
-      ? webDavStatusLabel(store.phase, '')
-      : '未启用';
-    const statusDetail = enabledNow
-      ? store.phase === 'success' && store.lastSuccessAt
-        ? `${statusText} · ${formatClock(store.lastSuccessAt)}`
-        : store.phase === 'error'
-          ? `${statusText} · 点击重试`
-          : statusText
-      : '点击开启';
-    const dot = enabledNow ? statusDot(store.phase) : statusDot('idle');
-
-    return (
-      <div
-        className={`status-cloud-row ${enabledNow && store.phase === 'error' ? 'error' : ''}`}
-        role="menuitem"
-      >
-        <button
-          type="button"
-          className="status-cloud-row-main"
-          title={enabledNow ? `查看 ${label} 备份与历史版本` : `开启 ${label} 同步`}
-          onClick={() => {
-            if (enabledNow) {
-              openHistory(provider);
-            } else {
-              toggleProvider(provider, false);
-            }
-          }}
-        >
-          <span className={`status-cloud-icon ${enabledNow ? store.phase : 'idle'}`}>{dot}</span>
-          <span className="status-cloud-copy">
-            <strong>{label}</strong>
-            <small>{statusDetail}</small>
-          </span>
-        </button>
-        <div className="status-cloud-row-actions">
-          <button
-            type="button"
-            className={`status-cloud-switch${enabledNow ? ' is-on' : ''}`}
-            role="switch"
-            aria-checked={enabledNow}
-            aria-label={`${label} 同步`}
-            title={enabledNow ? `关闭 ${label} 同步` : `开启 ${label} 同步`}
-            onClick={() => toggleProvider(provider, enabledNow)}
-          >
-            <span className="status-cloud-switch-thumb" />
-          </button>
-        </div>
-      </div>
-    );
+    if (hasError) return '存在同步异常';
+    if (anySyncing) return '正在同步…';
+    if (allSynced) return '已同步';
+    return '就绪';
   };
 
   return (
     <>
-      <div className="status-cloud-control" ref={controlRef}>
-        <button
-          type="button"
-          className={`status-item status-button status-webdav is-enabled ${anyError ? 'error' : ''} ${anySyncing ? 'syncing' : ''} ${menuOpen ? 'active' : ''}`}
-          aria-haspopup="menu"
-          aria-expanded={menuOpen}
-          title={anyError ? '云同步异常，点击查看' : '打开云同步菜单'}
-          onClick={() => setMenuOpen(open => !open)}
-        >
-          {anySyncing ? (
-            <span className="webdav-spinner" aria-hidden="true" />
-          ) : (
-            <CloudGlyph />
-          )}
-          <span>云同步</span>
-          <span className="status-ai-chevron" aria-hidden="true">⌃</span>
-        </button>
+      {/* ─── 状态栏触发按钮 ─── */}
+      <button
+        type="button"
+        className={`status-item status-button status-webdav is-enabled ${anyError ? 'error' : ''} ${anySyncing ? 'syncing' : ''}`}
+        title="打开云同步面板"
+        onClick={() => setPanelOpen(true)}
+      >
+        {anySyncing ? <span className="webdav-spinner" aria-hidden="true" /> : <CloudGlyph />}
+        <span>云同步 · {summaryText()}</span>
+      </button>
 
-        {menuOpen && (
-          <div className="status-cloud-menu" role="menu" aria-label="云同步">
-            <div className="status-cloud-menu-header">
-              <div>
-                <strong>云同步</strong>
-                <small>{cloudSubtitle()}</small>
+      {/* ─── 云同步面板弹窗 ─── */}
+      {panelOpen && (
+        <div className="cloud-panel-overlay" onClick={() => setPanelOpen(false)}>
+          <div className="cloud-panel" onClick={e => e.stopPropagation()}>
+            {/* Header */}
+            <div className="cloud-panel-header">
+              <div className="cloud-panel-title">
+                <CloudGlyph size={18} />
+                <div>
+                  <h3>云同步</h3>
+                  <p className="cloud-panel-subtitle">{summaryText()} · 保留最近 20 个版本</p>
+                </div>
               </div>
-              <button type="button" className="status-cloud-close" onClick={() => setMenuOpen(false)}>✕</button>
+              <button type="button" className="cloud-panel-close" onClick={() => setPanelOpen(false)} aria-label="关闭">
+                <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"><path d="m4 4 8 8m0-8-8 8" /></svg>
+              </button>
             </div>
-            <div className="status-cloud-providers">
-              {providerRow('webdav')}
-              {providerRow('s3')}
-            </div>
-            <button type="button" className="status-cloud-settings" onClick={onOpenSettings}>打开云同步设置</button>
-          </div>
-        )}
-      </div>
 
-      {popoverOpen && (webdavState.phase === 'error' || s3State.phase === 'error') && (
-        <div className="webdav-history-popover">
-          <p className="webdav-popover-error">
-            {webdavState.phase === 'error' ? `WebDAV：${webdavState.error}` : ''}
-            {s3State.phase === 'error' ? `S3：${s3State.error}` : ''}
-          </p>
-          <button
-            type="button"
-            className="button"
-            onClick={() => {
-              if (webdavState.phase === 'error') void webdavState.retry(settings);
-              if (s3State.phase === 'error') void s3State.retry(s3Settings);
-              setPopoverOpen(false);
-            }}
-          >
-            重试
-          </button>
+            {/* Provider Cards */}
+            <div className="cloud-panel-cards">
+              {(['webdav', 's3'] as const).map(provider => {
+                const store = provider === 's3' ? s3State : webdavState;
+                const providerSettings = provider === 's3' ? s3Settings : settings;
+                const label = provider === 's3' ? 'S3 对象存储' : 'WebDAV 服务器';
+                const providerEnabled = providerSettings.enabled;
+                const phase = providerEnabled ? store.phase : 'idle';
+                const phaseLabel = providerEnabled ? webDavStatusLabel(store.phase, '') : '未启用';
+                const serverInfo = provider === 's3'
+                  ? (providerSettings as S3Settings).endpoint || '未配置端点'
+                  : (providerSettings as WebDavSettings).server_url || '未配置地址';
+
+                return (
+                  <div
+                    key={provider}
+                    className={`cloud-card ${providerEnabled ? `cloud-card-${phase}` : 'cloud-card-off'}`}
+                  >
+                    <div className="cloud-card-header">
+                      <div className="cloud-card-info">
+                        <span className={`cloud-card-dot ${phase}`} />
+                        <div>
+                          <strong>{label}</strong>
+                          <small>{serverInfo}</small>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        className={`cloud-switch${providerEnabled ? ' is-on' : ''}`}
+                        role="switch"
+                        aria-checked={providerEnabled}
+                        aria-label={`${label} 同步`}
+                        title={providerEnabled ? `关闭 ${label}` : `开启 ${label}`}
+                        onClick={() => onToggleProvider(provider, !providerEnabled)}
+                      >
+                        <span className="cloud-switch-thumb" />
+                      </button>
+                    </div>
+
+                    {providerEnabled && (
+                      <div className="cloud-card-status">
+                        <span className={`cloud-status-badge ${phase}`}>
+                          {phase === 'success' && store.lastSuccessAt
+                            ? `✓ 已同步 · ${formatClock(store.lastSuccessAt)}`
+                            : phase === 'error'
+                              ? `✕ ${store.error?.slice(0, 60) || '同步失败'}`
+                              : phase === 'syncing'
+                                ? '↻ 正在同步…'
+                                : phase === 'queued'
+                                  ? '⋯ 等待同步'
+                                  : phaseLabel
+                          }
+                        </span>
+                        {phase === 'error' && (
+                          <button
+                            type="button"
+                            className="cloud-card-retry"
+                            onClick={() => {
+                              const retry = store.retry as (s: WebDavSettings | S3Settings) => Promise<void>;
+                              void retry(providerSettings);
+                            }}
+                          >
+                            重试
+                          </button>
+                        )}
+                      </div>
+                    )}
+
+                    <div className="cloud-card-actions">
+                      <button
+                        type="button"
+                        className="cloud-card-action"
+                        disabled={!providerEnabled}
+                        onClick={() => viewAllBackups(provider)}
+                      >
+                        <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h7" /></svg>
+                        查看全部备份
+                      </button>
+                      <button
+                        type="button"
+                        className="cloud-card-action"
+                        onClick={onOpenSettings}
+                      >
+                        <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><circle cx="8" cy="8" r="2.5" /><path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.5 3.5l1.4 1.4M11.1 11.1l1.4 1.4M12.5 3.5l-1.4 1.4M4.9 11.1l-1.4 1.4" /></svg>
+                        设置
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         </div>
       )}
 
-      {currentFile && (
-        <>
-          <WebDavHistoryDialog
-            open={webdavState.historyOpen && webdavState.documentId !== ''}
-            mode="current"
-            provider="webdav"
-            settings={settings}
-            currentDocumentId={webdavState.documentId || undefined}
-            onClose={() => webdavState.setHistoryOpen(false)}
-          />
-          <WebDavHistoryDialog
-            open={s3State.historyOpen && s3State.documentId !== ''}
-            mode="current"
-            provider="s3"
-            settings={s3Settings}
-            currentDocumentId={s3State.documentId || undefined}
-            onClose={() => s3State.setHistoryOpen(false)}
-          />
-        </>
+      {/* ─── 全局历史弹窗 ─── */}
+      {globalHistoryProvider && (
+        <WebDavHistoryDialog
+          open
+          mode="global"
+          provider={globalHistoryProvider}
+          settings={globalHistoryProvider === 's3' ? s3Settings : settings}
+          onClose={() => setGlobalHistoryProvider(null)}
+        />
       )}
     </>
   );
@@ -271,7 +230,7 @@ function formatClock(timestamp: string): string {
   if (!timestamp) return '';
   const date = new Date(timestamp);
   if (Number.isNaN(date.getTime())) return '';
-  const hours = String(date.getHours()).padStart(2, '0');
-  const minutes = String(date.getMinutes()).padStart(2, '0');
-  return `${hours}:${minutes}`;
+  const h = String(date.getHours()).padStart(2, '0');
+  const m = String(date.getMinutes()).padStart(2, '0');
+  return `${h}:${m}`;
 }

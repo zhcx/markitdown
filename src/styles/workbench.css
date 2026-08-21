@@ -2484,104 +2484,127 @@ body {
 
 /* ===== Cloud sync (WebDAV + S3) status menu ===== */
 
-.status-cloud-control { position: relative; display: inline-flex; align-items: center; }
-.status-webdav.is-enabled.active { background: var(--ui-bg-active); }
+/* ── 云同步状态栏按钮 ─────────────────────────────────────────── */
 
-.status-cloud-menu {
-  position: absolute;
-  left: 0;
-  bottom: calc(100% + 6px);
-  z-index: 10050;
-  width: min(320px, calc(100vw - 16px));
-  padding: 8px;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius);
-  background: var(--surface-raised);
+.status-webdav.is-enabled { cursor: pointer; }
+.status-webdav.is-enabled.error { color: var(--ui-error); }
+
+/* ── 云同步面板弹窗 ───────────────────────────────────────────── */
+
+.cloud-panel-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--overlay-bg);
   backdrop-filter: blur(12px);
-  box-shadow: var(--shadow-lg);
-  color: var(--text-color);
   animation: fadeIn 0.15s ease-out;
 }
-.status-cloud-menu-header {
+
+.cloud-panel {
+  width: min(420px, calc(100vw - 32px));
+  max-height: min(480px, calc(100vh - 64px));
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border-strong);
+  border-radius: 14px;
+  background: var(--surface-raised);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, .28), var(--shadow-lg);
+  color: var(--text-color);
+  animation: fadeIn 0.15s ease-out;
+  overflow: hidden;
+}
+
+/* Header */
+.cloud-panel-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 4px 5px 9px;
+  padding: 20px 22px 16px;
   border-bottom: 1px solid var(--border-color);
 }
-.status-cloud-menu-header > div { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.status-cloud-menu-header strong { font-size: 13px; }
-.status-cloud-menu-header small { overflow: hidden; color: var(--text-muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
-.status-cloud-close {
-  border: none;
-  background: transparent;
-  color: var(--text-secondary);
-  font-size: 13px;
-  cursor: pointer;
-  padding: 2px 6px;
-  border-radius: var(--radius-sm);
-}
-.status-cloud-close:hover { background: var(--bg-hover); color: var(--text-color); }
-
-.status-cloud-providers { display: flex; flex-direction: column; padding: 7px 0; gap: 4px; }
-.status-cloud-row {
+.cloud-panel-title {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px;
-  border-radius: var(--radius-sm);
+  gap: 14px;
 }
-.status-cloud-row:hover { background: var(--bg-hover); }
-
-/* 主按钮：仿 AI 操作项，图标块 + 主/副文字，整行可点 */
-.status-cloud-row-main {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  padding: 5px 6px;
-  border: 0;
-  border-radius: 5px;
-  background: transparent;
-  color: var(--text-color);
-  text-align: left;
-  font: inherit;
-  cursor: pointer;
-}
-.status-cloud-row-main:hover { background: var(--bg-hover); }
-
-.status-cloud-icon {
+.cloud-panel-title svg { flex: none; color: var(--ui-accent); }
+.cloud-panel-title h3 { margin: 0; font-size: 16px; font-weight: 700; }
+.cloud-panel-subtitle { margin: 3px 0 0; color: var(--text-muted); font-size: 12px; }
+.cloud-panel-close {
   flex: none;
-  width: 25px;
-  height: 25px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--border-color);
-  border-radius: 5px;
-  color: var(--text-muted);
-  font-size: 12px;
-  font-weight: 700;
-  background: var(--bg-secondary);
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition);
 }
-.status-cloud-icon.success { border-color: color-mix(in srgb, var(--ui-success) 45%, transparent); color: var(--ui-success); }
-.status-cloud-icon.error { border-color: color-mix(in srgb, var(--ui-error) 45%, transparent); color: var(--ui-error); }
-.status-cloud-icon.syncing { border-color: color-mix(in srgb, var(--ui-accent) 45%, transparent); color: var(--ui-accent); }
-.status-cloud-icon.queued { border-color: color-mix(in srgb, var(--ui-warning) 45%, transparent); color: var(--ui-warning); }
+.cloud-panel-close:hover { background: var(--bg-hover); color: var(--text-color); }
 
-.status-cloud-copy { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.status-cloud-copy strong { overflow: hidden; color: var(--text-color); font-size: 12px; line-height: 1.2; text-overflow: ellipsis; white-space: nowrap; }
-.status-cloud-copy small { overflow: hidden; color: var(--text-muted); font-size: 10px; line-height: 1.2; text-overflow: ellipsis; white-space: nowrap; }
-.status-cloud-row.error .status-cloud-copy small { color: var(--ui-error); }
+/* Cards Container */
+.cloud-panel-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 22px 20px;
+  overflow-y: auto;
+  flex: 1;
+}
 
-/* 行内开 / 关：胶囊开关（仿设置页 settings-switch 语义） */
-.status-cloud-row-actions { flex: none; display: inline-flex; align-items: center; padding-right: 4px; }
-.status-cloud-switch {
+/* Provider Card */
+.cloud-card {
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  overflow: hidden;
+  transition: border-color var(--transition);
+}
+.cloud-card-error { border-color: color-mix(in srgb, var(--ui-error) 30%, transparent); }
+.cloud-card-off { opacity: 0.65; }
+
+.cloud-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  background: var(--surface-subtle);
+}
+.cloud-card-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.cloud-card-info strong { display: block; font-size: 13px; }
+.cloud-card-info small { display: block; overflow: hidden; color: var(--text-muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+
+.cloud-card-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+.cloud-card-dot.success { background: var(--ui-success); }
+.cloud-card-dot.syncing { background: var(--ui-accent); animation: webdav-rotate .8s linear infinite; }
+.cloud-card-dot.error { background: var(--ui-error); }
+.cloud-card-dot.queued { background: var(--ui-warning); }
+
+/* 开关（仿 settings-switch） */
+.cloud-switch {
   position: relative;
-  width: 38px;
-  height: 21px;
+  flex: none;
+  width: 40px;
+  height: 22px;
   padding: 0;
   border: 1px solid var(--border-strong);
   border-radius: 999px;
@@ -2589,20 +2612,81 @@ body {
   cursor: pointer;
   transition: background 160ms ease, border-color 160ms ease;
 }
-.status-cloud-switch:hover { border-color: var(--text-muted); }
-.status-cloud-switch-thumb {
+.cloud-switch:hover { border-color: var(--text-muted); }
+.cloud-switch-thumb {
   position: absolute;
   top: 2px;
   left: 2px;
-  width: 15px;
-  height: 15px;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
   background: var(--text-muted);
-  box-shadow: 0 1px 3px rgb(0 0 0 / 30%);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .25);
   transition: transform 160ms ease, background 160ms ease;
 }
-.status-cloud-switch.is-on { border-color: var(--accent-color); background: var(--accent-color); }
-.status-cloud-switch.is-on .status-cloud-switch-thumb { transform: translateX(17px); background: #fff; }
+.cloud-switch.is-on { border-color: var(--accent-color); background: var(--accent-color); }
+.cloud-switch.is-on .cloud-switch-thumb { transform: translateX(18px); background: #fff; }
+
+/* Status Badge + Retry */
+.cloud-card-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0 16px 12px;
+  background: var(--surface-subtle);
+}
+.cloud-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  background: var(--surface-muted);
+  color: var(--text-secondary);
+}
+.cloud-status-badge.success { background: color-mix(in srgb, var(--ui-success) 10%, transparent); color: var(--ui-success); }
+.cloud-status-badge.syncing { background: color-mix(in srgb, var(--ui-accent) 10%, transparent); color: var(--ui-accent); }
+.cloud-status-badge.error { background: color-mix(in srgb, var(--ui-error) 10%, transparent); color: var(--ui-error); }
+.cloud-status-badge.queued { background: color-mix(in srgb, var(--ui-warning) 10%, transparent); color: var(--ui-warning); }
+.cloud-card-retry {
+  padding: 4px 10px;
+  border: 1px solid color-mix(in srgb, var(--ui-error) 30%, transparent);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ui-error);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--transition);
+}
+.cloud-card-retry:hover { background: color-mix(in srgb, var(--ui-error) 8%, transparent); }
+
+/* Action Buttons */
+.cloud-card-actions {
+  display: flex;
+  gap: 1px;
+  border-top: 1px solid var(--border-color);
+}
+.cloud-card-action {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 11px 12px;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+}
+.cloud-card-action:hover:not(:disabled) { background: var(--bg-hover); color: var(--text-color); }
+.cloud-card-action:disabled { opacity: 0.4; cursor: not-allowed; }
+.cloud-card-action + .cloud-card-action { border-left: 1px solid var(--border-color); }
+.cloud-card-action svg { flex: none; }
 
 .status-cloud-settings {
   width: 100%;

@@ -289,7 +289,6 @@ export function StatusBar() {
         <WebDavStatusItem
           settings={settings.webdav}
           s3Settings={settings.s3}
-          currentFile={currentFile}
           onOpenSettings={openCloudSettings}
           onToggleProvider={(provider, enabled) => void updateCloudProvider(provider, enabled)}
         />
