@@ -275,6 +275,13 @@ export function StatusBar() {
             </div>
           )}
         </div>
+        <span className="status-divider" aria-hidden="true" />
+        <WebDavStatusItem
+          settings={settings.webdav}
+          s3Settings={settings.s3}
+          currentFile={currentFile}
+          onOpenSettings={openCloudSettings}
+        />
       </div>
       <div className="statusbar-center">
         {aiStatus !== 'idle' ? (
@@ -297,12 +304,6 @@ export function StatusBar() {
             {uploadStatus === 'error' && <span className="status-item upload-error"><StatusGlyph name="error" />上传失败: {uploadMessage}</span>}
           </div>
         ) : <span className="status-item">{currentFile ? currentFile.split(/[\\/]/).pop() : '未保存'}</span>}
-        <WebDavStatusItem
-          settings={settings.webdav}
-          s3Settings={settings.s3}
-          currentFile={currentFile}
-          onOpenSettings={openCloudSettings}
-        />
       </div>
       <div className="statusbar-right"><span className="status-item">{wordCount}</span><span className="status-divider" aria-hidden="true" /><span className="status-item">UTF-8</span></div>
     </div>

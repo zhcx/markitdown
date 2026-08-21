@@ -120,36 +120,38 @@ export function WebDavStatusItem({
 
   return (
     <>
-      <button
-        type="button"
-        className={`status-item status-button status-webdav is-enabled ${anyError ? 'error' : ''} ${anySyncing ? 'syncing' : ''} ${menuOpen ? 'active' : ''}`}
-        aria-haspopup="menu"
-        aria-expanded={menuOpen}
-        title={anyError ? '云同步异常，点击查看' : '打开云同步菜单'}
-        onClick={() => setMenuOpen(open => !open)}
-      >
-        {anySyncing ? (
-          <span className="webdav-spinner" aria-hidden="true" />
-        ) : (
-          <CloudGlyph />
-        )}
-        <span>云同步</span>
-        <span className="status-ai-chevron" aria-hidden="true">⌃</span>
-      </button>
+      <div className="status-cloud-control">
+        <button
+          type="button"
+          className={`status-item status-button status-webdav is-enabled ${anyError ? 'error' : ''} ${anySyncing ? 'syncing' : ''} ${menuOpen ? 'active' : ''}`}
+          aria-haspopup="menu"
+          aria-expanded={menuOpen}
+          title={anyError ? '云同步异常，点击查看' : '打开云同步菜单'}
+          onClick={() => setMenuOpen(open => !open)}
+        >
+          {anySyncing ? (
+            <span className="webdav-spinner" aria-hidden="true" />
+          ) : (
+            <CloudGlyph />
+          )}
+          <span>云同步</span>
+          <span className="status-ai-chevron" aria-hidden="true">⌃</span>
+        </button>
 
-      {menuOpen && (
-        <div className="status-cloud-menu" role="menu" aria-label="云同步">
-          <div className="status-cloud-menu-header">
-            <div><strong>云同步</strong><small>WebDAV 与 S3 自动备份</small></div>
-            <button type="button" className="status-cloud-close" onClick={() => setMenuOpen(false)}>✕</button>
+        {menuOpen && (
+          <div className="status-cloud-menu" role="menu" aria-label="云同步">
+            <div className="status-cloud-menu-header">
+              <div><strong>云同步</strong><small>WebDAV 与 S3 自动备份</small></div>
+              <button type="button" className="status-cloud-close" onClick={() => setMenuOpen(false)}>✕</button>
+            </div>
+            <div className="status-cloud-providers">
+              {providerRow('webdav')}
+              {providerRow('s3')}
+            </div>
+            <button type="button" className="status-cloud-settings" onClick={onOpenSettings}>打开云同步设置</button>
           </div>
-          <div className="status-cloud-providers">
-            {providerRow('webdav')}
-            {providerRow('s3')}
-          </div>
-          <button type="button" className="status-cloud-settings" onClick={onOpenSettings}>打开云同步设置</button>
-        </div>
-      )}
+        )}
+      </div>
 
       {popoverOpen && (webdavState.phase === 'error' || s3State.phase === 'error') && (
         <div className="webdav-history-popover">
