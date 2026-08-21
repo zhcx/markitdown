@@ -60,16 +60,24 @@ a5ba3a2 fix: stabilize WebDAV workspace identity
 - [x] 当前分支不保留未验证的生产代码
 - [x] MSI/NSIS 产物和 SHA-256（见下方打包结果）
 
+## S3 云同步扩展（追加交付）
+
+在 WebDAV 基础上新增 **S3 兼容对象存储同步**（`2a41c76` + `ecce8ca` + `aa4dc63` + `35a77a7`）：
+
+- **SigV4 签名**（`sigv4.rs`）：从图床 `image/s3.rs` 泛化的手写 AWS Signature V4，支持任意方法（GET/PUT/DELETE/HEAD）。
+- **S3Client**（`s3.rs`）：path-style 与虚拟主机风格、`remote_root` 对象前缀、探针连接测试、错误脱敏。
+- **`RemoteSyncClient` trait + `RemoteClient` 枚举**：WebDavClient 与 S3Client 共用同一同步事务；`WebDavSyncManager` 与 `S3SyncManager` 双实例并存（独立队列 `webdav-pending.json`/`s3-pending.json`）。
+- **6 个 s3_* Tauri 命令** + 前端 S3 设置页、s3Store、状态栏 S3 项（`provider` 字段区分事件）。
+- 验证：137 Rust 测试 + 128 Node 测试全绿，fmt/clippy/lint/build 通过。
+
 ## 打包结果
 
-`npm run tauri build` 成功（exit 0），产物时间戳为 2026-08-21 12:58（含 WebDAV UI 主题适配与设置页/状态栏重设计）：
+`npm run tauri build` 成功（exit 0），产物时间戳为 2026-08-21 15:34（含 S3 云同步、WebDAV NAS 兼容修复与 UI 主题适配）：
 
 | 产物 | 大小 | SHA-256 |
 | --- | --- | --- |
-| `src-tauri/target/release/bundle/msi/Zeditor_0.3.8_x64_en-US.msi` | 8,380,416 bytes | `DAC8555E4DB585D465BE3AAF887B7966F67B5B1398413AE445E1AB1F6A87A136` |
-| `src-tauri/target/release/bundle/nsis/Zeditor_0.3.8_x64-setup.exe` | 6,904,710 bytes | `4E3219554DD3041E0A8129521384E712D7BC180613E4876B0A93BC676D558221` |
-
-注：前一次打包（12:12）NSIS 因 `zeditor.exe` 进程占用 release 二进制失败；关闭进程后于 12:58 重新打包成功，以上为最终产物。
+| `src-tauri/target/release/bundle/msi/Zeditor_0.3.8_x64_en-US.msi` | 8,413,184 bytes | `DF7E47DB2A13F03635215B6BD9EA2FD56239720B1F9B32C320173D077584EC6F` |
+| `src-tauri/target/release/bundle/nsis/Zeditor_0.3.8_x64-setup.exe` | 6,927,227 bytes | `3FED3986BFE4EF3D5C4764749C76221446C26AFDB48BE81E346459DE9C0C8D63` |
 
 ## 临时事项
 
