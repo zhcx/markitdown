@@ -5,21 +5,23 @@ mod client;
 mod manifest;
 mod model;
 mod path;
+mod queue;
 
 pub use client::WebDavClient;
 pub use manifest::{
     parse_index, parse_manifest, validate_index_namespace, validate_manifest_namespace,
 };
 pub use model::{
-    BackupIndex, BackupIndexEntry, DocumentManifest, RemoteDocumentPath, WebDavBackupRequest,
-    WebDavConnectionResult, WebDavDocumentRef, WebDavDocumentSummary, WebDavDownloadedVersion,
-    WebDavQueuedResult, WebDavRetryResult, WebDavSettings, WebDavSyncEvent, WebDavVersion,
-    HISTORY_LIMIT,
+    BackupIndex, BackupIndexEntry, DocumentManifest, PendingBackupTask, RemoteDocumentPath,
+    WebDavBackupRequest, WebDavConnectionResult, WebDavDocumentRef, WebDavDocumentSummary,
+    WebDavDownloadedVersion, WebDavQueuedResult, WebDavRetryResult, WebDavSettings,
+    WebDavSyncEvent, WebDavVersion, HISTORY_LIMIT,
 };
 pub use path::{
     deterministic_version_id, map_remote_document, normalize_remote_root, sha256_hex,
     validate_endpoint,
 };
+pub use queue::PendingTaskStore;
 
 #[cfg(test)]
 mod tests {

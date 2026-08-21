@@ -79,6 +79,31 @@ pub struct WebDavBackupRequest {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PendingBackupTask {
+    pub document_id: String,
+    pub display_name: String,
+    pub local_path: String,
+    pub workspace_roots: Vec<String>,
+    pub current_path: String,
+    pub manifest_path: String,
+    pub versions_dir: String,
+    pub queued_at: String,
+    pub sha256: String,
+    pub version_id: String,
+}
+
+impl PendingBackupTask {
+    /// Refresh the expected hash and deterministic version ID for the current
+    /// local bytes. Preserves every other field so retries upload the newest
+    /// local state without mislabeling an earlier snapshot.
+    pub fn refresh_for_bytes(&mut self, bytes: &[u8], created_at: &str) {
+        let sha256 = crate::webdav::path::sha256_hex(bytes);
+        self.sha256 = sha256.clone();
+        self.version_id = crate::webdav::path::deterministic_version_id(created_at, &sha256);
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WebDavDocumentRef {
     pub document_id: String,
     pub display_name: String,
