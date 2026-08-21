@@ -63,3 +63,21 @@ test('image uploads reject nameless files and return the configured local destin
   assert.doesNotMatch(cloudinary, /\.unwrap\(\)/)
   assert.doesNotMatch(s3, /\.unwrap\(\)/)
 })
+
+test('WebDAV code never logs credentials or document content', () => {
+  const sources = [
+    read('src/stores/webdavStore.ts'),
+    read('src/components/WebDav/WebDavSettings.tsx'),
+    read('src-tauri/src/webdav/client.rs'),
+    read('src-tauri/src/webdav/manager.rs'),
+  ].join('\n')
+  assert.doesNotMatch(sources, /console\.log|println!|dbg!/)
+  assert.doesNotMatch(sources, /Authorization.*\{.*password|password.*Authorization/)
+})
+
+test('WebDAV errors are centralized and sanitized in Rust', () => {
+  const client = read('src-tauri/src/webdav/client.rs')
+  assert.match(client, /pub fn sanitize_webdav_error/)
+  assert.match(client, /sanitize_diagnostic/)
+  assert.match(client, /filter\(\|character\| !character\.is_control\(\)\)/)
+})

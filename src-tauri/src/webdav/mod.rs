@@ -5,7 +5,7 @@ mod model;
 mod path;
 mod queue;
 
-pub use client::WebDavClient;
+pub use client::{sanitize_webdav_error, WebDavClient};
 pub use manager::{WebDavEventSink, WebDavSyncManager};
 pub use manifest::{
     parse_index, parse_manifest, validate_index_namespace, validate_manifest_namespace,

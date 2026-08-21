@@ -1,6 +1,6 @@
 # Privacy Policy
 
-Last updated: July 29, 2026
+Last updated: August 21, 2026
 
 Zeditor is a local-first desktop Markdown editor. The project maintainers do not operate an analytics, advertising, telemetry, or user-account service for the application. Your documents stay on your device unless you deliberately use a feature that sends selected data to a service you configure.
 
@@ -16,6 +16,7 @@ Zeditor contacts third parties only when you invoke or enable the corresponding 
 
 - **AI providers:** prompts, selected text, document context, attached text or images, and model settings may be sent to the AI endpoint and provider selected by you. Supported providers and custom endpoints have their own privacy and retention terms.
 - **Local Agent backends:** when you deliberately start an Agent task, Zeditor launches your locally installed Claude Code, Codex, or OpenCode CLI. The selected CLI may send prompts, workspace content, command output, and tool results to the model provider configured in that CLI, and may access the network when you approve it. Zeditor reuses the CLI's authentication and does not copy its login credentials into Zeditor settings.
+- **WebDAV backup:** when enabled, Zeditor sends the saved document content, its relative path within the workspace, timestamps, content hashes, and version manifests directly to the WebDAV server you configure. Credentials remain in the local application settings file and are never logged. The Zeditor maintainers do not receive this traffic.
 - **Web search:** search queries and the configured credentials are sent to Tavily or to the SearXNG instance selected by you.
 - **Image hosting:** images selected for upload and the required credentials or metadata are sent to Cloudinary, PicGo, an S3-compatible service, or another destination configured by you. Local image storage does not send the image to a remote hosting provider.
 - **Document conversion:** AnyDoc conversion runs locally and does not upload document contents. Scanned-PDF OCR, image, audio, MSG, and Notebook conversion are not provided by the current module.

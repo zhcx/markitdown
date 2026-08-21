@@ -118,7 +118,7 @@ impl WebDavClient {
         {
             Ok(())
         } else {
-            Err(sanitize_webdav_error(Some(status.as_u16()), "MKCOL"))
+            Err(sanitize_webdav_error(Some(status.as_u16()), ""))
         }
     }
 
@@ -136,7 +136,7 @@ impl WebDavClient {
         if matches!(status.as_u16(), 200 | 201 | 204) {
             Ok(())
         } else {
-            Err(sanitize_webdav_error(Some(status.as_u16()), "PUT"))
+            Err(sanitize_webdav_error(Some(status.as_u16()), ""))
         }
     }
 
@@ -155,7 +155,7 @@ impl WebDavClient {
             return Ok(None);
         }
         if !status.is_success() {
-            return Err(sanitize_webdav_error(Some(status.as_u16()), "GET"));
+            return Err(sanitize_webdav_error(Some(status.as_u16()), ""));
         }
 
         let bytes = response
@@ -189,7 +189,7 @@ impl WebDavClient {
         if status.is_success() || status == StatusCode::NO_CONTENT {
             Ok(())
         } else {
-            Err(sanitize_webdav_error(Some(status.as_u16()), "DELETE"))
+            Err(sanitize_webdav_error(Some(status.as_u16()), ""))
         }
     }
 
@@ -212,7 +212,7 @@ impl WebDavClient {
         } else if status == StatusCode::NOT_FOUND {
             Ok(false)
         } else {
-            Err(sanitize_webdav_error(Some(status.as_u16()), "PROPFIND"))
+            Err(sanitize_webdav_error(Some(status.as_u16()), ""))
         }
     }
 
@@ -263,17 +263,17 @@ fn classify_network_error(error: &reqwest::Error) -> String {
     } else if error.is_request() {
         "WebDAV request error. The request could not be completed.".to_string()
     } else {
-        let message = error.to_string();
-        let capped = cap_message(&message, 240);
-        format!("WebDAV error: {capped}")
+        format!("WebDAV error: {}", sanitize_diagnostic(&error.to_string()))
     }
 }
 
-/// Sanitize an HTTP status code into a user-facing message.
+/// Centralized WebDAV error sanitization.
 ///
-/// Returns a fixed Chinese message for well-known error codes, or a generic
-/// message with the status code and a 240-character diagnostic cap.
-fn sanitize_webdav_error(status: Option<u16>, _operation: &str) -> String {
+/// Known status codes map to fixed Chinese messages. Unknown status codes
+/// produce a generic status-only message: the server diagnostic is never echoed
+/// because a malicious or broken server could repeat credentials or document
+/// content back in its response body.
+pub fn sanitize_webdav_error(status: Option<u16>, _text: &str) -> String {
     match status {
         Some(401) => "WebDAV 认证失败：用户名或密码不正确".to_string(),
         Some(403) => "WebDAV 权限不足：服务器拒绝了操作".to_string(),
@@ -286,6 +286,15 @@ fn sanitize_webdav_error(status: Option<u16>, _operation: &str) -> String {
         Some(code) => format!("WebDAV 服务器返回错误 (HTTP {code})"),
         None => "WebDAV 请求失败但未收到响应".to_string(),
     }
+}
+
+/// Strip control characters and cap a diagnostic at 240 characters.
+fn sanitize_diagnostic(text: &str) -> String {
+    let cleaned: String = text
+        .chars()
+        .filter(|character| !character.is_control())
+        .collect();
+    cap_message(&cleaned, 240)
 }
 
 fn cap_message(message: &str, max_len: usize) -> String {
@@ -868,11 +877,38 @@ mod tests {
 
     #[test]
     fn sanitize_maps_known_statuses_and_caps_unknown_errors() {
-        assert!(sanitize_webdav_error(Some(401), "PUT").contains("认证"));
-        assert!(sanitize_webdav_error(Some(403), "PUT").contains("权限"));
-        assert!(sanitize_webdav_error(Some(404), "GET").contains("未找到"));
-        assert!(sanitize_webdav_error(Some(507), "PUT").contains("存储空间"));
-        assert!(sanitize_webdav_error(Some(599), "GET").contains("599"));
-        assert!(sanitize_webdav_error(None, "GET").contains("未收到"));
+        assert!(sanitize_webdav_error(Some(401), "").contains("认证"));
+        assert!(sanitize_webdav_error(Some(403), "").contains("权限"));
+        assert!(sanitize_webdav_error(Some(404), "").contains("未找到"));
+        assert!(sanitize_webdav_error(Some(507), "").contains("存储空间"));
+        assert!(sanitize_webdav_error(Some(599), "").contains("599"));
+        assert!(sanitize_webdav_error(None, "").contains("未收到"));
+    }
+
+    #[test]
+    fn sanitized_errors_exclude_credentials_and_content() {
+        let password = "super-secret-password";
+        let document = "private document sentence";
+        let raw = format!("server rejected {password}: {document}");
+
+        let message = sanitize_webdav_error(Some(500), &raw);
+        assert!(!message.contains(password));
+        assert!(!message.contains(document));
+        assert!(message.len() <= 240);
+
+        // Known status codes never echo the server diagnostic at all.
+        let auth_message = sanitize_webdav_error(Some(401), &raw);
+        assert!(!auth_message.contains(password));
+        assert!(!auth_message.contains(document));
+    }
+
+    #[test]
+    fn sanitized_errors_strip_control_characters_and_cap_unknown_text() {
+        let raw = "line1\r\nESC\x1b[31mred\x00null and a very long tail ".repeat(40);
+        let message = sanitize_webdav_error(Some(599), &raw);
+        assert!(!message.contains('\u{1b}'));
+        assert!(!message.contains('\x00'));
+        assert!(message.len() <= 240);
+        assert!(message.contains("599"));
     }
 }
