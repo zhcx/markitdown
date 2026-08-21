@@ -179,6 +179,16 @@ export function StatusBar() {
     setSettingsOpen(true);
   };
 
+  // 状态栏直接开 / 关某个同步后端，复用设置保存链路（同 updateAISettings）。
+  const updateCloudProvider = async (provider: 'webdav' | 's3', enabled: boolean) => {
+    const latest = useAppStore.getState().settings;
+    if (provider === 'webdav') {
+      await saveSettings({ ...latest, webdav: { ...latest.webdav, enabled } });
+    } else {
+      await saveSettings({ ...latest, s3: { ...latest.s3, enabled } });
+    }
+  };
+
   return (
     <div className="statusbar">
       <div className="statusbar-left">
@@ -281,6 +291,7 @@ export function StatusBar() {
           s3Settings={settings.s3}
           currentFile={currentFile}
           onOpenSettings={openCloudSettings}
+          onToggleProvider={(provider, enabled) => void updateCloudProvider(provider, enabled)}
         />
       </div>
       <div className="statusbar-center">

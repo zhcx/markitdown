@@ -2537,13 +2537,42 @@ body {
   background: transparent;
   color: var(--text-color);
   text-align: left;
-  cursor: pointer;
   font: inherit;
 }
 .status-cloud-row:hover { background: var(--bg-hover); }
-.status-cloud-row strong { font-size: 12px; }
-.status-cloud-row small { overflow: hidden; color: var(--text-muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.status-cloud-row-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.status-cloud-row-main strong { font-size: 12px; }
+.status-cloud-row-main small { overflow: hidden; color: var(--text-muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .status-cloud-row.error small { color: var(--ui-error); }
+
+.status-cloud-row-actions { display: inline-flex; align-items: center; gap: 6px; }
+.status-cloud-view {
+  padding: 3px 9px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-size: 11px;
+  cursor: pointer;
+}
+.status-cloud-view:hover { border-color: var(--border-strong); color: var(--text-color); }
+.status-cloud-toggle {
+  min-width: 32px;
+  padding: 3px 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background var(--transition), border-color var(--transition), color var(--transition);
+}
+.status-cloud-toggle.is-on {
+  border-color: var(--accent-color);
+  background: var(--accent-color);
+  color: #fff;
+}
 
 .status-cloud-dot { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; font-size: 11px; }
 .status-cloud-dot.success { color: var(--ui-success); }

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { S3Settings, WebDavSettings } from '../../types/webdav';
 import { useWebDavStore } from '../../stores/webdavStore';
 import { useS3Store } from '../../stores/s3Store';
@@ -11,6 +11,8 @@ interface CloudStatusItemProps {
   currentFile: string | null;
   /** 打开「设置 → 云同步」页（未启用时点击触发，与「开启 AI」一致）。 */
   onOpenSettings: () => void;
+  /** 直接启用 / 停用某个后端（写入设置并持久化）。 */
+  onToggleProvider: (provider: 'webdav' | 's3', enabled: boolean) => void;
 }
 
 /** 云同步图标：与状态栏其他状态图标（SVG fill currentColor）风格一致。 */
@@ -38,20 +40,44 @@ function statusDot(phase: string): string {
  * Aggregated status-bar item for cloud backup (WebDAV + S3).
  *
  * Enabled when either provider is on. Clicking opens a menu (like the AI
- * trigger) listing each provider's live status; clicking a row opens that
- * provider's history or retries on error.
+ * trigger) listing each provider's live status with inline toggle and a
+ * history entry point.
  */
 export function WebDavStatusItem({
   settings,
   s3Settings,
   currentFile,
   onOpenSettings,
+  onToggleProvider,
 }: CloudStatusItemProps) {
   // Both hooks must run unconditionally; pick the matching store by provider.
   const webdavState = useWebDavStore();
   const s3State = useS3Store();
   const [menuOpen, setMenuOpen] = useState(false);
   const [popoverOpen, setPopoverOpen] = useState(false);
+  const controlRef = useRef<HTMLDivElement>(null);
+
+  // 点击菜单外部或按 Esc 时关闭，与 AI 菜单行为一致。
+  useEffect(() => {
+    if (!menuOpen && !popoverOpen) return;
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (menuOpen && !controlRef.current?.contains(target)) setMenuOpen(false);
+      if (popoverOpen && !controlRef.current?.contains(target)) setPopoverOpen(false);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setMenuOpen(false);
+        setPopoverOpen(false);
+      }
+    };
+    document.addEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [menuOpen, popoverOpen]);
 
   const enabled = settings.enabled || s3Settings.enabled;
   const anyError = webdavState.phase === 'error' || s3State.phase === 'error';
@@ -75,19 +101,17 @@ export function WebDavStatusItem({
     const store = provider === 's3' ? s3State : webdavState;
     const providerSettings: WebDavSettings | S3Settings =
       provider === 's3' ? s3Settings : settings;
-    const retry = store.retry as (s: WebDavSettings | S3Settings) => Promise<void>;
     const loadVersions = store.loadVersions as (
       id: string,
       s: WebDavSettings | S3Settings,
     ) => Promise<void>;
-    if (store.phase === 'error') {
-      void retry(providerSettings);
-      setPopoverOpen(true);
-      setMenuOpen(false);
-      return;
-    }
     if (store.documentId) void loadVersions(store.documentId, providerSettings);
     store.setHistoryOpen(true);
+    setMenuOpen(false);
+  };
+
+  const toggleProvider = (provider: 'webdav' | 's3', providerEnabled: boolean) => {
+    onToggleProvider(provider, !providerEnabled);
     setMenuOpen(false);
   };
 
@@ -95,32 +119,47 @@ export function WebDavStatusItem({
     const store = provider === 's3' ? s3State : webdavState;
     const providerSettings = provider === 's3' ? s3Settings : settings;
     const label = provider === 's3' ? 'S3' : 'WebDAV';
-    if (!providerSettings.enabled) {
-      return (
-        <button type="button" role="menuitem" className="status-cloud-row" onClick={onOpenSettings}>
-          <span className="status-cloud-dot">{statusDot('idle')}</span>
-          <strong>{label}</strong>
-          <small>未启用 · 点击开启</small>
-        </button>
-      );
-    }
+    const statusText = providerSettings.enabled
+      ? webDavStatusLabel(store.phase, '')
+      : '未启用';
+    const dot = providerSettings.enabled ? statusDot(store.phase) : statusDot('idle');
+
     return (
-      <button
-        type="button"
-        role="menuitem"
-        className={`status-cloud-row ${store.phase === 'error' ? 'error' : ''}`}
-        onClick={() => openHistory(provider)}
-      >
-        <span className={`status-cloud-dot ${store.phase}`}>{statusDot(store.phase)}</span>
-        <strong>{label}</strong>
-        <small>{webDavStatusLabel(store.phase, '')}{store.phase === 'success' && store.lastSuccessAt ? ` · ${formatClock(store.lastSuccessAt)}` : ''}</small>
-      </button>
+      <div className={`status-cloud-row ${providerSettings.enabled && store.phase === 'error' ? 'error' : ''}`}>
+        <span className={`status-cloud-dot ${providerSettings.enabled ? store.phase : ''}`}>{dot}</span>
+        <div className="status-cloud-row-main">
+          <strong>{label}</strong>
+          <small>{statusText}{providerSettings.enabled && store.phase === 'success' && store.lastSuccessAt ? ` · ${formatClock(store.lastSuccessAt)}` : ''}</small>
+        </div>
+        <div className="status-cloud-row-actions">
+          {providerSettings.enabled && (
+            <button
+              type="button"
+              className="status-cloud-view"
+              title="查看备份与历史版本"
+              onClick={() => openHistory(provider)}
+            >
+              历史
+            </button>
+          )}
+          <button
+            type="button"
+            className={`status-cloud-toggle${providerSettings.enabled ? ' is-on' : ''}`}
+            role="switch"
+            aria-checked={providerSettings.enabled}
+            title={providerSettings.enabled ? `关闭 ${label} 同步` : `开启 ${label} 同步`}
+            onClick={() => toggleProvider(provider, providerSettings.enabled)}
+          >
+            {providerSettings.enabled ? '开' : '关'}
+          </button>
+        </div>
+      </div>
     );
   };
 
   return (
     <>
-      <div className="status-cloud-control">
+      <div className="status-cloud-control" ref={controlRef}>
         <button
           type="button"
           className={`status-item status-button status-webdav is-enabled ${anyError ? 'error' : ''} ${anySyncing ? 'syncing' : ''} ${menuOpen ? 'active' : ''}`}
