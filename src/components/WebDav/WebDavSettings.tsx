@@ -17,7 +17,11 @@ export function WebDavSettings({ value, onChange, onBrowseHistory }: WebDavSetti
 
   const update = (patch: Partial<WebDavSettings>) => onChange({ ...value, ...patch });
 
+  // 连接测试要求至少填写服务器地址，避免无意义的请求。
+  const canTest = value.server_url.trim() !== '';
+
   const testConnection = async () => {
+    if (!canTest || testing) return;
     setTesting(true);
     setResult(null);
     try {
@@ -95,9 +99,23 @@ export function WebDavSettings({ value, onChange, onBrowseHistory }: WebDavSetti
               <button
                 type="button"
                 className="webdav-password-toggle"
+                aria-label={passwordVisible ? '隐藏密码' : '显示密码'}
+                aria-pressed={passwordVisible}
+                title={passwordVisible ? '隐藏密码' : '显示密码'}
                 onClick={() => setPasswordVisible(visible => !visible)}
               >
-                {passwordVisible ? '隐藏' : '显示'}
+                {passwordVisible ? (
+                  <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M2.5 10s2.8-4.5 7.5-4.5 7.5 4.5 7.5 4.5-2.8 4.5-7.5 4.5S2.5 10 2.5 10Z" />
+                    <path d="M10 7.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5ZM4.2 15.8 15.8 4.2" />
+                  </svg>
+                ) : (
+                  <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M2.5 10s2.8-4.5 7.5-4.5 7.5 4.5 7.5 4.5-2.8 4.5-7.5 4.5S2.5 10 2.5 10Z" />
+                    <path d="M10 7.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5Z" />
+                  </svg>
+                )}
+                <span>{passwordVisible ? '隐藏' : '显示'}</span>
               </button>
             </div>
           </div>
@@ -125,13 +143,19 @@ export function WebDavSettings({ value, onChange, onBrowseHistory }: WebDavSetti
           <div className="setting-item webdav-actions">
             <button
               type="button"
-              className="button"
-              disabled={testing}
+              className="button webdav-action-primary"
+              disabled={testing || !canTest}
+              title={canTest ? undefined : '请先填写服务器地址'}
               onClick={() => void testConnection()}
             >
+              {testing && <span className="ai-spinner webdav-action-spinner" aria-hidden="true" />}
               {testing ? '测试中…' : '测试连接'}
             </button>
-            <button type="button" className="button" onClick={onBrowseHistory}>
+            <button
+              type="button"
+              className="button webdav-action-secondary"
+              onClick={onBrowseHistory}
+            >
               浏览全部备份
             </button>
           </div>

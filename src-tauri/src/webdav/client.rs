@@ -278,7 +278,9 @@ pub fn sanitize_webdav_error(status: Option<u16>, _text: &str) -> String {
         Some(401) => "WebDAV 认证失败：用户名或密码不正确".to_string(),
         Some(403) => "WebDAV 权限不足：服务器拒绝了操作".to_string(),
         Some(404) => "WebDAV 资源未找到：远端路径可能已被删除".to_string(),
-        Some(405) => "WebDAV 方法不允许：服务器不支持此操作".to_string(),
+        Some(405) | Some(501) => {
+            "服务器不支持此连接方式：目标服务器可能未启用 WebDAV 写入支持（如 nginx 的 dav_methods 或 Apache 的 mod_dav），或远端路径指向了非 WebDAV 目录".to_string()
+        }
         Some(409) => "WebDAV 冲突：远端目标已存在或路径无效".to_string(),
         Some(412) => "WebDAV 前置条件失败".to_string(),
         Some(423) => "WebDAV 资源被锁定".to_string(),
@@ -883,6 +885,8 @@ mod tests {
         assert!(sanitize_webdav_error(Some(507), "").contains("存储空间"));
         assert!(sanitize_webdav_error(Some(599), "").contains("599"));
         assert!(sanitize_webdav_error(None, "").contains("未收到"));
+        assert!(sanitize_webdav_error(Some(405), "").contains("不支持此连接方式"));
+        assert!(sanitize_webdav_error(Some(501), "").contains("不支持此连接方式"));
     }
 
     #[test]
