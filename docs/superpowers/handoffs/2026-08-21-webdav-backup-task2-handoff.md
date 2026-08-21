@@ -62,12 +62,14 @@ a5ba3a2 fix: stabilize WebDAV workspace identity
 
 ## 打包结果
 
-`npm run tauri build` 成功（exit 0），产物时间戳为 2026-08-21 12:12：
+`npm run tauri build` 成功（exit 0），产物时间戳为 2026-08-21 12:58（含 WebDAV UI 主题适配与设置页/状态栏重设计）：
 
 | 产物 | 大小 | SHA-256 |
 | --- | --- | --- |
-| `src-tauri/target/release/bundle/msi/Zeditor_0.3.8_x64_en-US.msi` | 8,380,416 bytes | `1614B750671D34F11B5F25DA8F798145837B99C31D5861067CAE4156820A958C` |
-| `src-tauri/target/release/bundle/nsis/Zeditor_0.3.8_x64-setup.exe` | 6,905,417 bytes | `6946A3AF1BD0D20C4A8B3D9523CA74EDDF462BA145A277DB2A5354872BB34010` |
+| `src-tauri/target/release/bundle/msi/Zeditor_0.3.8_x64_en-US.msi` | 8,380,416 bytes | `DAC8555E4DB585D465BE3AAF887B7966F67B5B1398413AE445E1AB1F6A87A136` |
+| `src-tauri/target/release/bundle/nsis/Zeditor_0.3.8_x64-setup.exe` | 6,904,710 bytes | `4E3219554DD3041E0A8129521384E712D7BC180613E4876B0A93BC676D558221` |
+
+注：前一次打包（12:12）NSIS 因 `zeditor.exe` 进程占用 release 二进制失败；关闭进程后于 12:58 重新打包成功，以上为最终产物。
 
 ## 临时事项
 
