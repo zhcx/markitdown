@@ -119,12 +119,7 @@ fn sibling_temporary_path(destination: &Path) -> PathBuf {
 mod tests {
     use super::*;
     use crate::webdav::path::{deterministic_version_id, sha256_hex};
-
-    fn test_temp_dir() -> PathBuf {
-        let path = std::env::temp_dir().join(format!("zeditor-webdav-{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&path).expect("create temp directory");
-        path
-    }
+    use crate::webdav::test_support::test_temp_dir;
 
     fn task(document_id: &str, sha256: &str, version_id: &str) -> PendingBackupTask {
         PendingBackupTask {

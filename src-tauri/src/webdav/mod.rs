@@ -2,12 +2,14 @@
 #![allow(dead_code)]
 
 mod client;
+mod manager;
 mod manifest;
 mod model;
 mod path;
 mod queue;
 
 pub use client::WebDavClient;
+pub use manager::{WebDavEventSink, WebDavSyncManager};
 pub use manifest::{
     parse_index, parse_manifest, validate_index_namespace, validate_manifest_namespace,
 };
@@ -22,6 +24,16 @@ pub use path::{
     validate_endpoint,
 };
 pub use queue::PendingTaskStore;
+
+#[cfg(test)]
+pub(crate) mod test_support {
+    /// Shared temp directory helper for WebDAV persistence tests.
+    pub(crate) fn test_temp_dir() -> std::path::PathBuf {
+        let path = std::env::temp_dir().join(format!("zeditor-webdav-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&path).expect("create temp directory");
+        path
+    }
+}
 
 #[cfg(test)]
 mod tests {
