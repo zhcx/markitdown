@@ -935,6 +935,44 @@ mod tests {
     }
 
     #[test]
+    fn mapper_resources_with_literal_percent_filename_round_trip_through_namespace_validation() {
+        let expected = crate::webdav::map_remote_document(
+            "/work/foo%20bar.md",
+            &["/work".to_string()],
+            "/Zeditor",
+        )
+        .expect("mapped literal percent resource");
+
+        assert!(expected.current_path.ends_with("/foo%2520bar.md"));
+
+        let version_id = "b".repeat(24);
+        let manifest = DocumentManifest {
+            document_id: expected.document_id.clone(),
+            display_name: expected.display_name.clone(),
+            current_path: expected.current_path.clone(),
+            versions: vec![version(
+                &version_id,
+                "2026-08-19T12:00:00Z",
+                &"c".repeat(64),
+                &format!("{}/{version_id}.md", expected.versions_dir),
+            )],
+        };
+        let index = BackupIndex {
+            documents: vec![BackupIndexEntry {
+                document_id: expected.document_id.clone(),
+                display_name: expected.display_name.clone(),
+                current_path: expected.current_path.clone(),
+                manifest_path: expected.manifest_path.clone(),
+                latest_at: "2026-08-19T12:00:00Z".to_string(),
+            }],
+        };
+
+        validate_manifest_namespace(&manifest, &expected, "/Zeditor")
+            .expect("literal percent manifest namespace");
+        validate_index_namespace(&index, "/Zeditor").expect("literal percent index namespace");
+    }
+
+    #[test]
     fn generated_resource_validation_rejects_unsafe_or_noncanonical_encodings() {
         let valid_expected = namespaced_expected_path();
         let valid_manifest = namespaced_manifest();
@@ -946,7 +984,6 @@ mod tests {
             "/Zeditor/%2E%2E/note.md",
             "/Zeditor/file%GG.md",
             "/Zeditor/%41.md",
-            "/Zeditor/file%252Fchild.md",
         ] {
             let mut expected = valid_expected.clone();
             expected.current_path = current_path.to_string();

@@ -86,9 +86,6 @@ pub(super) fn validate_canonical_resource_path(path: &str) -> Result<(), String>
         {
             return Err("generated resource path contains an unsafe segment".to_string());
         }
-        if decoded.contains('%') && has_valid_percent_escapes(&decoded) {
-            return Err("generated resource path contains double percent encoding".to_string());
-        }
         if urlencoding::encode(&decoded).as_ref() != segment {
             return Err("generated resource path is not canonically encoded".to_string());
         }
@@ -451,6 +448,30 @@ mod tests {
         for root in ["/Zeditor/%", "/Zeditor/%2", "/Zeditor/%GG"] {
             assert!(normalize_remote_root(root).is_err(), "accepted {root}");
         }
+    }
+
+    #[test]
+    fn canonical_resource_path_accepts_literal_percent_filenames() {
+        for path in [
+            "/Zeditor/foo%2520bar.md",
+            "/Zeditor/file%252Fchild.md",
+            "/Zeditor/100%25.md",
+        ] {
+            assert!(
+                validate_canonical_resource_path(path).is_ok(),
+                "rejected literal percent path {path}"
+            );
+        }
+    }
+
+    #[test]
+    fn maps_literal_percent_filename_to_double_encoded_remote_segment() {
+        let mapped =
+            map_remote_document("/work/foo%20bar.md", &["/work".to_string()], "/Zeditor")
+                .expect("literal percent mapping");
+
+        assert_eq!(mapped.display_name, "foo%20bar.md");
+        assert!(mapped.current_path.ends_with("/foo%2520bar.md"));
     }
 
     #[test]
