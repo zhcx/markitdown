@@ -4,23 +4,26 @@ mod manifest;
 mod model;
 mod path;
 mod queue;
+mod s3;
+mod sigv4;
 
-pub use client::{sanitize_webdav_error, WebDavClient};
+pub use client::{sanitize_webdav_error, RemoteClient, RemoteSyncClient, WebDavClient};
 pub use manager::{WebDavEventSink, WebDavSyncManager};
 pub use manifest::{
     parse_index, parse_manifest, validate_index_namespace, validate_manifest_namespace,
 };
 pub use model::{
     BackupIndex, BackupIndexEntry, DocumentManifest, PendingBackupTask, RemoteDocumentPath,
-    WebDavBackupRequest, WebDavConnectionResult, WebDavDocumentRef, WebDavDocumentSummary,
-    WebDavDownloadedVersion, WebDavQueuedResult, WebDavRetryResult, WebDavSettings,
-    WebDavSyncEvent, WebDavVersion, HISTORY_LIMIT,
+    S3Settings, WebDavBackupRequest, WebDavConnectionResult, WebDavDocumentRef,
+    WebDavDocumentSummary, WebDavDownloadedVersion, WebDavQueuedResult, WebDavRetryResult,
+    WebDavSettings, WebDavSyncEvent, WebDavVersion, HISTORY_LIMIT,
 };
 pub use path::{
     deterministic_version_id, document_manifest_path, document_versions_dir, history_index_path,
     map_remote_document, normalize_remote_root, sha256_hex, validate_endpoint,
 };
 pub use queue::PendingTaskStore;
+pub use s3::S3Client;
 
 use tauri::{Emitter, State};
 

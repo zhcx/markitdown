@@ -32,6 +32,47 @@ impl Default for WebDavSettings {
     }
 }
 
+/// S3-compatible object storage settings (AWS S3, Aliyun OSS, Tencent COS,
+/// MinIO, Cloudflare R2, ...). The remote root acts as an object key prefix.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct S3Settings {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub endpoint: String,
+    #[serde(default)]
+    pub bucket: String,
+    #[serde(default)]
+    pub region: String,
+    #[serde(default)]
+    pub access_key: String,
+    #[serde(default)]
+    pub secret_key: String,
+    #[serde(default)]
+    pub path_style: bool,
+    #[serde(default = "default_s3_remote_root")]
+    pub remote_root: String,
+}
+
+fn default_s3_remote_root() -> String {
+    "/Zeditor".into()
+}
+
+impl Default for S3Settings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            endpoint: String::new(),
+            bucket: String::new(),
+            region: String::new(),
+            access_key: String::new(),
+            secret_key: String::new(),
+            path_style: false,
+            remote_root: default_s3_remote_root(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RemoteDocumentPath {
     pub document_id: String,

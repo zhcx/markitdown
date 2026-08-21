@@ -273,6 +273,105 @@ impl WebDavClient {
     }
 }
 
+/// Protocol-agnostic remote storage client used by the sync manager.
+///
+/// Both the WebDAV client and the S3 client implement this trait so the
+/// manager can run the same snapshot/manifest/index/current transaction
+/// against either backend. Paths are always absolute (`/`-prefixed) strings;
+/// each implementation maps them to its own URL/key space.
+//
+// `async fn` in trait is stable since Rust 1.75; the lint fires because
+// auto-trait bounds on the returned future are unspecified. We always use
+// these through `Box<dyn RemoteSyncClient>`, so the future's Send-ness is
+// resolved at the concrete impl, not through the trait object.
+#[allow(async_fn_in_trait)]
+pub trait RemoteSyncClient: Send + Sync {
+    /// Ensure the remote collection (directory) exists. Object stores with a
+    /// flat namespace (S3) accept this as a no-op.
+    async fn ensure_collection(&self, path: &str) -> Result<(), String>;
+
+    /// Upload bytes to a resource path, replacing an existing resource.
+    async fn put(&self, path: &str, bytes: &[u8]) -> Result<(), String>;
+
+    /// Read a resource; `Ok(None)` when the resource is absent.
+    async fn get_optional(&self, path: &str) -> Result<Option<Vec<u8>>, String>;
+
+    /// Delete a resource; absence is not an error.
+    async fn delete_optional(&self, path: &str) -> Result<(), String>;
+
+    /// Verify read/write capability with a probe write/read/delete cycle.
+    async fn test_connection(&self, remote_root: &str) -> Result<(), String>;
+}
+
+impl RemoteSyncClient for WebDavClient {
+    async fn ensure_collection(&self, path: &str) -> Result<(), String> {
+        self.ensure_collection(path).await
+    }
+
+    async fn put(&self, path: &str, bytes: &[u8]) -> Result<(), String> {
+        self.put(path, bytes).await
+    }
+
+    async fn get_optional(&self, path: &str) -> Result<Option<Vec<u8>>, String> {
+        self.get_optional(path).await
+    }
+
+    async fn delete_optional(&self, path: &str) -> Result<(), String> {
+        self.delete_optional(path).await
+    }
+
+    async fn test_connection(&self, remote_root: &str) -> Result<(), String> {
+        self.test_connection(remote_root).await
+    }
+}
+
+/// Concrete client backend chosen by the sync manager at runtime.
+///
+/// An enum instead of a trait object keeps the async futures concrete (and
+/// always Send) while still letting the manager run one transaction against
+/// either protocol.
+pub enum RemoteClient {
+    WebDav(WebDavClient),
+    S3(crate::webdav::S3Client),
+}
+
+impl RemoteSyncClient for RemoteClient {
+    async fn ensure_collection(&self, path: &str) -> Result<(), String> {
+        match self {
+            Self::WebDav(client) => client.ensure_collection(path).await,
+            Self::S3(client) => client.ensure_collection(path).await,
+        }
+    }
+
+    async fn put(&self, path: &str, bytes: &[u8]) -> Result<(), String> {
+        match self {
+            Self::WebDav(client) => client.put(path, bytes).await,
+            Self::S3(client) => client.put(path, bytes).await,
+        }
+    }
+
+    async fn get_optional(&self, path: &str) -> Result<Option<Vec<u8>>, String> {
+        match self {
+            Self::WebDav(client) => client.get_optional(path).await,
+            Self::S3(client) => client.get_optional(path).await,
+        }
+    }
+
+    async fn delete_optional(&self, path: &str) -> Result<(), String> {
+        match self {
+            Self::WebDav(client) => client.delete_optional(path).await,
+            Self::S3(client) => client.delete_optional(path).await,
+        }
+    }
+
+    async fn test_connection(&self, remote_root: &str) -> Result<(), String> {
+        match self {
+            Self::WebDav(client) => client.test_connection(remote_root).await,
+            Self::S3(client) => client.test_connection(remote_root).await,
+        }
+    }
+}
+
 /// Classify a reqwest error into a user-facing message.
 fn classify_network_error(error: &reqwest::Error) -> String {
     if error.is_timeout() {
