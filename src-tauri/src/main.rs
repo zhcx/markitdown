@@ -3,9 +3,11 @@
 
 use std::{
     path::{Path, PathBuf},
-    sync::Mutex,
+    sync::{Arc, Mutex},
 };
 use tauri::{Emitter, Manager, State};
+
+use webdav::{S3SyncManager, TauriWebDavEventSink, WebDavSyncManager};
 
 mod agent;
 mod ai;
@@ -14,6 +16,7 @@ mod converter;
 mod image;
 mod imaging;
 mod pdf;
+pub mod webdav;
 
 #[tauri::command]
 fn exit_application(app: tauri::AppHandle) {
@@ -197,6 +200,18 @@ fn main() {
             commands::check_for_updates,
             commands::download_and_install_update,
             commands::finalize_update_install,
+            webdav::webdav_test_connection,
+            webdav::webdav_enqueue_backup,
+            webdav::webdav_retry_pending,
+            webdav::webdav_list_documents,
+            webdav::webdav_list_versions,
+            webdav::webdav_download_version,
+            webdav::s3_test_connection,
+            webdav::s3_enqueue_backup,
+            webdav::s3_retry_pending,
+            webdav::s3_list_documents,
+            webdav::s3_list_versions,
+            webdav::s3_download_version,
             ai::ai_request,
             ai::ai_streaming,
             ai::ai_chat_streaming,
@@ -219,6 +234,17 @@ fn main() {
             let agent_storage = _app.path().app_data_dir()?.join("agent-runtime");
             _app.manage(agent::AgentSupervisor::new(agent_storage));
             _app.manage(converter::ConverterManager::default());
+
+            let webdav_queue_path = _app.path().app_data_dir()?.join("webdav-pending.json");
+            _app.manage(WebDavSyncManager::new(
+                webdav_queue_path,
+                Arc::new(TauriWebDavEventSink(_app.handle().clone())),
+            ));
+            let s3_queue_path = _app.path().app_data_dir()?.join("s3-pending.json");
+            _app.manage(S3SyncManager::new(
+                s3_queue_path,
+                Arc::new(TauriWebDavEventSink(_app.handle().clone())),
+            ));
             Ok(())
         })
         .run(tauri::generate_context!())

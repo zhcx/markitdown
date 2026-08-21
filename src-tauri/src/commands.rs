@@ -80,6 +80,10 @@ pub struct Settings {
     pub agent: AgentSettings,
     #[serde(default)]
     pub web_search: WebSearchSettings,
+    #[serde(default)]
+    pub webdav: WebDavSettings,
+    #[serde(default)]
+    pub s3: S3Settings,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -232,6 +236,8 @@ impl Default for WebSearchSettings {
     }
 }
 
+pub use crate::webdav::{S3Settings, WebDavSettings};
+
 impl Default for Settings {
     fn default() -> Self {
         Settings {
@@ -311,6 +317,8 @@ impl Default for Settings {
                 searxng_time_range: String::new(),
                 searxng_max_results: 5,
             },
+            webdav: WebDavSettings::default(),
+            s3: S3Settings::default(),
         }
     }
 }
@@ -1688,6 +1696,15 @@ mod update_tests {
         assert!(!restored.agent.enabled);
         assert_eq!(restored.agent.backend, "claude_code");
         assert_eq!(restored.agent.backends.len(), 3);
+    }
+
+    #[test]
+    fn settings_without_webdav_use_defaults() {
+        let mut value = serde_json::to_value(Settings::default()).unwrap();
+        value.as_object_mut().unwrap().remove("webdav");
+        let restored: Settings = serde_json::from_value(value).unwrap();
+        assert!(!restored.webdav.enabled);
+        assert_eq!(restored.webdav.remote_root, "/Zeditor");
     }
 
     #[test]

@@ -1,7 +1,8 @@
 import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import { useAppStore, type AIProviderId, type AIProviderProfile } from './appStore';
+import { useAppStore, type AIProviderId } from './appStore';
+import { parseAIProviderProfiles } from '../utils/aiProviderProfiles';
 
 export interface ProofreadResult {
   from: number;
@@ -759,10 +760,7 @@ export const useAIStore = create<AIState>((set, get) => ({
       const appSettings = useAppStore.getState().settings;
       let browserSettings = appSettings.ai;
       if (selection) {
-        let profiles: Record<string, AIProviderProfile> = {};
-        try {
-          profiles = JSON.parse(appSettings.ai.provider_profiles || '{}');
-        } catch { /* use the active profile below */ }
+        const profiles = parseAIProviderProfiles(appSettings.ai.provider_profiles);
         const profile = profiles[selection.provider] || (selection.provider === appSettings.ai.provider
           ? { api_key: appSettings.ai.api_key, api_endpoint: appSettings.ai.api_endpoint, model: appSettings.ai.model }
           : undefined);
@@ -848,12 +846,7 @@ export const useAIStore = create<AIState>((set, get) => ({
     const appSettings = useAppStore.getState().settings;
     let settings = appSettings;
     if (selection) {
-      let profiles: Record<string, AIProviderProfile> = {};
-      try {
-        profiles = JSON.parse(appSettings.ai.provider_profiles || '{}');
-      } catch {
-        // Keep the empty profile map when loading legacy or malformed settings.
-      }
+      const profiles = parseAIProviderProfiles(appSettings.ai.provider_profiles);
       const profile = profiles[selection.provider] || (selection.provider === appSettings.ai.provider
         ? {
             api_key: appSettings.ai.api_key,

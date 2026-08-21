@@ -2424,3 +2424,324 @@ body {
   cursor: pointer;
 }
 .editor-context-submenu button:hover { background: var(--ui-bg-hover); color: var(--ui-text-primary); }
+
+/* ===== WebDAV status bar ===== */
+
+.status-webdav {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 7px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  color: var(--ui-text-secondary);
+  transition: background var(--transition), color var(--transition);
+}
+.status-webdav svg { fill: currentColor; stroke: none; }
+.status-webdav.is-enabled { color: var(--ui-accent); }
+.status-webdav:hover { background: var(--ui-bg-hover); color: var(--ui-text-primary); }
+.status-webdav.syncing { color: var(--ui-accent); }
+.status-webdav.success { color: var(--ui-success); }
+.status-webdav.error { color: var(--ui-error); }
+
+.webdav-spinner {
+  width: 10px;
+  height: 10px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: webdav-rotate .8s linear infinite;
+}
+@keyframes webdav-rotate { to { transform: rotate(360deg); } }
+@keyframes cloudPanelIn {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes cloudDotPulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ui-accent) 40%, transparent); }
+  50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--ui-accent) 0%, transparent); }
+}
+
+.webdav-history-popover {
+  position: fixed;
+  z-index: 130;
+  width: min(360px, calc(100vw - 24px));
+  padding: 12px 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface-raised);
+  backdrop-filter: blur(12px);
+  box-shadow: var(--shadow-lg);
+  animation: fadeIn 0.15s ease-out;
+}
+.webdav-popover-error {
+  margin: 0 0 10px;
+  font-size: 13px;
+  color: var(--ui-error);
+  word-break: break-all;
+}
+
+/* Narrow widths hide the timestamp before the label, then the label before the glyph. */
+@media (max-width: 820px) {
+  .status-webdav .status-webdav-time { display: none; }
+}
+@media (max-width: 560px) {
+  .status-webdav { gap: 0; }
+  .status-webdav .status-webdav-label { display: none; }
+}
+
+/* ===== Cloud sync (WebDAV + S3) status menu ===== */
+
+/* ── 云同步状态栏按钮 ─────────────────────────────────────────── */
+
+.status-webdav.is-enabled { cursor: pointer; }
+.status-webdav.is-enabled.error { color: var(--ui-error); }
+
+/* ── 云同步面板弹窗 ───────────────────────────────────────────── */
+
+.cloud-panel-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--overlay-bg);
+  backdrop-filter: blur(12px);
+  animation: fadeIn 0.15s ease-out;
+}
+
+.cloud-panel {
+  width: min(420px, calc(100vw - 32px));
+  max-height: min(480px, calc(100vh - 64px));
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border-strong);
+  border-radius: 14px;
+  background: var(--surface-raised);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, .28), var(--shadow-lg);
+  color: var(--text-color);
+  animation: cloudPanelIn 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  overflow: hidden;
+}
+
+/* Header */
+.cloud-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 20px 22px 16px;
+  border-bottom: 1px solid var(--border-color);
+}
+.cloud-panel-title {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+.cloud-panel-title > div { min-width: 0; }
+.cloud-panel-title svg { flex: none; color: var(--ui-accent); }
+.cloud-panel-title h3 { margin: 0; font-size: 16px; font-weight: 700; white-space: nowrap; }
+.cloud-panel-subtitle { margin: 3px 0 0; color: var(--text-muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cloud-panel-close {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+}
+.cloud-panel-close:hover { background: var(--bg-hover); color: var(--text-color); }
+
+/* Cards Container */
+.cloud-panel-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 22px 20px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+/* Provider Card */
+.cloud-card {
+  flex: none;
+  width: 100%;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  overflow: hidden;
+  transition: border-color var(--transition), box-shadow var(--transition), transform var(--transition);
+}
+.cloud-card:hover {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-soft);
+  transform: translateY(-1px);
+}
+.cloud-card-error { border-color: color-mix(in srgb, var(--ui-error) 30%, transparent); }
+.cloud-card-off { opacity: 0.62; filter: saturate(0.7); }
+
+.cloud-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  background: linear-gradient(180deg, var(--surface-subtle), color-mix(in srgb, var(--surface-subtle) 60%, var(--surface-raised)));
+}
+.cloud-card-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex: 1;
+}
+.cloud-card-info > div {
+  min-width: 0;
+  flex: 1;
+}
+.cloud-card-info strong { display: block; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cloud-card-info small { display: block; overflow: hidden; color: var(--text-muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+
+.cloud-card-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+.cloud-card-dot.success { background: var(--ui-success); }
+.cloud-card-dot.syncing { background: var(--ui-accent); animation: webdav-rotate .8s linear infinite, cloudDotPulse 1.4s ease-out infinite; }
+.cloud-card-dot.error { background: var(--ui-error); }
+.cloud-card-dot.queued { background: var(--ui-warning); }
+
+/* 开关（仿 settings-switch；使用 .cloud-panel .cloud-switch 双选择器
+   提升优先级到 (0,2,0)，与 .app :is(button) 的 !important 旗鼓相当，
+   配合位置靠后保证不被覆盖；并通过 appearance: none 重置 user agent 默认外观） */
+.cloud-panel .cloud-switch {
+  position: relative !important;
+  flex: none;
+  width: 46px !important;
+  height: 26px !important;
+  min-width: 46px !important;
+  min-height: 26px !important;
+  aspect-ratio: 46 / 26;
+  padding: 0 !important;
+  margin: 0 !important;
+  border: 1px solid var(--border-strong) !important;
+  border-radius: 999px !important;
+  background: var(--surface-muted) !important;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text-muted) 8%, transparent) !important;
+  box-sizing: border-box;
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+  transition: background 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+}
+.cloud-panel .cloud-switch:hover { border-color: var(--text-muted) !important; background: var(--bg-hover) !important; }
+.cloud-panel .cloud-switch:focus-visible {
+  outline: none !important;
+  box-shadow: 0 0 0 3px var(--accent-soft) !important;
+}
+.cloud-panel .cloud-switch-thumb {
+  position: absolute !important;
+  top: 3px;
+  left: 3px;
+  width: 18px !important;
+  height: 18px !important;
+  aspect-ratio: 1;
+  border-radius: 50% !important;
+  background: var(--text-muted) !important;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 30%) !important;
+  transition: transform 160ms ease, background 160ms ease;
+}
+.cloud-panel .cloud-switch.is-on { border-color: var(--accent-color) !important; background: var(--accent-color) !important; }
+.cloud-panel .cloud-switch.is-on .cloud-switch-thumb { transform: translateX(20px) !important; background: #fff !important; }
+
+/* Status Badge + Retry */
+.cloud-card-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0 16px 12px;
+  background: var(--surface-subtle);
+}
+.cloud-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: var(--surface-muted);
+  color: var(--text-secondary);
+}
+.cloud-status-badge.success { background: color-mix(in srgb, var(--ui-success) 10%, transparent); color: var(--ui-success); }
+.cloud-status-badge.syncing { background: color-mix(in srgb, var(--ui-accent) 10%, transparent); color: var(--ui-accent); }
+.cloud-status-badge.error { background: color-mix(in srgb, var(--ui-error) 10%, transparent); color: var(--ui-error); }
+.cloud-status-badge.queued { background: color-mix(in srgb, var(--ui-warning) 10%, transparent); color: var(--ui-warning); }
+.cloud-card-retry {
+  flex: none;
+  padding: 4px 10px;
+  border: 1px solid color-mix(in srgb, var(--ui-error) 30%, transparent);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ui-error);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--transition);
+}
+.cloud-card-retry:hover { background: color-mix(in srgb, var(--ui-error) 8%, transparent); }
+
+/* Action Buttons */
+.cloud-card-actions {
+  display: flex;
+  border-top: 1px solid var(--border-color);
+}
+.cloud-card-action {
+  flex: 1;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 11px 10px;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--transition), color var(--transition);
+}
+.cloud-card-action:hover:not(:disabled) { background: var(--bg-hover); color: var(--text-color); }
+.cloud-card-action:disabled { opacity: 0.4; cursor: not-allowed; }
+.cloud-card-action + .cloud-card-action { border-left: 1px solid var(--border-color); }
+.cloud-card-action svg { flex: none; }
+
+.status-cloud-settings {
+  width: 100%;
+  margin-top: 4px;
+  padding: 8px 9px;
+  border: 0;
+  border-top: 1px solid var(--border-color);
+  background: transparent;
+  color: var(--text-secondary);
+  text-align: left;
+  cursor: pointer;
+  font-size: 12px;
+}
+.status-cloud-settings:hover { color: var(--text-color); background: var(--bg-hover); }

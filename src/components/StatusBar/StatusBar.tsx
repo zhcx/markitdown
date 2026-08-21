@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useAppStore, type Settings } from '../../stores/appStore';
 import { useAIStore, type AIEditMode } from '../../stores/aiStore';
+import { WebDavStatusItem } from '../WebDav/WebDavStatusItem';
 
 type WritingStyle = Settings['ai']['writing_style'];
 
@@ -173,6 +174,21 @@ export function StatusBar() {
     setSettingsOpen(true);
   };
 
+  const openCloudSettings = () => {
+    setSettingsTab('cloud');
+    setSettingsOpen(true);
+  };
+
+  // 状态栏直接开 / 关某个同步后端，复用设置保存链路（同 updateAISettings）。
+  const updateCloudProvider = async (provider: 'webdav' | 's3', enabled: boolean) => {
+    const latest = useAppStore.getState().settings;
+    if (provider === 'webdav') {
+      await saveSettings({ ...latest, webdav: { ...latest.webdav, enabled } });
+    } else {
+      await saveSettings({ ...latest, s3: { ...latest.s3, enabled } });
+    }
+  };
+
   return (
     <div className="statusbar">
       <div className="statusbar-left">
@@ -269,6 +285,13 @@ export function StatusBar() {
             </div>
           )}
         </div>
+        <span className="status-divider" aria-hidden="true" />
+        <WebDavStatusItem
+          settings={settings.webdav}
+          s3Settings={settings.s3}
+          onOpenSettings={openCloudSettings}
+          onToggleProvider={(provider, enabled) => void updateCloudProvider(provider, enabled)}
+        />
       </div>
       <div className="statusbar-center">
         {aiStatus !== 'idle' ? (

@@ -5,11 +5,15 @@ import type { EditorController } from '../types/editor';
 import { formatTextStatistics } from '../utils/textStatistics';
 import { DEFAULT_FONT_SIZE, DEFAULT_LINE_HEIGHT } from '../utils/appearanceSettings';
 import { applySavedTab } from '../utils/tabPersistence';
+import { readStoredStringArray } from '../utils/storage';
+import { useWebDavStore } from './webdavStore';
+import { useS3Store } from './s3Store';
 import { detectSystemLanguage, normalizeLanguage, type AppLanguage } from '../i18n';
 import type { AgentSettings } from '../types/agent';
 import type { ConverterDialogAction } from '../components/ConverterDialog/ConverterDialog';
 import { isConvertibleDocumentName } from '../utils/documentFormats';
 import { isTextFileName } from '../utils/fileIcon';
+import { normalizeAgentBackend } from '../utils/agentSettings';
 
 const isTauriRuntime = () => typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
   const browserSettingsKey = 'zeditor.browser.settings';
@@ -74,6 +78,23 @@ export interface Settings {
     html_template: string;
   };
   web_search: WebSearchSettings;
+  webdav: {
+    enabled: boolean;
+    server_url: string;
+    username: string;
+    password: string;
+    remote_root: string;
+  };
+  s3: {
+    enabled: boolean;
+    endpoint: string;
+    bucket: string;
+    region: string;
+    access_key: string;
+    secret_key: string;
+    path_style: boolean;
+    remote_root: string;
+  };
   ai: {
     enabled: boolean;
     provider: AIProviderId;
@@ -174,7 +195,7 @@ export interface TimelineEntry {
 
 export type UploadStatus = 'idle' | 'uploading' | 'success' | 'error';
 export type ConversionStatus = 'idle' | 'converting' | 'success' | 'error';
-export type SettingsTab = 'appearance' | 'editor' | 'image' | 'export' | 'ai' | 'web_search' | 'explorer' | 'converter';
+export type SettingsTab = 'appearance' | 'editor' | 'image' | 'export' | 'ai' | 'web_search' | 'explorer' | 'converter' | 'cloud';
 
 export interface ConverterModuleStatus {
   state: 'missing' | 'installing' | 'ready' | 'update_available' | 'incompatible' | 'corrupt' | 'error';
@@ -320,6 +341,23 @@ const defaultSettings: Settings = {
     searxng_time_range: '',
     searxng_max_results: 5,
   },
+  webdav: {
+    enabled: false,
+    server_url: '',
+    username: '',
+    password: '',
+    remote_root: '/Zeditor',
+  },
+  s3: {
+    enabled: false,
+    endpoint: '',
+    bucket: '',
+    region: '',
+    access_key: '',
+    secret_key: '',
+    path_style: false,
+    remote_root: '/Zeditor',
+  },
   ai: {
     enabled: false,
     provider: 'openai',
@@ -362,10 +400,13 @@ const normalizeSettings = (saved: Settings): Settings => ({
   image_hosting: { ...defaultSettings.image_hosting, ...saved.image_hosting },
   export: { ...defaultSettings.export, ...saved.export },
   web_search: { ...defaultSettings.web_search, ...saved.web_search },
+  webdav: { ...defaultSettings.webdav, ...saved.webdav },
+  s3: { ...defaultSettings.s3, ...saved.s3 },
   ai: { ...defaultSettings.ai, ...saved.ai },
   agent: {
     ...defaultSettings.agent,
     ...saved.agent,
+    backend: normalizeAgentBackend(saved.agent?.backend),
     backends: {
       claude_code: { ...defaultSettings.agent.backends.claude_code, ...saved.agent?.backends?.claude_code },
       codex: { ...defaultSettings.agent.backends.codex, ...saved.agent?.backends?.codex },
@@ -742,6 +783,28 @@ export const useAppStore = create<AppState>((set, get) => ({
         tabs: applySavedTab(state.tabs, tabId, path, tab.content),
         currentFile: state.activeTabId === tabId ? path : state.currentFile,
       }));
+
+      // Cloud backup is a background side effect of a successful local save.
+      // It must never await remote completion or mark the document dirty again.
+      const workspaceRoots = readStoredStringArray('zeditor.workspace-roots');
+      const webdav = get().settings.webdav;
+      if (webdav?.enabled && isTauriRuntime()) {
+        void invoke('webdav_enqueue_backup', {
+          request: { local_path: path, workspace_roots: workspaceRoots },
+          settings: webdav,
+        }).catch(error => {
+          useWebDavStore.getState().setEnqueueError(path, String(error));
+        });
+      }
+      const s3 = get().settings.s3;
+      if (s3?.enabled && isTauriRuntime()) {
+        void invoke('s3_enqueue_backup', {
+          request: { local_path: path, workspace_roots: workspaceRoots },
+          settings: s3,
+        }).catch(error => {
+          useS3Store.getState().setEnqueueError(path, String(error));
+        });
+      }
     } finally {
       set({ isSaving: false });
     }

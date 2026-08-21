@@ -10335,6 +10335,7 @@ html[data-theme] .preview-container,
 .agent-icon-button:disabled { color: var(--text-muted); cursor: default; }
 
 .agent-reference-button {
+  flex: 0 0 auto;
   min-width: 48px;
   padding: 0 6px;
   border: 0;
@@ -10342,6 +10343,7 @@ html[data-theme] .preview-container,
   color: var(--text-secondary);
   background: transparent;
   font: 11px/1 var(--font-sans);
+  white-space: nowrap;
   cursor: pointer;
 }
 .agent-reference-button:disabled { color: var(--text-muted); cursor: default; }
@@ -10417,3 +10419,237 @@ html[data-theme] .preview-container,
   .agent-change-list small { display: none; }
   .agent-model-menu .chat-select-trigger { max-width: 82px; }
 }
+
+/* ===== WebDAV backup settings, history dialog, and status ===== */
+
+.webdav-settings .setting-hint { margin-top: 4px; font-size: 12px; color: var(--text-secondary); }
+.webdav-desktop-only { color: var(--accent-color); }
+
+.webdav-password-row { display: flex; gap: 8px; flex: 2; min-width: 0; }
+.webdav-password-row .setting-input { flex: 1; }
+.webdav-password-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 36px;
+  padding: 0 13px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--transition), border-color var(--transition), color var(--transition);
+}
+.webdav-password-toggle:hover {
+  border-color: var(--border-strong);
+  background: var(--bg-hover);
+  color: var(--text-color);
+}
+.webdav-password-toggle:active { transform: translateY(1px); }
+.webdav-password-toggle:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--accent-light);
+}
+
+.webdav-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
+.webdav-actions .button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 36px;
+  padding: 8px 18px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--transition), border-color var(--transition), color var(--transition), box-shadow var(--transition), transform 80ms ease;
+}
+.webdav-actions .button:active:not(:disabled) { transform: translateY(1px); }
+.webdav-actions .button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--accent-light);
+}
+
+/* 主按钮：测试连接（accent 主色） */
+.webdav-action-primary {
+  border: 1px solid var(--accent-hover);
+  background: var(--accent-color);
+  color: #ffffff;
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--accent-color) 18%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+.webdav-action-primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+  box-shadow: 0 10px 22px color-mix(in srgb, var(--accent-color) 22%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+.webdav-action-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+.webdav-action-spinner { border-color: #ffffff; border-top-color: transparent; }
+
+/* 次按钮：浏览全部备份（中性次级） */
+.webdav-action-secondary {
+  border: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  box-shadow: var(--shadow-xs);
+}
+.webdav-action-secondary:hover:not(:disabled) {
+  border-color: var(--border-strong);
+  background: var(--bg-hover);
+  color: var(--text-color);
+}
+
+.webdav-connection-result {
+  margin-top: 10px;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  background: var(--surface-muted);
+}
+.webdav-connection-result.ok { color: var(--success-color); }
+.webdav-connection-result.error { color: var(--danger-color); background: color-mix(in srgb, var(--danger-color) 8%, transparent); }
+
+.webdav-history-dialog {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: flex;
+  flex-direction: column;
+  width: min(720px, calc(100vw - 36px));
+  max-height: min(560px, calc(100vh - 60px));
+  margin: auto;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--surface-raised);
+  backdrop-filter: blur(12px);
+  box-shadow: var(--shadow-lg);
+  animation: fadeInUp 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  overflow: hidden;
+}
+.webdav-history-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border-color);
+}
+.webdav-history-dialog-header h3 { margin: 0; font-size: 15px; }
+.webdav-dialog-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0;
+  flex: none;
+  transition: background var(--transition), color var(--transition);
+}
+.webdav-dialog-close:hover { background: var(--bg-hover); color: var(--text-color); }
+.webdav-history-dialog-body {
+  display: grid;
+  grid-template-columns: minmax(180px, 240px) minmax(0, 1fr);
+  gap: 12px;
+  padding: 14px 18px;
+  overflow: auto;
+  flex: 1;
+}
+.webdav-document-list h4,
+.webdav-version-list h4 { margin: 0 0 8px; font-size: 13px; color: var(--text-secondary); }
+.webdav-history-empty { color: var(--text-secondary); font-size: 13px; padding: 8px 0; }
+
+.webdav-document-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-color);
+  text-align: left;
+  cursor: pointer;
+  margin-bottom: 4px;
+}
+.webdav-document-row:hover { background: var(--bg-secondary); }
+.webdav-document-row.selected { border-color: var(--accent-color); background: var(--accent-light); }
+.webdav-document-name { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.webdav-document-time { font-size: 11px; color: var(--text-secondary); }
+
+.webdav-version-list { min-width: 0; }
+.webdav-version-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  margin-bottom: 6px;
+  transition: border-color var(--transition), background var(--transition);
+}
+.webdav-version-row:hover { border-color: var(--border-strong); background: var(--bg-hover); }
+.webdav-version-meta { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.webdav-version-time { font-size: 13px; }
+.webdav-version-size { font-size: 12px; color: var(--text-secondary); }
+.webdav-version-hash { font-family: var(--font-mono); font-size: 11px; color: var(--text-secondary); }
+.webdav-version-actions { display: flex; align-items: center; gap: 6px; flex: none; }
+.webdav-version-open,
+.webdav-version-download {
+  min-height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--transition), border-color var(--transition), color var(--transition);
+}
+.webdav-version-open {
+  border-color: var(--accent-color);
+  background: var(--accent-color);
+  color: #fff;
+}
+.webdav-version-open:hover:not(:disabled) {
+  border-color: var(--accent-hover, var(--accent-color));
+  background: var(--accent-hover, var(--accent-color));
+  color: #fff;
+}
+.webdav-version-download:hover:not(:disabled) {
+  border-color: var(--border-strong);
+  background: var(--bg-hover);
+  color: var(--text-color);
+}
+.webdav-version-open:disabled,
+.webdav-version-download:disabled { opacity: .5; cursor: not-allowed; }
+
+@media (max-width: 720px) {
+  .webdav-history-dialog-body { grid-template-columns: 1fr; }
+}
+
+/* ===== 云同步设置：WebDAV / S3 分区标题 ===== */
+
+.settings-section-title {
+  margin: 2px 0 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border-soft);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+.settings-section-divider { height: 1px; margin: 18px 0; background: var(--border-soft); }

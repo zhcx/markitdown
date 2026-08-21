@@ -1,6 +1,8 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { useAppStore } from './stores/appStore';
 import { useAIStore } from './stores/aiStore';
+import { useWebDavStore } from './stores/webdavStore';
+import { useS3Store } from './stores/s3Store';
 import { TabsBar } from './components/TabsBar/TabsBar';
 import { Toolbar } from './components/Toolbar/Toolbar';
 import { Editor } from './components/Editor/Editor';
@@ -245,8 +247,17 @@ function App() {
   }, [balanceDocumentPanes, sidebarVisible, sidebarWidth]);
 
   useEffect(() => {
-    loadSettings();
+    void loadSettings().then(() => {
+      useWebDavStore.getState().initialize(useAppStore.getState().settings.webdav);
+      useS3Store.getState().initialize(useAppStore.getState().settings.s3);
+    });
   }, [loadSettings]);
+
+  const currentFile = useAppStore(state => state.currentFile);
+  useEffect(() => {
+    useWebDavStore.getState().setCurrentDocument(currentFile);
+    useS3Store.getState().setCurrentDocument(currentFile);
+  }, [currentFile]);
 
   useEffect(() => {
     if (!('__TAURI_INTERNALS__' in window)) return undefined;
