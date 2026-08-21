@@ -10529,7 +10529,7 @@ html[data-theme] .preview-container,
   background: var(--surface-raised);
   backdrop-filter: blur(12px);
   box-shadow: var(--shadow-lg);
-  animation: fadeIn 0.15s ease-out;
+  animation: fadeInUp 0.18s cubic-bezier(0.16, 1, 0.3, 1);
   overflow: hidden;
 }
 .webdav-history-dialog-header {
@@ -10550,9 +10550,9 @@ html[data-theme] .preview-container,
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text-secondary);
-  font-size: 15px;
   cursor: pointer;
   padding: 0;
+  flex: none;
   transition: background var(--transition), color var(--transition);
 }
 .webdav-dialog-close:hover { background: var(--bg-hover); color: var(--text-color); }

@@ -143,8 +143,8 @@ export function WebDavHistoryDialog({
     <div className="webdav-history-dialog">
       <div className="webdav-history-dialog-header">
         <h3>{mode === 'global' ? '全部备份' : '当前文档历史'}</h3>
-        <button type="button" className="webdav-dialog-close" onClick={close}>
-          ✕
+        <button type="button" className="webdav-dialog-close" onClick={close} aria-label="关闭">
+          <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"><path d="m4 4 8 8m0-8-8 8" /></svg>
         </button>
       </div>
 

@@ -2453,6 +2453,14 @@ body {
   animation: webdav-rotate .8s linear infinite;
 }
 @keyframes webdav-rotate { to { transform: rotate(360deg); } }
+@keyframes cloudPanelIn {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes cloudDotPulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ui-accent) 40%, transparent); }
+  50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--ui-accent) 0%, transparent); }
+}
 
 .webdav-history-popover {
   position: fixed;
@@ -2513,7 +2521,7 @@ body {
   background: var(--surface-raised);
   box-shadow: 0 24px 64px rgba(0, 0, 0, .28), var(--shadow-lg);
   color: var(--text-color);
-  animation: fadeIn 0.15s ease-out;
+  animation: cloudPanelIn 0.18s cubic-bezier(0.16, 1, 0.3, 1);
   overflow: hidden;
 }
 
@@ -2569,10 +2577,15 @@ body {
   border: 1px solid var(--border-color);
   border-radius: 10px;
   overflow: hidden;
-  transition: border-color var(--transition);
+  transition: border-color var(--transition), box-shadow var(--transition), transform var(--transition);
+}
+.cloud-card:hover {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-soft);
+  transform: translateY(-1px);
 }
 .cloud-card-error { border-color: color-mix(in srgb, var(--ui-error) 30%, transparent); }
-.cloud-card-off { opacity: 0.65; }
+.cloud-card-off { opacity: 0.62; filter: saturate(0.7); }
 
 .cloud-card-header {
   display: flex;
@@ -2580,7 +2593,7 @@ body {
   justify-content: space-between;
   gap: 12px;
   padding: 14px 16px;
-  background: var(--surface-subtle);
+  background: linear-gradient(180deg, var(--surface-subtle), color-mix(in srgb, var(--surface-subtle) 60%, var(--surface-raised)));
 }
 .cloud-card-info {
   display: flex;
@@ -2604,43 +2617,52 @@ body {
   background: var(--text-muted);
 }
 .cloud-card-dot.success { background: var(--ui-success); }
-.cloud-card-dot.syncing { background: var(--ui-accent); animation: webdav-rotate .8s linear infinite; }
+.cloud-card-dot.syncing { background: var(--ui-accent); animation: webdav-rotate .8s linear infinite, cloudDotPulse 1.4s ease-out infinite; }
 .cloud-card-dot.error { background: var(--ui-error); }
 .cloud-card-dot.queued { background: var(--ui-warning); }
 
-/* 开关（仿 settings-switch） */
-.cloud-switch {
-  position: relative;
+/* 开关（仿 settings-switch；使用 .cloud-panel .cloud-switch 双选择器
+   提升优先级到 (0,2,0)，与 .app :is(button) 的 !important 旗鼓相当，
+   配合位置靠后保证不被覆盖；并通过 appearance: none 重置 user agent 默认外观） */
+.cloud-panel .cloud-switch {
+  position: relative !important;
   flex: none;
-  width: 46px;
-  height: 26px;
-  min-width: 46px;
-  padding: 0;
-  border: 1px solid var(--border-strong);
-  border-radius: 999px;
-  background: var(--surface-muted);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text-muted) 8%, transparent);
+  width: 46px !important;
+  height: 26px !important;
+  min-width: 46px !important;
+  min-height: 26px !important;
+  aspect-ratio: 46 / 26;
+  padding: 0 !important;
+  margin: 0 !important;
+  border: 1px solid var(--border-strong) !important;
+  border-radius: 999px !important;
+  background: var(--surface-muted) !important;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text-muted) 8%, transparent) !important;
+  box-sizing: border-box;
+  appearance: none;
+  -webkit-appearance: none;
   cursor: pointer;
   transition: background 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
 }
-.cloud-switch:hover { border-color: var(--text-muted); background: var(--bg-hover); }
-.cloud-switch:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 3px var(--accent-soft);
+.cloud-panel .cloud-switch:hover { border-color: var(--text-muted) !important; background: var(--bg-hover) !important; }
+.cloud-panel .cloud-switch:focus-visible {
+  outline: none !important;
+  box-shadow: 0 0 0 3px var(--accent-soft) !important;
 }
-.cloud-switch-thumb {
-  position: absolute;
+.cloud-panel .cloud-switch-thumb {
+  position: absolute !important;
   top: 3px;
   left: 3px;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: var(--text-muted);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, .3);
+  width: 18px !important;
+  height: 18px !important;
+  aspect-ratio: 1;
+  border-radius: 50% !important;
+  background: var(--text-muted) !important;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 30%) !important;
   transition: transform 160ms ease, background 160ms ease;
 }
-.cloud-switch.is-on { border-color: var(--accent-color); background: var(--accent-color); }
-.cloud-switch.is-on .cloud-switch-thumb { transform: translateX(20px); background: #fff; }
+.cloud-panel .cloud-switch.is-on { border-color: var(--accent-color) !important; background: var(--accent-color) !important; }
+.cloud-panel .cloud-switch.is-on .cloud-switch-thumb { transform: translateX(20px) !important; background: #fff !important; }
 
 /* Status Badge + Retry */
 .cloud-card-status {
