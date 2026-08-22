@@ -10,7 +10,7 @@
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](https://github.com/zhcx/zeditor/blob/main/LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey?style=flat-square)](https://github.com/zhcx/zeditor/releases)
 
-<img src="src-tauri/icons/icon.png" alt="Zeditor Logo" width="128" height="128">
+<img src="docs/banner.png" alt="Zeditor" width="900">
 
 </div>
 
@@ -383,6 +383,17 @@ SignPath Foundation 申请目前处于准备/审核阶段；在正式启用前�
 [![GitHub 更新热力图](https://ghchart.rshah.org/2196f3/zhcx)](https://github.com/zhcx/zeditor/graphs/commit-activity)
 
 </div>
+
+---
+
+## 🚀 版本更新日志
+
+- **v0.4.0**（2026-08-22）：全新蓝色 `Z` 应用图标与 GitHub 首页横幅；延续云同步面板（WebDAV / S3）开关样式统一、未配置拦截、设置按钮层级修复与视觉打磨。详见 [v0.4.0 发布说明](docs/releases/v0.4.0.md)。
+  - 平台安装包（由 `v0.4.0` 标签触发 GitHub Actions 构建）：Windows `Zeditor_0.4.0_x64-setup.exe` / `Zeditor_0.4.0_x64_en-US.msi`、macOS（Apple Silicon / Intel）`.dmg`、Linux `.deb` / `.rpm` / `.AppImage`。
+- **v0.3.9**：云同步面板交互与视觉打磨（状态显示、开关样式统一、历史版本打开）。详见 [v0.3.9 发布说明](docs/releases/v0.3.9.md)。
+- **v0.3.7**：品牌与转换引擎双重升级 —— 项目更名 **Zeditor**（原 MarkItDown），文档转换引擎由 markitdown(Python) 全面替换为原生 Rust 的 **AnyDoc**。
+
+完整发布说明见 [`docs/releases/`](docs/releases/)。
 
 ---
 
