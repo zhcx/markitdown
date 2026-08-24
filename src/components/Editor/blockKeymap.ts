@@ -1,5 +1,6 @@
 import { baseKeymap, chainCommands, newlineInCode, setBlockType } from 'prosemirror-commands';
 import { keymap } from 'prosemirror-keymap';
+import { redo, undo } from 'prosemirror-history';
 import { splitListItem } from 'prosemirror-schema-list';
 import type { Command } from 'prosemirror-state';
 import { blockSchema } from './blockSchema.ts';
@@ -45,6 +46,9 @@ export function createBlockKeyBindings(): Record<string, Command> {
     ),
     'Shift-Enter': chainCommands(newlineInCode, insertHardBreak),
     Backspace: chainCommands(resetEmptyTextBlock, baseKeymap.Backspace),
+    'Mod-z': undo,
+    'Shift-Mod-z': redo,
+    'Mod-y': redo,
   };
 }
 

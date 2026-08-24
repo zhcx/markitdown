@@ -11,7 +11,7 @@
     "tauri": "tauri",
     "build": "tsc -b && vite build",
     "icons:markdown": "node scripts/generate-markdown-file-icon.cjs",
-    "test": "node --test tests/*.test.ts",
+    "test": "node --import ./tests/helpers/register-tsx-config.mjs --import tsx --import ./tests/helpers/register-css-loader.mjs --test tests/*.test.ts",
     "lint": "eslint .",
     "preview": "vite preview"
   },
@@ -57,7 +57,9 @@
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.2",
     "globals": "^17.5.0",
+    "jsdom": "^29.1.1",
     "sharp": "^0.35.3",
+    "tsx": "^4.23.12",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.58.2",
     "vite": "8.1.5"

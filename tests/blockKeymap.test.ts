@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { history } from 'prosemirror-history';
 import { EditorState, TextSelection, type Transaction } from 'prosemirror-state';
 import { blockSchema } from '../src/components/Editor/blockSchema.ts';
 import { createBlockKeyBindings, insertHardBreak } from '../src/components/Editor/blockKeymap.ts';
@@ -77,6 +78,31 @@ test('Enter splits a checked task into an unchecked new task', () => {
   const next = apply(createBlockKeyBindings().Enter, state);
   assert.equal(next.doc.firstChild?.child(0).attrs.checked, true);
   assert.equal(next.doc.firstChild?.child(1).attrs.checked, false);
+});
+
+test('history shortcuts undo and redo a checked-task split', () => {
+  const paragraph = blockSchema.nodes.paragraph.create(null, blockSchema.text('AB'));
+  const task = blockSchema.nodes.task_item.create({ checked: true }, paragraph);
+  const doc = blockSchema.nodes.doc.create(null, blockSchema.nodes.task_list.create(null, task));
+  const state = EditorState.create({
+    schema: blockSchema,
+    doc,
+    selection: TextSelection.create(doc, 4),
+    plugins: [history()],
+  });
+  const bindings = createBlockKeyBindings();
+  assert.equal(typeof bindings['Mod-z'], 'function');
+  assert.equal(typeof bindings['Shift-Mod-z'], 'function');
+  assert.equal(typeof bindings['Mod-y'], 'function');
+
+  const split = apply(bindings.Enter, state);
+  assert.equal(split.doc.firstChild?.childCount, 2);
+  assert.equal(split.doc.firstChild?.child(1).attrs.checked, false);
+  const undone = apply(bindings['Mod-z'], split);
+  assert.equal(undone.doc.eq(state.doc), true);
+  const redone = apply(bindings['Shift-Mod-z'], undone);
+  assert.equal(redone.doc.eq(split.doc), true);
+  assert.equal(redone.doc.firstChild?.child(1).attrs.checked, false);
 });
 
 test('Backspace converts an empty heading to a paragraph', () => {
