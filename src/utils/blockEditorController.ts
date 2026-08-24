@@ -4,8 +4,8 @@ import { TextSelection, type EditorState } from 'prosemirror-state';
 import type { EditorView } from 'prosemirror-view';
 import type { BlockSourceMap, MarkdownCapability } from '../types/blockEditor.ts';
 import type { EditorController, EditorDispatchSpec, EditorLine, EditorSelectionRange } from '../types/editor.ts';
-import { parseMarkdown, serializeMarkdown } from './markdownBlockCodec.ts';
-import { buildBlockSourceMap } from './blockSourceMap.ts';
+import { parseMarkdown } from './markdownBlockCodec.ts';
+import { createBlockDocumentBridge, type BlockDocumentSnapshot } from './blockDocumentBridge.ts';
 
 interface BlockEditorRoot extends HTMLElement {
   querySelector<E extends Element = Element>(selectors: string): E | null;
@@ -15,6 +15,10 @@ export interface BlockControllerHost {
   onMarkdownChange: (markdown: string) => void;
   onUnsupportedMarkdown: (capability: MarkdownCapability) => void;
   onActiveSourceLine: (lineNumber: number) => void;
+}
+
+export interface BlockEditorController extends EditorController {
+  syncDocument: (document: Node) => BlockDocumentSnapshot;
 }
 
 function lineAt(source: string, lineNumber: number): EditorLine {
@@ -72,13 +76,13 @@ export function createBlockEditorController(
   view: EditorView,
   root: BlockEditorRoot,
   host: BlockControllerHost,
-): EditorController {
-  let source = serializeMarkdown(view.state.doc);
-  let sourceMap = buildBlockSourceMap(source, view.state.doc);
+): BlockEditorController {
+  const bridge = createBlockDocumentBridge(view.state.doc);
 
   const getSelection = (): EditorSelectionRange => {
-    const from = sourceOffsetForPosition(view.state, source, sourceMap, view.state.selection.from);
-    const to = sourceOffsetForPosition(view.state, source, sourceMap, view.state.selection.to);
+    const snapshot = bridge.getSnapshot();
+    const from = sourceOffsetForPosition(view.state, snapshot.markdown, snapshot.sourceMap, view.state.selection.from);
+    const to = sourceOffsetForPosition(view.state, snapshot.markdown, snapshot.sourceMap, view.state.selection.to);
     return { from, to, empty: from === to };
   };
 
@@ -91,12 +95,12 @@ export function createBlockEditorController(
     }
     const transaction = view.state.tr.replaceWith(0, view.state.doc.content.size, parsed.document.content);
     view.dispatch(transaction);
-    source = serializeMarkdown(parsed.document);
-    sourceMap = buildBlockSourceMap(source, view.state.doc);
-    host.onMarkdownChange(source);
+    bridge.syncDocument(view.state.doc);
+    const snapshot = bridge.getSnapshot();
+    host.onMarkdownChange(snapshot.markdown);
     const nextSelection = selection || { from: 0, to: 0 };
-    const anchor = positionForSourceOffset(view.state, source, sourceMap, nextSelection.from);
-    const head = positionForSourceOffset(view.state, source, sourceMap, nextSelection.to);
+    const anchor = positionForSourceOffset(view.state, snapshot.markdown, snapshot.sourceMap, nextSelection.from);
+    const head = positionForSourceOffset(view.state, snapshot.markdown, snapshot.sourceMap, nextSelection.to);
     view.dispatch(view.state.tr.setSelection(TextSelection.near(view.state.doc.resolve(Math.max(1, Math.min(view.state.doc.content.size, anchor))))));
     if (head !== anchor) {
       view.dispatch(view.state.tr.setSelection(TextSelection.between(
@@ -104,12 +108,13 @@ export function createBlockEditorController(
         view.state.doc.resolve(Math.max(1, Math.min(view.state.doc.content.size, head))),
       )));
     }
-    host.onActiveSourceLine(lineForOffset(source, nextSelection.from));
+    host.onActiveSourceLine(lineForOffset(snapshot.markdown, nextSelection.from));
   };
 
   const setSelection = (from: number, to = from) => {
-    const anchor = positionForSourceOffset(view.state, source, sourceMap, from);
-    const head = positionForSourceOffset(view.state, source, sourceMap, to);
+    const snapshot = bridge.getSnapshot();
+    const anchor = positionForSourceOffset(view.state, snapshot.markdown, snapshot.sourceMap, from);
+    const head = positionForSourceOffset(view.state, snapshot.markdown, snapshot.sourceMap, to);
     const selection = TextSelection.between(
       view.state.doc.resolve(Math.max(1, Math.min(view.state.doc.content.size, anchor))),
       view.state.doc.resolve(Math.max(1, Math.min(view.state.doc.content.size, head))),
@@ -118,10 +123,11 @@ export function createBlockEditorController(
   };
 
   const applyDispatch = (spec: EditorDispatchSpec) => {
+    const snapshot = bridge.getSnapshot();
     if (spec.changes && typeof spec.changes.from === 'number') {
-      const from = Math.max(0, Math.min(source.length, spec.changes.from));
-      const to = Math.max(from, Math.min(source.length, spec.changes.to ?? from));
-      const nextSource = source.slice(0, from) + (spec.changes.insert ?? '') + source.slice(to);
+      const from = Math.max(0, Math.min(snapshot.markdown.length, spec.changes.from));
+      const to = Math.max(from, Math.min(snapshot.markdown.length, spec.changes.to ?? from));
+      const nextSource = snapshot.markdown.slice(0, from) + (spec.changes.insert ?? '') + snapshot.markdown.slice(to);
       const cursor = from + (spec.changes.insert ?? '').length;
       updateSource(nextSource, { from: cursor, to: cursor });
     }
@@ -134,16 +140,18 @@ export function createBlockEditorController(
 
   const controller = {
     kind: 'blocks' as const,
+    syncDocument: (document: Node) => bridge.syncDocument(document),
     scrollDOM: root.querySelector<HTMLElement>('.block-editor-scroll') || root,
     getScrollTop: () => controller.scrollDOM.scrollTop || 0,
     getScrollHeight: () => controller.scrollDOM.scrollHeight || 0,
     getClientHeight: () => controller.scrollDOM.clientHeight || 0,
     getTopForLineNumber: (lineNumber: number) => {
-      const block = sourceMap.blocks.find(item => lineNumber >= item.lineFrom && lineNumber <= item.lineTo)
-        || sourceMap.blocks.reduce((closest, item) => Math.abs(item.lineFrom - lineNumber) < Math.abs(closest.lineFrom - lineNumber) ? item : closest, sourceMap.blocks[0]);
+      const snapshot = bridge.getSnapshot();
+      const block = snapshot.sourceMap.blocks.find(item => lineNumber >= item.lineFrom && lineNumber <= item.lineTo)
+        || snapshot.sourceMap.blocks.reduce((closest, item) => Math.abs(item.lineFrom - lineNumber) < Math.abs(closest.lineFrom - lineNumber) ? item : closest, snapshot.sourceMap.blocks[0]);
       const element = block ? root.querySelector<HTMLElement>(`[data-block-id="${block.blockId}"]`) : null;
       if (element) return element.offsetTop;
-      const lines = Math.max(1, source.split('\n').length - 1);
+      const lines = Math.max(1, snapshot.markdown.split('\n').length - 1);
       const max = Math.max(0, controller.getScrollHeight() - controller.getClientHeight());
       return max * Math.max(0, Math.min(1, (lineNumber - 1) / lines));
     },
@@ -152,19 +160,27 @@ export function createBlockEditorController(
       controller.scrollDOM.addEventListener('scroll', listener);
       return () => controller.scrollDOM.removeEventListener('scroll', listener);
     },
-    getValue: () => source,
+    getValue: () => bridge.getSnapshot().markdown,
     getSelection,
-    getText: (from: number, to: number) => source.slice(from, to),
+    getText: (from: number, to: number) => {
+      const snapshot = bridge.getSnapshot();
+      return snapshot.markdown.slice(from, to);
+    },
     replaceRange: (from: number, to: number, text: string, selection?: { from: number; to: number }) => {
-      const safeFrom = Math.max(0, Math.min(source.length, from));
-      const safeTo = Math.max(safeFrom, Math.min(source.length, to));
-      updateSource(source.slice(0, safeFrom) + text + source.slice(safeTo), selection || { from: safeFrom + text.length, to: safeFrom + text.length });
+      const snapshot = bridge.getSnapshot();
+      const safeFrom = Math.max(0, Math.min(snapshot.markdown.length, from));
+      const safeTo = Math.max(safeFrom, Math.min(snapshot.markdown.length, to));
+      updateSource(snapshot.markdown.slice(0, safeFrom) + text + snapshot.markdown.slice(safeTo), selection || { from: safeFrom + text.length, to: safeFrom + text.length });
     },
     setSelection,
-    lineAt: (offset: number) => lineAt(source, lineForOffset(source, offset)),
-    line: (lineNumber: number) => lineAt(source, lineNumber),
+    lineAt: (offset: number) => {
+      const snapshot = bridge.getSnapshot();
+      return lineAt(snapshot.markdown, lineForOffset(snapshot.markdown, offset));
+    },
+    line: (lineNumber: number) => lineAt(bridge.getSnapshot().markdown, lineNumber),
     coordsAtPos: (offset: number) => {
-      const coords = view.coordsAtPos?.(positionForSourceOffset(view.state, source, sourceMap, offset));
+      const snapshot = bridge.getSnapshot();
+      const coords = view.coordsAtPos?.(positionForSourceOffset(view.state, snapshot.markdown, snapshot.sourceMap, offset));
       return coords ? { left: coords.left, bottom: coords.bottom, x: coords.left, y: coords.bottom } : null;
     },
     focus: () => view.focus(),
@@ -175,16 +191,19 @@ export function createBlockEditorController(
       view.dispatch(view.state.tr.scrollIntoView());
     },
     dispatch: applyDispatch,
-  } as unknown as EditorController;
+  } as unknown as BlockEditorController;
 
   Object.defineProperty(controller, 'state', {
     enumerable: true,
     get: () => ({
       selection: { main: getSelection() },
-      sliceDoc: (from: number, to: number) => source.slice(from, to),
+      sliceDoc: (from: number, to: number) => {
+        const snapshot = bridge.getSnapshot();
+        return snapshot.markdown.slice(from, to);
+      },
       doc: {
-        length: source.length,
-        lines: source.split('\n').length,
+        length: bridge.getSnapshot().markdown.length,
+        lines: bridge.getSnapshot().markdown.split('\n').length,
         lineAt: (offset: number) => controller.lineAt(offset),
         line: (lineNumber: number) => controller.line(lineNumber),
       },

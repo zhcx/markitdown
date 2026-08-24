@@ -53,3 +53,14 @@ test('external unsupported replacement requests source-mode fallback', () => {
   harness.controller.replaceRange(0, 6, '| A | B |\n|---|---|\n| 1 | 2 |\n');
   assert.equal(harness.fallback, true);
 });
+
+test('syncDocument refreshes controller values after a direct editor transaction', () => {
+  const harness = createHarness('Title\n');
+  const parsed = parseMarkdown('Title updated\n');
+  if (!parsed.document) throw new Error('expected block document');
+
+  harness.controller.syncDocument(parsed.document);
+
+  assert.equal(harness.controller.getValue(), 'Title updated\n');
+  assert.equal(harness.controller.line(1).text, 'Title updated');
+});
