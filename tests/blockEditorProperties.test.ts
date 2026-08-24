@@ -10,7 +10,7 @@ test('BlockEditor exposes a clickable property handle and property menu', () => 
   assert.match(editor, /changeCurrentBlockType/);
   assert.match(editor, /block-handle/);
   assert.match(editor, /block-property-menu/);
-  assert.match(editor, /new EditorView\(\{\s*mount:\s*editorHost\s*\}/);
+  assert.match(editor, /new EditorView\(\{\s*mount:\s*editorHostRef\.current\s*\}/);
   assert.match(editor, /changeBlockTypeAtIndex\(blockPropertyMenu\.index/);
   assert.match(editor, /Decoration\.node/);
   assert.match(editor, /createBlockMetadataPlugin\(\)/);

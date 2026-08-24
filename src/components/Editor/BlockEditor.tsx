@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { baseKeymap } from 'prosemirror-commands';
 import { dropCursor } from 'prosemirror-dropcursor';
 import { gapCursor } from 'prosemirror-gapcursor';
 import { history } from 'prosemirror-history';
-import { keymap } from 'prosemirror-keymap';
 import { EditorState, Plugin } from 'prosemirror-state';
 import { Decoration, DecorationSet, EditorView } from 'prosemirror-view';
 import { useAppStore } from '../../stores/appStore';
@@ -13,6 +11,7 @@ import { parseMarkdown, serializeMarkdown } from '../../utils/markdownBlockCodec
 import { filterSlashCommands, findSlashCommandTrigger, type SlashCommand } from '../../utils/slashCommands.ts';
 import { changeBlockTypeAtIndex, changeCurrentBlockType } from './blockCommands.ts';
 import { createBlockInputRules } from './blockInputRules.ts';
+import { createBlockKeymap } from './blockKeymap.ts';
 import { blockSchema } from './blockSchema.ts';
 import { BlockPropertyMenu, type BlockPropertySelection } from './BlockPropertyMenu.tsx';
 import { EditorUnsupportedNotice } from './EditorUnsupportedNotice.tsx';
@@ -75,7 +74,7 @@ function createBlockPlugins() {
     history(),
     createBlockMetadataPlugin(),
     createBlockInputRules(),
-    keymap(baseKeymap),
+    createBlockKeymap(),
     dropCursor(),
     gapCursor(),
   ];
@@ -92,6 +91,7 @@ export function BlockEditor({
   onSwitchToSource,
 }: BlockEditorProps) {
   const rootRef = useRef<HTMLDivElement>(null);
+  const editorHostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const controllerRef = useRef<ReturnType<typeof createBlockEditorController> | null>(null);
   const initializingRef = useRef(true);
@@ -212,11 +212,8 @@ export function BlockEditor({
 
   useEffect(() => {
     const initialParsed = initialParsedRef.current;
-    if (!rootRef.current || !initialParsed.document || initialParsed.mode !== 'blocks') return undefined;
+    if (!rootRef.current || !editorHostRef.current || !initialParsed.document || initialParsed.mode !== 'blocks') return undefined;
     const host = rootRef.current;
-    const editorHost = document.createElement('div');
-    editorHost.className = 'block-editor-content';
-    host.appendChild(editorHost);
 
     const state = EditorState.create({
       schema: blockSchema,
@@ -228,15 +225,17 @@ export function BlockEditor({
       if (!initializingRef.current && value !== useAppStore.getState().content) onMarkdownChange(value);
     };
 
-    const view = new EditorView({ mount: editorHost }, {
+    const view = new EditorView({ mount: editorHostRef.current }, {
       state,
       dispatchTransaction: transaction => {
         const nextState = view.state.apply(transaction);
         view.updateState(nextState);
-        if (transaction.docChanged) publish(serializeMarkdown(nextState.doc));
-        const active = controllerRef.current?.getSelection();
+        const snapshot = controllerRef.current?.syncDocument();
+        if (transaction.docChanged && snapshot) publish(snapshot.markdown);
+        const controller = controllerRef.current;
+        const active = controller?.getSelection();
         if (active) {
-          const line = controllerRef.current?.lineAt(active.from).number || 1;
+          const line = controller.lineAt(active.from).number;
           onActiveLineChange?.(line);
           if (transaction.selectionSet) onActiveLineReveal?.(line);
         }
@@ -262,7 +261,6 @@ export function BlockEditor({
       controllerRef.current = null;
       viewRef.current?.destroy();
       viewRef.current = null;
-      editorHost.remove();
     };
   }, [onActiveLineChange, onActiveLineReveal, onMarkdownChange, onUnsupportedMarkdown, setEditorView, syncSlashMenu]);
 
@@ -315,6 +313,8 @@ export function BlockEditor({
             if (!blockPropertyMenu) setBlockHandle(null);
           }}
         >
+          <div ref={editorHostRef} className="block-editor-content" />
+          <div className="block-editor-overlay" aria-hidden="true">
           {blockHandle && (
             <button
               type="button"
@@ -331,6 +331,7 @@ export function BlockEditor({
               ⋮⋮
             </button>
           )}
+          </div>
         </div>
       </div>
       {blockPropertyMenu && (

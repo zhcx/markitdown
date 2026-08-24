@@ -26,3 +26,10 @@ test('SourceEditor remains a Markdown Monaco editor', () => {
   assert.match(source, /monaco\.editor\.createModel/);
   assert.match(source, /['"]markdown['"]/);
 });
+
+test('React declares a stable ProseMirror mount instead of appending unmanaged children', () => {
+  const source = read('src/components/Editor/BlockEditor.tsx');
+  assert.match(source, /ref=\{editorHostRef\}[\s\S]*className="block-editor-content"/);
+  assert.doesNotMatch(source, /document\.createElement\('div'\)/);
+  assert.doesNotMatch(source, /appendChild\(editorHost\)/);
+});
