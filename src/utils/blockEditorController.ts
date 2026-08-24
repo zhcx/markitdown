@@ -18,7 +18,7 @@ export interface BlockControllerHost {
 }
 
 export interface BlockEditorController extends EditorController {
-  syncDocument: (document: Node) => BlockDocumentSnapshot;
+  syncDocument: () => BlockDocumentSnapshot;
 }
 
 function lineAt(source: string, lineNumber: number): EditorLine {
@@ -138,13 +138,14 @@ export function createBlockEditorController(
     if (spec.scrollIntoView && typeof anchor === 'number') view.dispatch(view.state.tr.scrollIntoView());
   };
 
-  const controller = {
+  const scrollDOM = root.querySelector<HTMLElement>('.block-editor-scroll') || root;
+  const controller: BlockEditorController = {
     kind: 'blocks' as const,
-    syncDocument: (document: Node) => bridge.syncDocument(document),
-    scrollDOM: root.querySelector<HTMLElement>('.block-editor-scroll') || root,
-    getScrollTop: () => controller.scrollDOM.scrollTop || 0,
-    getScrollHeight: () => controller.scrollDOM.scrollHeight || 0,
-    getClientHeight: () => controller.scrollDOM.clientHeight || 0,
+    syncDocument: () => bridge.syncDocument(view.state.doc),
+    scrollDOM,
+    getScrollTop: () => scrollDOM.scrollTop || 0,
+    getScrollHeight: () => scrollDOM.scrollHeight || 0,
+    getClientHeight: () => scrollDOM.clientHeight || 0,
     getTopForLineNumber: (lineNumber: number) => {
       const snapshot = bridge.getSnapshot();
       const block = snapshot.sourceMap.blocks.find(item => lineNumber >= item.lineFrom && lineNumber <= item.lineTo)
@@ -152,13 +153,13 @@ export function createBlockEditorController(
       const element = block ? root.querySelector<HTMLElement>(`[data-block-id="${block.blockId}"]`) : null;
       if (element) return element.offsetTop;
       const lines = Math.max(1, snapshot.markdown.split('\n').length - 1);
-      const max = Math.max(0, controller.getScrollHeight() - controller.getClientHeight());
+      const max = Math.max(0, scrollDOM.scrollHeight - scrollDOM.clientHeight);
       return max * Math.max(0, Math.min(1, (lineNumber - 1) / lines));
     },
-    setScrollTop: (top: number) => { controller.scrollDOM.scrollTop = top; },
+    setScrollTop: (top: number) => { scrollDOM.scrollTop = top; },
     onScroll: (listener: () => void) => {
-      controller.scrollDOM.addEventListener('scroll', listener);
-      return () => controller.scrollDOM.removeEventListener('scroll', listener);
+      scrollDOM.addEventListener('scroll', listener);
+      return () => scrollDOM.removeEventListener('scroll', listener);
     },
     getValue: () => bridge.getSnapshot().markdown,
     getSelection,
@@ -191,24 +192,23 @@ export function createBlockEditorController(
       view.dispatch(view.state.tr.scrollIntoView());
     },
     dispatch: applyDispatch,
-  } as unknown as BlockEditorController;
-
-  Object.defineProperty(controller, 'state', {
-    enumerable: true,
-    get: () => ({
-      selection: { main: getSelection() },
-      sliceDoc: (from: number, to: number) => {
-        const snapshot = bridge.getSnapshot();
-        return snapshot.markdown.slice(from, to);
-      },
-      doc: {
-        length: bridge.getSnapshot().markdown.length,
-        lines: bridge.getSnapshot().markdown.split('\n').length,
-        lineAt: (offset: number) => controller.lineAt(offset),
-        line: (lineNumber: number) => controller.line(lineNumber),
-      },
-      update: (spec: EditorDispatchSpec) => spec,
-    }),
-  });
+    get state() {
+      const snapshot = bridge.getSnapshot();
+      return {
+        selection: { main: getSelection() },
+        sliceDoc: (from: number, to: number) => {
+          const currentSnapshot = bridge.getSnapshot();
+          return currentSnapshot.markdown.slice(from, to);
+        },
+        doc: {
+          length: snapshot.markdown.length,
+          lines: snapshot.markdown.split('\n').length,
+          lineAt: (offset: number) => lineAt(snapshot.markdown, lineForOffset(snapshot.markdown, offset)),
+          line: (lineNumber: number) => lineAt(snapshot.markdown, lineNumber),
+        },
+        update: (spec: EditorDispatchSpec) => spec,
+      };
+    },
+  };
   return controller;
 }

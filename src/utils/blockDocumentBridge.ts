@@ -30,8 +30,8 @@ export function createBlockDocumentBridge(document: Node): BlockDocumentBridge {
   return {
     getSnapshot: () => snapshot,
     syncDocument: (nextDocument) => {
+      if (nextDocument === snapshot.document || nextDocument.eq(snapshot.document)) return snapshot;
       const markdown = serializeMarkdown(nextDocument);
-      if (markdown === snapshot.markdown) return snapshot;
       snapshot = {
         document: nextDocument,
         markdown,

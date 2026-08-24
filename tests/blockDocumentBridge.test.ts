@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { blockSchema } from '../src/components/Editor/blockSchema.ts';
 import { parseMarkdown } from '../src/utils/markdownBlockCodec.ts';
 import { createBlockDocumentBridge } from '../src/utils/blockDocumentBridge.ts';
 
@@ -7,6 +8,11 @@ function documentFor(markdown: string) {
   const parsed = parseMarkdown(markdown);
   if (!parsed.document) throw new Error('expected block document');
   return parsed.document;
+}
+
+function imageDocument(alt: string | null) {
+  const image = blockSchema.nodes.image.create({ src: 'image.png', alt, title: null });
+  return blockSchema.topNodeType.create(null, [blockSchema.nodes.paragraph.create(null, [image])]);
 }
 
 test('updates Markdown and source ranges as one versioned snapshot', () => {
@@ -25,4 +31,18 @@ test('does not increment the version for an equivalent document', () => {
   const document = documentFor('Same\n');
   const bridge = createBlockDocumentBridge(document);
   assert.equal(bridge.syncDocument(documentFor('Same\n')).version, 0);
+});
+
+test('updates the snapshot for structurally different documents with identical Markdown', () => {
+  const initialDocument = imageDocument(null);
+  const nextDocument = imageDocument('');
+  const bridge = createBlockDocumentBridge(initialDocument);
+  const initial = bridge.getSnapshot();
+  const updated = bridge.syncDocument(nextDocument);
+
+  assert.equal(initialDocument.eq(nextDocument), false);
+  assert.equal(initial.markdown, updated.markdown);
+
+  assert.equal(updated.document, nextDocument);
+  assert.equal(updated.version, 1);
 });

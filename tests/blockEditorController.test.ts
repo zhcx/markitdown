@@ -11,11 +11,18 @@ function createHarness(markdown: string) {
   let currentState = EditorState.create({ schema: blockSchema, doc: parsed.document });
   const changes: string[] = [];
   let fallback = false;
+  let coordsPosition: number | null = null;
+  const dispatch = (transaction: Parameters<typeof currentState.apply>[0]) => {
+    currentState = currentState.apply(transaction);
+  };
   const view = {
     get state() { return currentState; },
-    dispatch(transaction: Parameters<typeof currentState.apply>[0]) { currentState = currentState.apply(transaction); },
+    dispatch,
     focus() {},
-    coordsAtPos() { return { left: 10, right: 20, top: 10, bottom: 30 }; },
+    coordsAtPos(position: number) {
+      coordsPosition = position;
+      return { left: 10, right: 20, top: 10, bottom: 30 };
+    },
     scrollIntoView() {},
   } as never;
   const root = {
@@ -28,7 +35,14 @@ function createHarness(markdown: string) {
     onUnsupportedMarkdown: () => { fallback = true; },
     onActiveSourceLine: () => {},
   });
-  return { controller, changes, get fallback() { return fallback; } };
+  return {
+    controller,
+    changes,
+    dispatch,
+    get state() { return currentState; },
+    get coordsPosition() { return coordsPosition; },
+    get fallback() { return fallback; },
+  };
 }
 
 test('exposes block content through the existing EditorController facade', () => {
@@ -59,8 +73,13 @@ test('syncDocument refreshes controller values after a direct editor transaction
   const parsed = parseMarkdown('Title updated\n');
   if (!parsed.document) throw new Error('expected block document');
 
-  harness.controller.syncDocument(parsed.document);
+  harness.dispatch(harness.state.tr.replaceWith(0, harness.state.doc.content.size, parsed.document.content));
+  harness.controller.syncDocument();
 
   assert.equal(harness.controller.getValue(), 'Title updated\n');
   assert.equal(harness.controller.line(1).text, 'Title updated');
+  harness.controller.setSelection(0, 6);
+  assert.deepEqual(harness.controller.getSelection(), { from: 0, to: 6, empty: false });
+  harness.controller.coordsAtPos(6);
+  assert.equal(harness.coordsPosition, 7);
 });
