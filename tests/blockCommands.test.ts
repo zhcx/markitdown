@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { EditorState, TextSelection, type Transaction } from 'prosemirror-state';
 import { blockSchema } from '../src/components/Editor/blockSchema.ts';
 import {
+  changeCurrentBlockType,
   deleteCurrentBlock,
   insertBlock,
   moveTopLevelBlock,
@@ -30,6 +31,18 @@ test('turns the current text block into a heading', () => {
   assert.equal(next.doc.firstChild?.type.name, 'heading');
   assert.equal(next.doc.firstChild?.attrs.level, 2);
   assert.equal(next.doc.textContent, 'Title');
+});
+
+test('changes the current block property while preserving its text', () => {
+  const heading = apply(changeCurrentBlockType('heading', { level: 2 }), stateWithBlocks(paragraph('Title')));
+  assert.equal(heading.doc.firstChild?.type.name, 'heading');
+  assert.equal(heading.doc.firstChild?.attrs.level, 2);
+  assert.equal(heading.doc.textContent, 'Title');
+
+  const task = apply(changeCurrentBlockType('task_list'), stateWithBlocks(paragraph('Ship it')));
+  assert.equal(task.doc.firstChild?.type.name, 'task_list');
+  assert.equal(task.doc.firstChild?.firstChild?.type.name, 'task_item');
+  assert.equal(task.doc.textContent, 'Ship it');
 });
 
 test('inserts a new block after the current block', () => {

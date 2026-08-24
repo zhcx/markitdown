@@ -11,8 +11,10 @@ import type { MarkdownCapability } from '../../types/blockEditor.ts';
 import { createBlockEditorController } from '../../utils/blockEditorController.ts';
 import { parseMarkdown, serializeMarkdown } from '../../utils/markdownBlockCodec.ts';
 import { filterSlashCommands, findSlashCommandTrigger, type SlashCommand } from '../../utils/slashCommands.ts';
+import { changeCurrentBlockType } from './blockCommands.ts';
 import { createBlockInputRules } from './blockInputRules.ts';
 import { blockSchema } from './blockSchema.ts';
+import { BlockPropertyMenu, type BlockPropertySelection } from './BlockPropertyMenu.tsx';
 import { EditorUnsupportedNotice } from './EditorUnsupportedNotice.tsx';
 import { SlashCommandMenu, type SlashMenuAnchor } from './SlashCommandMenu.tsx';
 import './BlockEditor.css';
@@ -33,6 +35,19 @@ interface SlashMenuState {
   to: number;
   query: string;
   anchor: SlashMenuAnchor;
+}
+
+interface BlockHandleState {
+  blockId: string;
+  index: number;
+  left: number;
+  top: number;
+}
+
+interface BlockPropertyMenuState {
+  index: number;
+  left: number;
+  top: number;
 }
 
 function applyBlockMetadata(view: EditorView) {
@@ -75,10 +90,29 @@ export function BlockEditor({
   const slashSelectedIndexRef = useRef(0);
   const [slashMenu, setSlashMenu] = useState<SlashMenuState | null>(null);
   const [slashSelectedIndex, setSlashSelectedIndex] = useState(0);
+  const [blockHandle, setBlockHandle] = useState<BlockHandleState | null>(null);
+  const [blockPropertyMenu, setBlockPropertyMenu] = useState<BlockPropertyMenuState | null>(null);
   const { setEditorView } = useAppStore();
   const parsed = parseMarkdown(markdown);
   const initialParsedRef = useRef(parsed);
   const slashCommands = useMemo(() => filterSlashCommands(slashMenu?.query || ''), [slashMenu?.query]);
+
+  const updateBlockHandle = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    const target = event.target instanceof Element ? event.target : null;
+    if (target?.closest('.block-handle')) return;
+    const block = target?.closest<HTMLElement>('.block-editor-content > [data-block-id]');
+    const root = rootRef.current;
+    if (!block || !root) return;
+    const rootRect = root.getBoundingClientRect();
+    const blockRect = block.getBoundingClientRect();
+    const index = Array.from(block.parentElement?.children || []).indexOf(block);
+    setBlockHandle({
+      blockId: block.dataset.blockId || '',
+      index,
+      left: blockRect.left - rootRect.left + root.scrollLeft - 30,
+      top: blockRect.top - rootRect.top + root.scrollTop + 2,
+    });
+  }, []);
 
   const closeSlashMenu = useCallback(() => {
     slashMenuRef.current = null;
@@ -111,16 +145,40 @@ export function BlockEditor({
     setSlashMenu(nextMenu);
   }, [closeSlashMenu]);
 
+  const applyBlockProperty = useCallback((selection: BlockPropertySelection) => {
+    const view = viewRef.current;
+    if (!view) return;
+    changeCurrentBlockType(selection.type, selection.attrs)(view.state, view.dispatch);
+    applyBlockMetadata(view);
+    syncSlashMenu();
+  }, [syncSlashMenu]);
+
   const applySlashCommand = useCallback((command: SlashCommand) => {
     const menu = slashMenuRef.current;
     const controller = controllerRef.current;
     if (!menu || !controller) return;
-    const { text, selectionStart = text.length, selectionEnd = selectionStart } = command.insertion;
     closeSlashMenu();
-    controller.replaceRange(menu.from, menu.to, text, {
-      from: menu.from + selectionStart,
-      to: menu.from + selectionEnd,
-    });
+    if (
+      command.blockAction?.kind === 'turn-into'
+      || (command.blockAction?.kind === 'insert' && command.blockAction.type !== 'image')
+    ) {
+      const view = viewRef.current;
+      if (view) {
+        const action = command.blockAction;
+        if (action?.kind === 'turn-into') {
+          changeCurrentBlockType('heading', { level: action.level })(view.state, view.dispatch);
+        } else if (action?.kind === 'insert' && action.type !== 'image') {
+          changeCurrentBlockType(action.type)(view.state, view.dispatch);
+        }
+        applyBlockMetadata(view);
+      }
+    } else {
+      const { text, selectionStart = text.length, selectionEnd = selectionStart } = command.insertion;
+      controller.replaceRange(menu.from, menu.to, text, {
+        from: menu.from + selectionStart,
+        to: menu.from + selectionEnd,
+      });
+    }
     controller.focus();
   }, [closeSlashMenu]);
 
@@ -223,6 +281,16 @@ export function BlockEditor({
     return () => root.removeEventListener('keydown', handleSlashKeyDown);
   }, [handleSlashKeyDown]);
 
+  useEffect(() => {
+    if (!blockPropertyMenu) return undefined;
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      const target = event.target instanceof Element ? event.target : null;
+      if (!target?.closest('.block-property-menu, .block-handle')) setBlockPropertyMenu(null);
+    };
+    window.addEventListener('pointerdown', closeOnOutsidePointer, true);
+    return () => window.removeEventListener('pointerdown', closeOnOutsidePointer, true);
+  }, [blockPropertyMenu]);
+
   if (parsed.mode !== 'blocks' || !parsed.document) {
     return (
       <div className={`editor-container block-editor-container ${className || ''}`} style={style}>
@@ -234,8 +302,41 @@ export function BlockEditor({
   return (
     <div className={`editor-container block-editor-container ${className || ''}`} style={style}>
       <div className="editor-document-card block-editor-document-card">
-        <div ref={rootRef} className="block-editor-scroll" aria-label="块编辑器" />
+        <div
+          ref={rootRef}
+          className="block-editor-scroll"
+          aria-label="块编辑器"
+          onMouseMove={updateBlockHandle}
+          onMouseLeave={() => {
+            if (!blockPropertyMenu) setBlockHandle(null);
+          }}
+        >
+          {blockHandle && (
+            <button
+              type="button"
+              className="block-handle"
+              aria-label="打开块属性"
+              title="块属性"
+              style={{ left: blockHandle.left, top: blockHandle.top }}
+              onMouseDown={event => event.preventDefault()}
+              onClick={event => {
+                const rect = event.currentTarget.getBoundingClientRect();
+                setBlockPropertyMenu({ index: blockHandle.index, left: rect.right + 8, top: rect.top });
+              }}
+            >
+              ⋮⋮
+            </button>
+          )}
+        </div>
       </div>
+      {blockPropertyMenu && (
+        <BlockPropertyMenu
+          left={blockPropertyMenu.left}
+          top={blockPropertyMenu.top}
+          onSelect={applyBlockProperty}
+          onClose={() => setBlockPropertyMenu(null)}
+        />
+      )}
       {slashMenu && (
         <SlashCommandMenu
           anchor={slashMenu.anchor}

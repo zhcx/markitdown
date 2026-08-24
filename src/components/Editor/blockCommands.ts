@@ -4,6 +4,8 @@ import { Fragment, type Node } from 'prosemirror-model';
 import { blockSchema } from './blockSchema.ts';
 import type { BlockNodeType } from '../../types/blockEditor.ts';
 
+export type BlockPropertyType = Exclude<BlockNodeType, 'image'>;
+
 function createInsertedBlock(type: BlockNodeType, schema = blockSchema): Node {
   switch (type) {
     case 'heading': return schema.nodes.heading.create({ level: 1 });
@@ -19,6 +21,45 @@ function createInsertedBlock(type: BlockNodeType, schema = blockSchema): Node {
   }
 }
 
+function blockContentAsParagraph(node: Node, schema = blockSchema) {
+  if (node.type.name === 'paragraph' || node.type.name === 'heading') {
+    return schema.nodes.paragraph.create(null, node.content);
+  }
+  return schema.nodes.paragraph.create(null, node.textContent ? schema.text(node.textContent) : undefined);
+}
+
+function createPropertyBlock(type: BlockPropertyType, current: Node, attrs: Record<string, unknown> = {}, schema = blockSchema): Node {
+  const paragraph = blockContentAsParagraph(current, schema);
+  switch (type) {
+    case 'paragraph':
+      return paragraph;
+    case 'heading':
+      return schema.nodes.heading.create({ level: Number(attrs.level) || 1 }, paragraph.content);
+    case 'bullet_list':
+      return schema.nodes.bullet_list.create({ tight: false, bullet: '-' }, schema.nodes.list_item.create(null, paragraph));
+    case 'ordered_list':
+      return schema.nodes.ordered_list.create({ order: 1, tight: false }, schema.nodes.list_item.create(null, paragraph));
+    case 'task_list':
+      return schema.nodes.task_list.create({ tight: false }, schema.nodes.task_item.create({ checked: false }, paragraph));
+    case 'blockquote':
+      return schema.nodes.blockquote.create(null, paragraph);
+    case 'code_block':
+      return schema.nodes.code_block.create({ params: String(attrs.params || '') }, current.textContent ? schema.text(current.textContent) : undefined);
+    case 'horizontal_rule':
+      return schema.nodes.horizontal_rule.create({ markup: '---' });
+    default:
+      return paragraph;
+  }
+}
+
+function topLevelBlockRange(state: EditorState) {
+  const index = state.selection.$from.index(0);
+  let from = 0;
+  for (let current = 0; current < index; current += 1) from += state.doc.child(current).nodeSize;
+  const node = state.doc.child(index);
+  return { index, from, to: from + node.nodeSize, node };
+}
+
 function currentTopLevelRange(state: EditorState) {
   const { $from } = state.selection;
   const depth = Math.max(1, $from.depth);
@@ -31,6 +72,18 @@ function currentTopLevelRange(state: EditorState) {
 
 export function turnInto(type: 'heading', level: 1 | 2 | 3 | 4): Command {
   return setBlockType(blockSchema.nodes[type], { level });
+}
+
+export function changeCurrentBlockType(type: BlockPropertyType, attrs: Record<string, unknown> = {}): Command {
+  return (state, dispatch) => {
+    const range = topLevelBlockRange(state);
+    const replacement = createPropertyBlock(type, range.node, attrs, state.schema);
+    if (!dispatch) return true;
+    const transaction = state.tr.replaceWith(range.from, range.to, replacement);
+    transaction.setSelection(TextSelection.near(transaction.doc.resolve(Math.min(transaction.doc.content.size, range.from + 1))));
+    dispatch(transaction);
+    return true;
+  };
 }
 
 export function insertBlock(type: BlockNodeType): Command {
