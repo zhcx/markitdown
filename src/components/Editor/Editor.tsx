@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAppStore } from '../../stores/appStore';
 import type { EditorMode } from '../../types/blockEditor.ts';
 import { parseMarkdown } from '../../utils/markdownBlockCodec.ts';
@@ -9,7 +9,7 @@ import { SourceEditor, type EditorProps } from './SourceEditor.tsx';
 import './BlockEditor.css';
 
 export function Editor({ className, style, onActiveLineChange, onActiveLineReveal }: EditorProps) {
-  const { content, tabs, activeTabId, setContent, setEditorView } = useAppStore();
+  const { content, tabs, activeTabId, setContent, setEditorView, setTabEditorMode } = useAppStore();
   const activeTab = tabs.find(tab => tab.id === activeTabId);
   const requestedMode: EditorMode = activeTab?.editorMode === 'source' ? 'source' : 'blocks';
   const capability = useMemo(() => parseMarkdown(content).capability, [content]);
@@ -18,9 +18,14 @@ export function Editor({ className, style, onActiveLineChange, onActiveLineRevea
   const handleBlockChange = useCallback((markdown: string) => setContent(markdown), [setContent]);
   const handleUnsupported = useCallback(() => setLocalMode('source'), []);
 
+  useEffect(() => {
+    setLocalMode(requestedMode);
+  }, [activeTabId, requestedMode]);
+
   const handleModeChange = (mode: EditorMode) => {
     if (mode === 'blocks' && !capability.supported) return;
     setLocalMode(mode);
+    if (activeTabId) setTabEditorMode(activeTabId, mode);
     setEditorView(null);
   };
 

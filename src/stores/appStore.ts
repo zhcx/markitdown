@@ -257,6 +257,7 @@ interface AppState {
   setSettingsTab: (tab: SettingsTab) => void;
   setActiveImageService: (service: 'cloudinary' | 'picgo' | 's3' | 'local') => void;
   setEditorView: (view: EditorController | null) => void;
+  setTabEditorMode: (id: string, mode: EditorMode) => void;
   loadSettings: () => Promise<void>;
   saveSettings: (settings: Settings) => Promise<void>;
   openFile: (path: string) => Promise<void>;
@@ -482,6 +483,7 @@ const initialTab: Tab = {
   path: null,
   content: '',
   modified: false,
+  editorMode: 'blocks',
 };
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -664,6 +666,7 @@ export const useAppStore = create<AppState>((set, get) => ({
             path,
             content: fileContent,
             modified: false,
+            editorMode: 'blocks',
           };
           set({
             tabs: [...tabs, newTab],
@@ -747,6 +750,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         content: markdown,
         // Converted content has not been saved as a Markdown file yet.
         modified: true,
+        editorMode: 'blocks',
       };
       const { tabs } = get();
       set({
@@ -836,6 +840,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       path: tab?.path || null,
       content: tab?.content || '',
       modified: tab?.modified || false,
+      editorMode: tab?.editorMode === 'source' ? 'source' : 'blocks',
     };
     set({
       tabs: [...tabs, newTab],
@@ -865,6 +870,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         path: null,
         content: '',
         modified: false,
+        editorMode: 'blocks',
       };
       set({ tabs: [newTab], activeTabId: newTab.id, content: '', currentFile: null, timeline: nextTimeline });
     } else if (id === activeTabId) {
@@ -894,6 +900,11 @@ export const useAppStore = create<AppState>((set, get) => ({
       });
       get().updateWordCount();
     }
+  },
+
+  setTabEditorMode: (id, mode) => {
+    const { tabs } = get();
+    set({ tabs: tabs.map(tab => tab.id === id ? { ...tab, editorMode: mode } : tab) });
   },
 
   updateTabContent: (id, content) => {

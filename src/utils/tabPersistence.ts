@@ -1,9 +1,12 @@
+import type { EditorMode } from '../types/blockEditor.ts';
+
 export interface PersistedTab {
   id: string;
   title: string;
   path: string | null;
   content: string;
   modified: boolean;
+  editorMode?: EditorMode;
 }
 
 export function applySavedTab<T extends PersistedTab>(
