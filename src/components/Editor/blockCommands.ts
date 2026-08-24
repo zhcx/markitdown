@@ -54,6 +54,11 @@ function createPropertyBlock(type: BlockPropertyType, current: Node, attrs: Reco
 
 function topLevelBlockRange(state: EditorState) {
   const index = state.selection.$from.index(0);
+  return topLevelBlockRangeAtIndex(state, index);
+}
+
+function topLevelBlockRangeAtIndex(state: EditorState, index: number) {
+  if (index < 0 || index >= state.doc.childCount) return null;
   let from = 0;
   for (let current = 0; current < index; current += 1) from += state.doc.child(current).nodeSize;
   const node = state.doc.child(index);
@@ -77,6 +82,20 @@ export function turnInto(type: 'heading', level: 1 | 2 | 3 | 4): Command {
 export function changeCurrentBlockType(type: BlockPropertyType, attrs: Record<string, unknown> = {}): Command {
   return (state, dispatch) => {
     const range = topLevelBlockRange(state);
+    if (!range) return false;
+    const replacement = createPropertyBlock(type, range.node, attrs, state.schema);
+    if (!dispatch) return true;
+    const transaction = state.tr.replaceWith(range.from, range.to, replacement);
+    transaction.setSelection(TextSelection.near(transaction.doc.resolve(Math.min(transaction.doc.content.size, range.from + 1))));
+    dispatch(transaction);
+    return true;
+  };
+}
+
+export function changeBlockTypeAtIndex(index: number, type: BlockPropertyType, attrs: Record<string, unknown> = {}): Command {
+  return (state, dispatch) => {
+    const range = topLevelBlockRangeAtIndex(state, index);
+    if (!range) return false;
     const replacement = createPropertyBlock(type, range.node, attrs, state.schema);
     if (!dispatch) return true;
     const transaction = state.tr.replaceWith(range.from, range.to, replacement);

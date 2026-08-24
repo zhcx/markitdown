@@ -6,9 +6,10 @@ const read = (path: string) => readFileSync(new URL(`../${path}`, import.meta.ur
 
 test('block nodes expose stable block and source-line anchors', () => {
   const editor = read('src/components/Editor/BlockEditor.tsx');
-  assert.match(editor, /dataset\.blockId/);
-  assert.match(editor, /dataset\.sourceLine/);
-  assert.match(editor, /applyBlockMetadata/);
+  assert.match(editor, /Decoration\.node/);
+  assert.match(editor, /'data-block-id':\s*block\.blockId/);
+  assert.match(editor, /'data-source-line':\s*String\(block\.lineFrom\)/);
+  assert.match(editor, /createBlockMetadataPlugin\(\)/);
 });
 
 test('navigation code does not require Monaco-only DOM anchors', () => {

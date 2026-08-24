@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { EditorState, TextSelection, type Transaction } from 'prosemirror-state';
 import { blockSchema } from '../src/components/Editor/blockSchema.ts';
 import {
+  changeBlockTypeAtIndex,
   changeCurrentBlockType,
   deleteCurrentBlock,
   insertBlock,
@@ -43,6 +44,17 @@ test('changes the current block property while preserving its text', () => {
   assert.equal(task.doc.firstChild?.type.name, 'task_list');
   assert.equal(task.doc.firstChild?.firstChild?.type.name, 'task_item');
   assert.equal(task.doc.textContent, 'Ship it');
+});
+
+test('changes the block selected by its handle instead of the cursor block', () => {
+  const state = stateWithBlocks(paragraph('Cursor block'), paragraph('Handle block'));
+  const next = apply(changeBlockTypeAtIndex(1, 'heading', { level: 2 }), state);
+
+  assert.equal(next.doc.child(0).type.name, 'paragraph');
+  assert.equal(next.doc.child(0).textContent, 'Cursor block');
+  assert.equal(next.doc.child(1).type.name, 'heading');
+  assert.equal(next.doc.child(1).attrs.level, 2);
+  assert.equal(next.doc.child(1).textContent, 'Handle block');
 });
 
 test('inserts a new block after the current block', () => {

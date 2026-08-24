@@ -4,14 +4,14 @@ import { dropCursor } from 'prosemirror-dropcursor';
 import { gapCursor } from 'prosemirror-gapcursor';
 import { history } from 'prosemirror-history';
 import { keymap } from 'prosemirror-keymap';
-import { EditorState } from 'prosemirror-state';
-import { EditorView } from 'prosemirror-view';
+import { EditorState, Plugin } from 'prosemirror-state';
+import { Decoration, DecorationSet, EditorView } from 'prosemirror-view';
 import { useAppStore } from '../../stores/appStore';
 import type { MarkdownCapability } from '../../types/blockEditor.ts';
 import { createBlockEditorController } from '../../utils/blockEditorController.ts';
 import { parseMarkdown, serializeMarkdown } from '../../utils/markdownBlockCodec.ts';
 import { filterSlashCommands, findSlashCommandTrigger, type SlashCommand } from '../../utils/slashCommands.ts';
-import { changeCurrentBlockType } from './blockCommands.ts';
+import { changeBlockTypeAtIndex, changeCurrentBlockType } from './blockCommands.ts';
 import { createBlockInputRules } from './blockInputRules.ts';
 import { blockSchema } from './blockSchema.ts';
 import { BlockPropertyMenu, type BlockPropertySelection } from './BlockPropertyMenu.tsx';
@@ -50,21 +50,30 @@ interface BlockPropertyMenuState {
   top: number;
 }
 
-function applyBlockMetadata(view: EditorView) {
-  const parsed = parseMarkdown(serializeMarkdown(view.state.doc));
-  const blocks = parsed.sourceMap?.blocks || [];
-  Array.from(view.dom.children).forEach((element, index) => {
-    const block = blocks[index];
-    if (!block) return;
-    const node = element as HTMLElement;
-    node.dataset.blockId = block.blockId;
-    node.dataset.sourceLine = String(block.lineFrom);
+function createBlockMetadataPlugin() {
+  return new Plugin({
+    props: {
+      decorations(state) {
+        const blocks = parseMarkdown(serializeMarkdown(state.doc)).sourceMap?.blocks || [];
+        const decorations: Decoration[] = [];
+        state.doc.forEach((node, offset, index) => {
+          const block = blocks[index];
+          if (!block) return;
+          decorations.push(Decoration.node(offset, offset + node.nodeSize, {
+            'data-block-id': block.blockId,
+            'data-source-line': String(block.lineFrom),
+          }));
+        });
+        return DecorationSet.create(state.doc, decorations);
+      },
+    },
   });
 }
 
 function createBlockPlugins() {
   return [
     history(),
+    createBlockMetadataPlugin(),
     createBlockInputRules(),
     keymap(baseKeymap),
     dropCursor(),
@@ -147,11 +156,10 @@ export function BlockEditor({
 
   const applyBlockProperty = useCallback((selection: BlockPropertySelection) => {
     const view = viewRef.current;
-    if (!view) return;
-    changeCurrentBlockType(selection.type, selection.attrs)(view.state, view.dispatch);
-    applyBlockMetadata(view);
+    if (!view || !blockPropertyMenu) return;
+    changeBlockTypeAtIndex(blockPropertyMenu.index, selection.type, selection.attrs)(view.state, view.dispatch);
     syncSlashMenu();
-  }, [syncSlashMenu]);
+  }, [blockPropertyMenu, syncSlashMenu]);
 
   const applySlashCommand = useCallback((command: SlashCommand) => {
     const menu = slashMenuRef.current;
@@ -170,7 +178,6 @@ export function BlockEditor({
         } else if (action?.kind === 'insert' && action.type !== 'image') {
           changeCurrentBlockType(action.type)(view.state, view.dispatch);
         }
-        applyBlockMetadata(view);
       }
     } else {
       const { text, selectionStart = text.length, selectionEnd = selectionStart } = command.insertion;
@@ -221,7 +228,7 @@ export function BlockEditor({
       if (!initializingRef.current && value !== useAppStore.getState().content) onMarkdownChange(value);
     };
 
-    const view = new EditorView(editorHost, {
+    const view = new EditorView({ mount: editorHost }, {
       state,
       dispatchTransaction: transaction => {
         const nextState = view.state.apply(transaction);
@@ -233,12 +240,10 @@ export function BlockEditor({
           onActiveLineChange?.(line);
           if (transaction.selectionSet) onActiveLineReveal?.(line);
         }
-        applyBlockMetadata(view);
         syncSlashMenu();
       },
     });
     viewRef.current = view;
-    applyBlockMetadata(view);
 
     const controller = createBlockEditorController(view, host, {
       onMarkdownChange: publish,
@@ -271,7 +276,6 @@ export function BlockEditor({
       doc: parsedExternal.document,
       plugins: createBlockPlugins(),
     }));
-    applyBlockMetadata(view);
   }, [markdown]);
 
   useEffect(() => {

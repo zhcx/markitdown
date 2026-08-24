@@ -1,5 +1,7 @@
 .editor-host {
   position: relative;
+  display: flex;
+  flex-direction: column;
   min-width: 0;
   min-height: 0;
   height: 100%;
@@ -7,9 +9,10 @@
 }
 
 .block-editor-container {
+  flex: 1 1 auto;
   min-width: 0;
   min-height: 0;
-  height: 100%;
+  height: auto;
   padding: 0;
   background: var(--bg-document);
 }
@@ -58,20 +61,6 @@
   border: 0;
   background: transparent;
   box-shadow: none;
-}
-
-.block-editor-content > *:hover::before,
-.block-editor-content > .ProseMirror-selectednode::before {
-  content: '⋮⋮';
-  position: absolute;
-  left: -28px;
-  top: 0.35em;
-  color: var(--text-muted);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: -2px;
-  cursor: grab;
-  opacity: .72;
 }
 
 .block-editor-content h1,
@@ -215,10 +204,11 @@
 }
 
 .editor-mode-toggle {
-  position: absolute;
-  z-index: 2;
-  top: 6px;
-  right: 10px;
+  position: static;
+  z-index: auto;
+  flex: 0 0 auto;
+  align-self: flex-end;
+  margin: 6px 10px 0;
   display: inline-flex;
   gap: 2px;
   padding: 2px;
