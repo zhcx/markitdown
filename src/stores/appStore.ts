@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import type { EditorController } from '../types/editor';
+import type { EditorMode } from '../types/blockEditor';
 import { formatTextStatistics } from '../utils/textStatistics';
 import { DEFAULT_FONT_SIZE, DEFAULT_LINE_HEIGHT } from '../utils/appearanceSettings';
 import { applySavedTab } from '../utils/tabPersistence';
@@ -183,6 +184,7 @@ export interface Tab {
   path: string | null;
   content: string;
   modified: boolean;
+  editorMode?: EditorMode;
 }
 
 export interface TimelineEntry {
@@ -255,6 +257,7 @@ interface AppState {
   setSettingsTab: (tab: SettingsTab) => void;
   setActiveImageService: (service: 'cloudinary' | 'picgo' | 's3' | 'local') => void;
   setEditorView: (view: EditorController | null) => void;
+  setTabEditorMode: (id: string, mode: EditorMode) => void;
   loadSettings: () => Promise<void>;
   saveSettings: (settings: Settings) => Promise<void>;
   openFile: (path: string) => Promise<void>;
@@ -480,6 +483,7 @@ const initialTab: Tab = {
   path: null,
   content: '',
   modified: false,
+  editorMode: 'blocks',
 };
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -662,6 +666,7 @@ export const useAppStore = create<AppState>((set, get) => ({
             path,
             content: fileContent,
             modified: false,
+            editorMode: 'blocks',
           };
           set({
             tabs: [...tabs, newTab],
@@ -745,6 +750,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         content: markdown,
         // Converted content has not been saved as a Markdown file yet.
         modified: true,
+        editorMode: 'blocks',
       };
       const { tabs } = get();
       set({
@@ -834,6 +840,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       path: tab?.path || null,
       content: tab?.content || '',
       modified: tab?.modified || false,
+      editorMode: tab?.editorMode === 'source' ? 'source' : 'blocks',
     };
     set({
       tabs: [...tabs, newTab],
@@ -863,6 +870,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         path: null,
         content: '',
         modified: false,
+        editorMode: 'blocks',
       };
       set({ tabs: [newTab], activeTabId: newTab.id, content: '', currentFile: null, timeline: nextTimeline });
     } else if (id === activeTabId) {
@@ -892,6 +900,11 @@ export const useAppStore = create<AppState>((set, get) => ({
       });
       get().updateWordCount();
     }
+  },
+
+  setTabEditorMode: (id, mode) => {
+    const { tabs } = get();
+    set({ tabs: tabs.map(tab => tab.id === id ? { ...tab, editorMode: mode } : tab) });
   },
 
   updateTabContent: (id, content) => {

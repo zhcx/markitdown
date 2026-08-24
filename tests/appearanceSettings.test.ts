@@ -46,7 +46,7 @@ test('removes the retired Inkwell themes from settings, menus, and styles', () =
 
 test('editor and preview font sizes update before settings persistence', () => {
   const settingsPanel = readFileSync(new URL('../src/components/Settings/SettingsPanel.tsx', import.meta.url), 'utf8');
-  const editor = readFileSync(new URL('../src/components/Editor/Editor.tsx', import.meta.url), 'utf8');
+  const editor = readFileSync(new URL('../src/components/Editor/SourceEditor.tsx', import.meta.url), 'utf8');
   const preview = readFileSync(new URL('../src/components/Preview/Preview.tsx', import.meta.url), 'utf8');
 
   assert.match(settingsPanel, /document\.documentElement\.style\.setProperty\('--font-content-size', `\$\{fontSize\}px`\)/);

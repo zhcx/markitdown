@@ -23,3 +23,9 @@ test('keeps a tab dirty when its content changes while saving', () => {
   assert.equal(result[1].modified, true);
   assert.equal(result[1].path, 'C:\\docs\\second.md');
 });
+
+test('preserves an optional editor mode while applying a saved path', () => {
+  const blockTab: PersistedTab = { ...tabs[0], editorMode: 'blocks' };
+  const result = applySavedTab([blockTab], blockTab.id, 'C:\\docs\\first.md', blockTab.content);
+  assert.equal(result[0].editorMode, 'blocks');
+});

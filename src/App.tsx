@@ -744,8 +744,8 @@ function App() {
     geometryObserver.observe(previewScrollElement);
     const previewDocument = previewScrollElement.querySelector<HTMLElement>('.preview-document');
     if (previewDocument) geometryObserver.observe(previewDocument);
-    const editorContent = editorView.scrollDOM.querySelector<HTMLElement>('.lines-content');
-    if (editorContent) geometryObserver.observe(editorContent);
+    const editorContent = editorView.scrollDOM.querySelector<HTMLElement>('.lines-content, .block-editor-content');
+    geometryObserver.observe(editorContent || editorView.scrollDOM);
 
     // Rendering Markdown, images or diagrams changes preview geometry. Keep
     // the editor as the source of truth and realign once the new layout exists.

@@ -4,6 +4,10 @@ export interface SlashCommandInsertion {
   selectionEnd?: number;
 }
 
+export type BlockSlashAction =
+  | { kind: 'turn-into'; type: 'heading'; level: 1 | 2 | 3 | 4 }
+  | { kind: 'insert'; type: 'bullet_list' | 'ordered_list' | 'task_list' | 'blockquote' | 'code_block' | 'horizontal_rule' | 'image' };
+
 export interface SlashCommand {
   id: string;
   title: string;
@@ -12,6 +16,7 @@ export interface SlashCommand {
   icon: string;
   keywords: string;
   insertion: SlashCommandInsertion;
+  blockAction?: BlockSlashAction;
 }
 
 export interface SlashCommandTrigger {
@@ -55,6 +60,25 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   { id: 'comment', title: '注释', description: '插入不显示的注释', shortcut: '/comment', icon: '※', keywords: 'comment 注释 备注', insertion: insertion('<!-- 注释 -->', 5, 7) },
   { id: 'mermaid', title: '流程图', description: '插入 Mermaid 流程图', shortcut: '/mermaid', icon: '◇', keywords: 'mermaid diagram flowchart 流程图 图表', insertion: insertion('```mermaid\nflowchart LR\n  A[开始] --> B[结束]\n```', 28, 30) },
 ];
+
+const BLOCK_SLASH_ACTIONS: Record<string, BlockSlashAction> = {
+  'heading-1': { kind: 'turn-into', type: 'heading', level: 1 },
+  'heading-2': { kind: 'turn-into', type: 'heading', level: 2 },
+  'heading-3': { kind: 'turn-into', type: 'heading', level: 3 },
+  'heading-4': { kind: 'turn-into', type: 'heading', level: 4 },
+  quote: { kind: 'insert', type: 'blockquote' },
+  'unordered-list': { kind: 'insert', type: 'bullet_list' },
+  'ordered-list': { kind: 'insert', type: 'ordered_list' },
+  'task-list': { kind: 'insert', type: 'task_list' },
+  code: { kind: 'insert', type: 'code_block' },
+  image: { kind: 'insert', type: 'image' },
+  divider: { kind: 'insert', type: 'horizontal_rule' },
+};
+
+for (const command of SLASH_COMMANDS) {
+  const action = BLOCK_SLASH_ACTIONS[command.id];
+  if (action) command.blockAction = action;
+}
 
 /** Detects a slash command only when `/query` is the first token on a line. */
 export function findSlashCommandTrigger(

@@ -32,7 +32,7 @@ test('AI actions never log settings, document content, or model responses', () =
 });
 
 test('editor context menu exposes grouped editing, export, image, and file actions', () => {
-  const editor = read('src/components/Editor/Editor.tsx');
+  const editor = read('src/components/Editor/SourceEditor.tsx');
   const menu = read('src/components/MenuBar/MenuBar.tsx');
   const commands = read('src-tauri/src/commands.rs');
   const styles = read('src/styles/workbench.css');
@@ -60,7 +60,7 @@ test('editor context menu exposes grouped editing, export, image, and file actio
 });
 
 test('floating editor toolbar stays compact and Monaco uses the shared scrollbar width', () => {
-  const editor = read('src/components/Editor/Editor.tsx');
+  const editor = read('src/components/Editor/SourceEditor.tsx');
   const layout = read('src/utils/editorLayout.ts');
   const styles = read('src/styles/workbench.css');
   assert.match(editor, /const width = Math\.min\(720,/);

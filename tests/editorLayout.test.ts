@@ -25,27 +25,27 @@ test('wrapped editor does not reserve or display horizontal scrolling', async ()
 });
 
 test('editor wraps against the viewport without shrinking from rendered font measurements', async () => {
-  const source = await readFile(new URL('../src/components/Editor/Editor.tsx', import.meta.url), 'utf8');
+  const source = await readFile(new URL('../src/components/Editor/SourceEditor.tsx', import.meta.url), 'utf8');
 
   assert.match(source, /wordWrap:\s*'on'/);
   assert.doesNotMatch(source, /wordWrapColumn|fitRenderedText|scheduleTextFit/);
 });
 
 test('editor synchronizes the preview after the pointer selection gesture finishes', async () => {
-  const source = await readFile(new URL('../src/components/Editor/Editor.tsx', import.meta.url), 'utf8');
+  const source = await readFile(new URL('../src/components/Editor/SourceEditor.tsx', import.meta.url), 'utf8');
 
   assert.match(source, /editor\.onMouseUp\(\(event\)\s*=>/);
   assert.doesNotMatch(source, /editor\.onMouseDown\(\(event\)\s*=>\s*\{\s*const lineNumber/);
 });
 
 test('editor does not cover scrolled content with Monaco sticky headings', async () => {
-  const source = await readFile(new URL('../src/components/Editor/Editor.tsx', import.meta.url), 'utf8');
+  const source = await readFile(new URL('../src/components/Editor/SourceEditor.tsx', import.meta.url), 'utf8');
 
   assert.match(source, /stickyScroll:\s*\{\s*enabled:\s*false\s*\}/);
 });
 
 test('editor uses immediate scrolling so split-view synchronization stays responsive', async () => {
-  const source = await readFile(new URL('../src/components/Editor/Editor.tsx', import.meta.url), 'utf8');
+  const source = await readFile(new URL('../src/components/Editor/SourceEditor.tsx', import.meta.url), 'utf8');
 
   assert.match(source, /smoothScrolling:\s*false/);
 });
