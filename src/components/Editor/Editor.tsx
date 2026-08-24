@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useAppStore } from '../../stores/appStore';
 import type { EditorMode } from '../../types/blockEditor.ts';
 import { parseMarkdown } from '../../utils/markdownBlockCodec.ts';
@@ -13,18 +13,16 @@ export function Editor({ className, style, onActiveLineChange, onActiveLineRevea
   const activeTab = tabs.find(tab => tab.id === activeTabId);
   const requestedMode: EditorMode = activeTab?.editorMode === 'source' ? 'source' : 'blocks';
   const capability = useMemo(() => parseMarkdown(content).capability, [content]);
-  const [localMode, setLocalMode] = useState<EditorMode>(requestedMode);
-  const effectiveMode: EditorMode = localMode === 'blocks' && !capability.supported ? 'source' : localMode;
+  const [forcedSourceTabId, setForcedSourceTabId] = useState<string | null>(null);
+  const effectiveMode: EditorMode = forcedSourceTabId === activeTabId ? 'source' : requestedMode;
   const handleBlockChange = useCallback((markdown: string) => setContent(markdown), [setContent]);
-  const handleUnsupported = useCallback(() => setLocalMode('source'), []);
-
-  useEffect(() => {
-    setLocalMode(requestedMode);
-  }, [activeTabId, requestedMode]);
+  const handleUnsupported = useCallback(() => {
+    if (activeTabId) setForcedSourceTabId(activeTabId);
+  }, [activeTabId]);
 
   const handleModeChange = (mode: EditorMode) => {
     if (mode === 'blocks' && !capability.supported) return;
-    setLocalMode(mode);
+    setForcedSourceTabId(null);
     if (activeTabId) setTabEditorMode(activeTabId, mode);
     setEditorView(null);
   };
@@ -43,7 +41,7 @@ export function Editor({ className, style, onActiveLineChange, onActiveLineRevea
         />
       ) : (
         <>
-          {localMode === 'blocks' && <EditorUnsupportedNotice capability={capability} />}
+          {forcedSourceTabId === activeTabId && <EditorUnsupportedNotice capability={capability} />}
           <SourceEditor
             className={className}
             style={{ height: '100%' }}
