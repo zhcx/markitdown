@@ -10,7 +10,7 @@
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](https://github.com/zhcx/zeditor/blob/main/LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey?style=flat-square)](https://github.com/zhcx/zeditor/releases)
 
-<img src="src-tauri/icons/icon.png" alt="Zeditor Logo" width="128" height="128">
+<img src="docs/banner.png" alt="Zeditor" width="900">
 
 </div>
 
@@ -163,33 +163,32 @@ Agent 默认关闭，需要先在“设置 → AI 助手”中启用。Zeditor �
 
 ## 🚀 快速开始
 
-## v0.3.8 更新
+## v0.3.9 更新
 
 ### 更新日志
 
-- **WebDAV / S3 文档备份**：新增桌面版单向自动备份，支持自定义 WebDAV 服务器与 S3 兼容对象存储、连接测试、状态栏同步状态、20 版本历史与哈希校验下载。
-- **主题体系精简**：移除 Claude 与 Notion 共四套主题，仅保留「深色主题」与「浅色主题」两套简约配色，并统一色彩饱和度与对比度、精简冗余变量、优化语法高亮层级。
-- **菜单栏交互修复**：修复鼠标移出时菜单过快收回、二级子菜单难以触达的问题；收回延迟调整为 350ms 并在菜单间加入透明桥接区域。
-- **质量加固**：修复 PDF 导出浏览器池资源泄漏、文件命令授权与符号链接遍历、并发下载竞态，以及 Agent 持久化、事件上限与流式输出等逻辑；收紧 Tauri 内容安全策略。
+- **云同步面板修复**：状态栏弹窗正确显示已启用状态（不再误报「未启用」）；滑动开关样式与「设置」页统一；未配置 WebDAV / S3 时点击开关跳转设置页而非显示「就绪」；面板内「设置」按钮先关闭面板再跳转，避免遮罩挡住设置页。
+- **历史版本打开**：「浏览全部备份」列表支持「打开」（新标签页）与「另存为」，文档行双击打开最新版本。
+- **视觉优化**：面板与历史弹窗改用弹性入场动画；供应商卡片悬停上浮、未启用卡片降饱和；同步中圆点加脉冲光晕；历史弹窗关闭按钮统一为 SVG 图标。
 - **转换模块**：继续沿用 AnyDoc v1.2.0（本版本未变更转换引擎）。
 
-### v0.3.8 平台安装包对照
+### v0.3.9 平台安装包对照
 
-> 以下链接指向 v0.3.8 Release 资产；安装包由 GitHub Actions 根据 v0.3.8 标签源码构建。
+> 以下链接指向 v0.3.9 Release 资产；安装包由 GitHub Actions 根据 v0.3.9 标签源码构建。
 
 | 操作系统 | 架构 | 最低系统版本 | 推荐安装包 | 适用场景 |
 | --- | --- | --- | --- | --- |
-| Windows | x86_64 | Windows 10 1809+ | [NSIS `.exe`](https://github.com/zhcx/zeditor/releases/download/v0.3.8/Zeditor_0.3.8_x64-setup.exe) | 推荐大多数用户使用，按向导安装 |
-| Windows | x86_64 | Windows 10 1809+ | [MSI](https://github.com/zhcx/zeditor/releases/download/v0.3.8/Zeditor_0.3.8_x64_en-US.msi) | 企业部署、系统管理或静默安装 |
-| macOS Apple Silicon | arm64 | macOS 12+ | [DMG](https://github.com/zhcx/zeditor/releases/download/v0.3.8/Zeditor_0.3.8_aarch64.dmg) | M1、M2、M3、M4 等 Apple 芯片 |
-| macOS Apple Silicon | arm64 | macOS 12+ | [APP 压缩包](https://github.com/zhcx/zeditor/releases/download/v0.3.8/Zeditor_aarch64.app.tar.gz) | 手动解压或更新 |
-| macOS Intel | x86_64 | macOS 12+ | [DMG](https://github.com/zhcx/zeditor/releases/download/v0.3.8/Zeditor_0.3.8_x64.dmg) | Intel 芯片 Mac |
-| macOS Intel | x86_64 | macOS 12+ | [APP 压缩包](https://github.com/zhcx/zeditor/releases/download/v0.3.8/Zeditor_x64.app.tar.gz) | 手动解压或更新 |
-| Ubuntu / Debian | x86_64 | Ubuntu 20.04+ / Debian 11+ | [DEB](https://github.com/zhcx/zeditor/releases/download/v0.3.8/Zeditor_0.3.8_amd64.deb) | Ubuntu、Debian、Linux Mint 等 |
-| Fedora / RHEL / openSUSE | x86_64 | Fedora 38+ / RHEL 9+ | [RPM](https://github.com/zhcx/zeditor/releases/download/v0.3.8/Zeditor-0.3.8-1.x86_64.rpm) | RPM 系发行版 |
-| 通用 Linux | x86_64 | 需 webkit2gtk-4.1 | [AppImage](https://github.com/zhcx/zeditor/releases/download/v0.3.8/Zeditor_0.3.8_amd64.AppImage) | 无需安装，赋予执行权限后运行 |
+| Windows | x86_64 | Windows 10 1809+ | [NSIS `.exe`](https://github.com/zhcx/zeditor/releases/download/v0.3.9/Zeditor_0.3.9_x64-setup.exe) | 推荐大多数用户使用，按向导安装 |
+| Windows | x86_64 | Windows 10 1809+ | [MSI](https://github.com/zhcx/zeditor/releases/download/v0.3.9/Zeditor_0.3.9_x64_en-US.msi) | 企业部署、系统管理或静默安装 |
+| macOS Apple Silicon | arm64 | macOS 12+ | [DMG](https://github.com/zhcx/zeditor/releases/download/v0.3.9/Zeditor_0.3.9_aarch64.dmg) | M1、M2、M3、M4 等 Apple 芯片 |
+| macOS Apple Silicon | arm64 | macOS 12+ | [APP 压缩包](https://github.com/zhcx/zeditor/releases/download/v0.3.9/Zeditor_aarch64.app.tar.gz) | 手动解压或更新 |
+| macOS Intel | x86_64 | macOS 12+ | [DMG](https://github.com/zhcx/zeditor/releases/download/v0.3.9/Zeditor_0.3.9_x64.dmg) | Intel 芯片 Mac |
+| macOS Intel | x86_64 | macOS 12+ | [APP 压缩包](https://github.com/zhcx/zeditor/releases/download/v0.3.9/Zeditor_x64.app.tar.gz) | 手动解压或更新 |
+| Ubuntu / Debian | x86_64 | Ubuntu 20.04+ / Debian 11+ | [DEB](https://github.com/zhcx/zeditor/releases/download/v0.3.9/Zeditor_0.3.9_amd64.deb) | Ubuntu、Debian、Linux Mint 等 |
+| Fedora / RHEL / openSUSE | x86_64 | Fedora 38+ / RHEL 9+ | [RPM](https://github.com/zhcx/zeditor/releases/download/v0.3.9/Zeditor-0.3.9-1.x86_64.rpm) | RPM 系发行版 |
+| 通用 Linux | x86_64 | 需 webkit2gtk-4.1 | [AppImage](https://github.com/zhcx/zeditor/releases/download/v0.3.9/Zeditor_0.3.9_amd64.AppImage) | 无需安装，赋予执行权限后运行 |
 
-完整更新说明、转换模块下载与安装提示见 [`docs/releases/v0.3.8.md`](docs/releases/v0.3.8.md)。
+完整更新说明、转换模块下载与安装提示见 [`docs/releases/v0.3.9.md`](docs/releases/v0.3.9.md)。
 
 ## Contributors
 
@@ -385,6 +384,17 @@ SignPath Foundation 申请目前处于准备/审核阶段；在正式启用前�
 [![GitHub 更新热力图](https://ghchart.rshah.org/2196f3/zhcx)](https://github.com/zhcx/zeditor/graphs/commit-activity)
 
 </div>
+
+---
+
+## 🚀 版本更新日志
+
+- **v0.4.0**（2026-08-22）：全新蓝色 `Z` 应用图标与 GitHub 首页横幅；延续云同步面板（WebDAV / S3）开关样式统一、未配置拦截、设置按钮层级修复与视觉打磨。详见 [v0.4.0 发布说明](docs/releases/v0.4.0.md)。
+  - 平台安装包（由 `v0.4.0` 标签触发 GitHub Actions 构建）：Windows `Zeditor_0.4.0_x64-setup.exe` / `Zeditor_0.4.0_x64_en-US.msi`、macOS（Apple Silicon / Intel）`.dmg`、Linux `.deb` / `.rpm` / `.AppImage`。
+- **v0.3.9**：云同步面板交互与视觉打磨（状态显示、开关样式统一、历史版本打开）。详见 [v0.3.9 发布说明](docs/releases/v0.3.9.md)。
+- **v0.3.7**：品牌与转换引擎双重升级 —— 项目更名 **Zeditor**（原 MarkItDown），文档转换引擎由 markitdown(Python) 全面替换为原生 Rust 的 **AnyDoc**。
+
+完整发布说明见 [`docs/releases/`](docs/releases/)。
 
 ---
 

@@ -644,14 +644,20 @@ pub(crate) mod test_support {
                 break;
             }
             let line = line.trim_end();
-            if let Some(value) = line.strip_prefix("Authorization: ") {
-                authorization = value.to_string();
-            }
-            if let Some(value) = line.strip_prefix("Content-Length: ") {
-                content_length = value.parse().unwrap_or(0);
-            }
-            if let Some(value) = line.strip_prefix("Depth: ") {
-                depth = value.to_string();
+            // HTTP header names are case-insensitive; hyper/reqwest emit them in
+            // lowercase over HTTP/1.1, so match case-insensitively.
+            let lower = line.to_ascii_lowercase();
+            if let Some(rest) = lower.strip_prefix("authorization: ") {
+                // `rest` is a byte slice of `lower`; the original value in `line`
+                // starts at `line.len() - rest.len()` (lower/line share the same
+                // byte length, and to_ascii_lowercase never changes length).
+                let value_start = line.len() - rest.len();
+                authorization = line[value_start..].to_string();
+            } else if let Some(rest) = lower.strip_prefix("content-length: ") {
+                content_length = rest.parse().unwrap_or(0);
+            } else if let Some(rest) = lower.strip_prefix("depth: ") {
+                let value_start = line.len() - rest.len();
+                depth = line[value_start..].to_string();
             }
         }
 

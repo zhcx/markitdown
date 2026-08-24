@@ -3,12 +3,14 @@ import { invoke } from '@tauri-apps/api/core';
 import { save } from '@tauri-apps/plugin-dialog';
 import type {
   S3Settings,
+  WebDavDocumentSummary,
   WebDavDownloadedVersion,
   WebDavSettings,
   WebDavVersion,
 } from '../../types/webdav';
 import { useWebDavStore } from '../../stores/webdavStore';
 import { useS3Store } from '../../stores/s3Store';
+import { useAppStore } from '../../stores/appStore';
 
 interface WebDavHistoryDialogProps {
   open: boolean;
@@ -96,6 +98,42 @@ export function WebDavHistoryDialog({
     }
   };
 
+  /** 打开远端版本：内容载入编辑器新标签页（不覆盖当前正在编辑的内容）。 */
+  const openVersion = async (documentId: string, version: WebDavVersion) => {
+    setDownloadingId(version.id);
+    setError('');
+    try {
+      const downloaded = await downloadVersion(documentId, version.id, settings);
+      useAppStore.getState().addTab({
+        title: downloaded.filename,
+        content: downloaded.content,
+        modified: false,
+      });
+      onClose();
+    } catch (openError) {
+      setError(String(openError).slice(0, 240));
+    } finally {
+      setDownloadingId(null);
+    }
+  };
+
+  /** 双击文档行：加载该文档版本列表并直接打开最新版本。 */
+  const openLatestVersion = async (document: WebDavDocumentSummary) => {
+    setError('');
+    try {
+      await loadVersions(document.document_id, settings);
+      const latestStore = provider === 's3' ? useS3Store.getState() : useWebDavStore.getState();
+      const latest = latestStore.versions[0];
+      if (!latest) {
+        setError('该文档暂无可打开的备份版本');
+        return;
+      }
+      await openVersion(document.document_id, latest);
+    } catch (openError) {
+      setError(String(openError).slice(0, 240));
+    }
+  };
+
   const close = () => {
     setHistoryOpen(false);
     onClose();
@@ -105,8 +143,8 @@ export function WebDavHistoryDialog({
     <div className="webdav-history-dialog">
       <div className="webdav-history-dialog-header">
         <h3>{mode === 'global' ? '全部备份' : '当前文档历史'}</h3>
-        <button type="button" className="webdav-dialog-close" onClick={close}>
-          ✕
+        <button type="button" className="webdav-dialog-close" onClick={close} aria-label="关闭">
+          <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"><path d="m4 4 8 8m0-8-8 8" /></svg>
         </button>
       </div>
 
@@ -123,10 +161,12 @@ export function WebDavHistoryDialog({
                 <button
                   key={document.document_id}
                   type="button"
+                  title="单击查看版本，双击打开最新备份"
                   className={`webdav-document-row ${
                     selectedDocumentId === document.document_id ? 'selected' : ''
                   }`}
                   onClick={() => pickDocument(document.document_id)}
+                  onDoubleClick={() => void openLatestVersion(document)}
                 >
                   <span className="webdav-document-name">{document.display_name}</span>
                   <span className="webdav-document-time">
@@ -146,7 +186,12 @@ export function WebDavHistoryDialog({
             <p className="webdav-history-empty">暂无历史版本</p>
           ) : (
             activeVersions.map(version => (
-              <div key={version.id} className="webdav-version-row">
+              <div
+                key={version.id}
+                className="webdav-version-row"
+                title="双击打开此版本"
+                onDoubleClick={() => void openVersion(activeDocumentId, version)}
+              >
                 <div className="webdav-version-meta">
                   <span className="webdav-version-time">
                     {new Date(version.created_at).toLocaleString()}
@@ -156,14 +201,24 @@ export function WebDavHistoryDialog({
                   </span>
                   <span className="webdav-version-hash">{version.sha256.slice(0, 12)}</span>
                 </div>
-                <button
-                  type="button"
-                  className="button webdav-version-download"
-                  disabled={downloadingId === version.id || !isTauriRuntime() || activeDocumentId === ''}
-                  onClick={() => void download(activeDocumentId, version)}
-                >
-                  {downloadingId === version.id ? '下载中…' : '另存为'}
-                </button>
+                <div className="webdav-version-actions">
+                  <button
+                    type="button"
+                    className="button webdav-version-open"
+                    disabled={downloadingId === version.id || !isTauriRuntime() || activeDocumentId === ''}
+                    onClick={() => void openVersion(activeDocumentId, version)}
+                  >
+                    {downloadingId === version.id ? '打开中…' : '打开'}
+                  </button>
+                  <button
+                    type="button"
+                    className="button webdav-version-download"
+                    disabled={downloadingId === version.id || !isTauriRuntime() || activeDocumentId === ''}
+                    onClick={() => void download(activeDocumentId, version)}
+                  >
+                    另存为
+                  </button>
+                </div>
               </div>
             ))
           )}

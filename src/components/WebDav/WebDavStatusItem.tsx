@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { S3Settings, WebDavSettings } from '../../types/webdav';
+import type { S3Settings, WebDavSettings, WebDavSyncPhase } from '../../types/webdav';
 import { useWebDavStore } from '../../stores/webdavStore';
 import { useS3Store } from '../../stores/s3Store';
 import { webDavStatusLabel } from '../../utils/webdavState';
@@ -73,6 +73,30 @@ export function WebDavStatusItem({
     setPanelOpen(false);
   };
 
+  /** 后端是否已填写必要连接信息。 */
+  const isProviderConfigured = (provider: 'webdav' | 's3'): boolean => {
+    if (provider === 's3') {
+      const s = s3Settings;
+      return Boolean(s.endpoint && s.bucket && s.access_key && s.secret_key);
+    }
+    return Boolean(settings.server_url);
+  };
+
+  /**
+   * 点击开关：未配置必要信息时，先关闭云同步面板（避免 z-index 99999
+   * 遮罩挡住设置面板），再切换到云同步设置页并显示提示；
+   * 已配置时正常启用 / 停用。
+   */
+  const handleToggle = (provider: 'webdav' | 's3', next: boolean) => {
+    if (next && !isProviderConfigured(provider)) {
+      // 未配置：先关闭云同步面板避免 z-index 99999 遮罩挡住设置面板，再跳转。
+      setPanelOpen(false);
+      onOpenSettings();
+      return;
+    }
+    onToggleProvider(provider, next);
+  };
+
   const summaryText = (): string => {
     const bothOff = !settings.enabled && !s3Settings.enabled;
     if (bothOff) return '未启用';
@@ -124,8 +148,14 @@ export function WebDavStatusItem({
                 const providerSettings = provider === 's3' ? s3Settings : settings;
                 const label = provider === 's3' ? 'S3 对象存储' : 'WebDAV 服务器';
                 const providerEnabled = providerSettings.enabled;
-                const phase = providerEnabled ? store.phase : 'idle';
-                const phaseLabel = providerEnabled ? webDavStatusLabel(store.phase, '') : '未启用';
+                // Store phase is only initialized at app start; once the user
+                // enables a provider later, treat the stale 'disabled' snapshot
+                // as idle so the card never mislabels an enabled backend.
+                const effectivePhase: WebDavSyncPhase = providerEnabled
+                  ? (store.phase === 'disabled' ? 'idle' : store.phase)
+                  : 'idle';
+                const phase = effectivePhase;
+                const phaseLabel = providerEnabled ? webDavStatusLabel(effectivePhase, '') : '未启用';
                 const serverInfo = provider === 's3'
                   ? (providerSettings as S3Settings).endpoint || '未配置端点'
                   : (providerSettings as WebDavSettings).server_url || '未配置地址';
@@ -150,7 +180,7 @@ export function WebDavStatusItem({
                         aria-checked={providerEnabled}
                         aria-label={`${label} 同步`}
                         title={providerEnabled ? `关闭 ${label}` : `开启 ${label}`}
-                        onClick={() => onToggleProvider(provider, !providerEnabled)}
+                        onClick={() => handleToggle(provider, !providerEnabled)}
                       >
                         <span className="cloud-switch-thumb" />
                       </button>
@@ -167,7 +197,9 @@ export function WebDavStatusItem({
                                 ? '↻ 正在同步…'
                                 : phase === 'queued'
                                   ? '⋯ 等待同步'
-                                  : phaseLabel
+                                  : phase === 'idle'
+                                    ? '就绪'
+                                    : phaseLabel
                           }
                         </span>
                         {phase === 'error' && (
@@ -198,7 +230,12 @@ export function WebDavStatusItem({
                       <button
                         type="button"
                         className="cloud-card-action"
-                        onClick={onOpenSettings}
+                        onClick={() => {
+                          // 先关闭云同步面板（z-index 99999 的 overlay 否则会
+                          // 遮住设置页使其无法点击），再跳转设置。
+                          setPanelOpen(false);
+                          onOpenSettings();
+                        }}
                       >
                         <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><circle cx="8" cy="8" r="2.5" /><path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.5 3.5l1.4 1.4M11.1 11.1l1.4 1.4M12.5 3.5l-1.4 1.4M4.9 11.1l-1.4 1.4" /></svg>
                         设置
