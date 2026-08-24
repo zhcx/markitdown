@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import type { EditorController } from '../types/editor';
+import type { EditorMode } from '../types/blockEditor';
 import { formatTextStatistics } from '../utils/textStatistics';
 import { DEFAULT_FONT_SIZE, DEFAULT_LINE_HEIGHT } from '../utils/appearanceSettings';
 import { applySavedTab } from '../utils/tabPersistence';
@@ -183,6 +184,7 @@ export interface Tab {
   path: string | null;
   content: string;
   modified: boolean;
+  editorMode?: EditorMode;
 }
 
 export interface TimelineEntry {

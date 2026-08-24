@@ -130,6 +130,7 @@ function createController(editor: monaco.editor.IStandaloneCodeEditor, model: mo
   };
 
   const controller = {
+    kind: 'source' as const,
     scrollDOM: root.querySelector<HTMLElement>('.monaco-scrollable-element.editor-scrollable') || root,
     getScrollTop: () => editor.getScrollTop(),
     getScrollHeight: () => editor.getScrollHeight(),

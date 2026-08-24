@@ -26,6 +26,7 @@ export interface EditorDispatchSpec {
 }
 
 export interface EditorController {
+  kind: 'source' | 'blocks';
   scrollDOM: HTMLElement;
   getScrollTop: () => number;
   getScrollHeight: () => number;
