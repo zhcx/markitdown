@@ -2,6 +2,7 @@ import type { Node } from 'prosemirror-model';
 import type { BlockNodeType, MarkdownCapability, BlockSourceMap } from '../types/blockEditor.ts';
 import { blockMarkdownParser, blockMarkdownSerializer, blockSchema } from '../components/Editor/blockSchema.ts';
 import { inspectMarkdownCapability } from './markdownBlockCapability.ts';
+import { buildBlockSourceMap } from './blockSourceMap.ts';
 
 function withNodeContent(node: Node, content: readonly Node[]): Node {
   if (node.isText || node.isLeaf) return node;
@@ -98,7 +99,7 @@ export function parseMarkdown(source: string): ParsedMarkdown {
     capability,
     document,
     blockTypes,
-    sourceMap: null,
+    sourceMap: buildBlockSourceMap(serializeMarkdown(document), document),
   };
 }
 
