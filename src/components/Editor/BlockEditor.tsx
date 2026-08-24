@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { baseKeymap } from 'prosemirror-commands';
 import { dropCursor } from 'prosemirror-dropcursor';
 import { gapCursor } from 'prosemirror-gapcursor';
@@ -10,9 +10,11 @@ import { useAppStore } from '../../stores/appStore';
 import type { MarkdownCapability } from '../../types/blockEditor.ts';
 import { createBlockEditorController } from '../../utils/blockEditorController.ts';
 import { parseMarkdown, serializeMarkdown } from '../../utils/markdownBlockCodec.ts';
+import { filterSlashCommands, findSlashCommandTrigger, type SlashCommand } from '../../utils/slashCommands.ts';
 import { createBlockInputRules } from './blockInputRules.ts';
 import { blockSchema } from './blockSchema.ts';
 import { EditorUnsupportedNotice } from './EditorUnsupportedNotice.tsx';
+import { SlashCommandMenu, type SlashMenuAnchor } from './SlashCommandMenu.tsx';
 import './BlockEditor.css';
 
 export interface BlockEditorProps {
@@ -24,6 +26,13 @@ export interface BlockEditorProps {
   onActiveLineChange?: (lineNumber: number) => void;
   onActiveLineReveal?: (lineNumber: number) => void;
   onSwitchToSource?: () => void;
+}
+
+interface SlashMenuState {
+  from: number;
+  to: number;
+  query: string;
+  anchor: SlashMenuAnchor;
 }
 
 function applyBlockMetadata(view: EditorView) {
@@ -62,11 +71,83 @@ export function BlockEditor({
   const viewRef = useRef<EditorView | null>(null);
   const controllerRef = useRef<ReturnType<typeof createBlockEditorController> | null>(null);
   const initializingRef = useRef(true);
+  const slashMenuRef = useRef<SlashMenuState | null>(null);
+  const slashSelectedIndexRef = useRef(0);
+  const [slashMenu, setSlashMenu] = useState<SlashMenuState | null>(null);
+  const [slashSelectedIndex, setSlashSelectedIndex] = useState(0);
   const { setEditorView } = useAppStore();
   const parsed = parseMarkdown(markdown);
+  const initialParsedRef = useRef(parsed);
+  const slashCommands = useMemo(() => filterSlashCommands(slashMenu?.query || ''), [slashMenu?.query]);
+
+  const closeSlashMenu = useCallback(() => {
+    slashMenuRef.current = null;
+    setSlashMenu(null);
+    setSlashSelectedIndex(0);
+  }, []);
+
+  const syncSlashMenu = useCallback(() => {
+    const controller = controllerRef.current;
+    if (!controller) return;
+    const selection = controller.getSelection();
+    if (!selection.empty) {
+      closeSlashMenu();
+      return;
+    }
+    const line = controller.lineAt(selection.to);
+    const trigger = findSlashCommandTrigger(line.text, line.from, selection.to);
+    const coords = controller.coordsAtPos(selection.to);
+    if (!trigger || !coords) {
+      closeSlashMenu();
+      return;
+    }
+    const nextMenu: SlashMenuState = {
+      from: trigger.from,
+      to: trigger.to,
+      query: trigger.query,
+      anchor: { left: coords.left, top: coords.bottom - 24, bottom: coords.bottom },
+    };
+    slashMenuRef.current = nextMenu;
+    setSlashMenu(nextMenu);
+  }, [closeSlashMenu]);
+
+  const applySlashCommand = useCallback((command: SlashCommand) => {
+    const menu = slashMenuRef.current;
+    const controller = controllerRef.current;
+    if (!menu || !controller) return;
+    const { text, selectionStart = text.length, selectionEnd = selectionStart } = command.insertion;
+    closeSlashMenu();
+    controller.replaceRange(menu.from, menu.to, text, {
+      from: menu.from + selectionStart,
+      to: menu.from + selectionEnd,
+    });
+    controller.focus();
+  }, [closeSlashMenu]);
+
+  const handleSlashKeyDown = useCallback((event: KeyboardEvent) => {
+    if (!slashMenuRef.current || slashCommands.length === 0) return;
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      const next = (slashSelectedIndexRef.current + 1) % slashCommands.length;
+      slashSelectedIndexRef.current = next;
+      setSlashSelectedIndex(next);
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      const next = (slashSelectedIndexRef.current - 1 + slashCommands.length) % slashCommands.length;
+      slashSelectedIndexRef.current = next;
+      setSlashSelectedIndex(next);
+    } else if (event.key === 'Enter') {
+      event.preventDefault();
+      applySlashCommand(slashCommands[slashSelectedIndexRef.current]);
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      closeSlashMenu();
+    }
+  }, [applySlashCommand, closeSlashMenu, slashCommands]);
 
   useEffect(() => {
-    if (!rootRef.current || !parsed.document || parsed.mode !== 'blocks') return undefined;
+    const initialParsed = initialParsedRef.current;
+    if (!rootRef.current || !initialParsed.document || initialParsed.mode !== 'blocks') return undefined;
     const host = rootRef.current;
     const editorHost = document.createElement('div');
     editorHost.className = 'block-editor-content';
@@ -74,7 +155,7 @@ export function BlockEditor({
 
     const state = EditorState.create({
       schema: blockSchema,
-      doc: parsed.document,
+      doc: initialParsed.document,
       plugins: createBlockPlugins(),
     });
 
@@ -95,6 +176,7 @@ export function BlockEditor({
           if (transaction.selectionSet) onActiveLineReveal?.(line);
         }
         applyBlockMetadata(view);
+        syncSlashMenu();
       },
     });
     viewRef.current = view;
@@ -119,7 +201,7 @@ export function BlockEditor({
       viewRef.current = null;
       editorHost.remove();
     };
-  }, [onActiveLineChange, onActiveLineReveal, onMarkdownChange, onUnsupportedMarkdown, setEditorView]);
+  }, [onActiveLineChange, onActiveLineReveal, onMarkdownChange, onUnsupportedMarkdown, setEditorView, syncSlashMenu]);
 
   useEffect(() => {
     const view = viewRef.current;
@@ -134,6 +216,13 @@ export function BlockEditor({
     applyBlockMetadata(view);
   }, [markdown]);
 
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root) return undefined;
+    root.addEventListener('keydown', handleSlashKeyDown);
+    return () => root.removeEventListener('keydown', handleSlashKeyDown);
+  }, [handleSlashKeyDown]);
+
   if (parsed.mode !== 'blocks' || !parsed.document) {
     return (
       <div className={`editor-container block-editor-container ${className || ''}`} style={style}>
@@ -147,6 +236,20 @@ export function BlockEditor({
       <div className="editor-document-card block-editor-document-card">
         <div ref={rootRef} className="block-editor-scroll" aria-label="块编辑器" />
       </div>
+      {slashMenu && (
+        <SlashCommandMenu
+          anchor={slashMenu.anchor}
+          commands={slashCommands}
+          selectedIndex={Math.min(slashSelectedIndex, Math.max(0, slashCommands.length - 1))}
+          query={slashMenu.query}
+          onSelect={applySlashCommand}
+          onSelectedIndexChange={(index) => {
+            slashSelectedIndexRef.current = index;
+            setSlashSelectedIndex(index);
+          }}
+          onClose={closeSlashMenu}
+        />
+      )}
     </div>
   );
 }
