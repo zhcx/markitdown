@@ -101,9 +101,20 @@ export function BlockEditor({
   const [slashSelectedIndex, setSlashSelectedIndex] = useState(0);
   const [blockHandle, setBlockHandle] = useState<BlockHandleState | null>(null);
   const [blockPropertyMenu, setBlockPropertyMenu] = useState<BlockPropertyMenuState | null>(null);
-  const { setEditorView } = useAppStore();
   const parsed = parseMarkdown(markdown);
-  const initialParsedRef = useRef(parsed);
+  const parsedRef = useRef(parsed);
+  const isBlockMode = parsed.mode === 'blocks' && !!parsed.document;
+  const onMarkdownChangeRef = useRef(onMarkdownChange);
+  const onUnsupportedMarkdownRef = useRef(onUnsupportedMarkdown);
+  const onActiveLineChangeRef = useRef(onActiveLineChange);
+  const onActiveLineRevealRef = useRef(onActiveLineReveal);
+  useEffect(() => {
+    parsedRef.current = parsed;
+    onMarkdownChangeRef.current = onMarkdownChange;
+    onUnsupportedMarkdownRef.current = onUnsupportedMarkdown;
+    onActiveLineChangeRef.current = onActiveLineChange;
+    onActiveLineRevealRef.current = onActiveLineReveal;
+  }, [onActiveLineChange, onActiveLineReveal, onMarkdownChange, onUnsupportedMarkdown, parsed]);
   const slashCommands = useMemo(() => filterSlashCommands(slashMenu?.query || ''), [slashMenu?.query]);
 
   const updateBlockHandle = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
@@ -153,6 +164,10 @@ export function BlockEditor({
     slashMenuRef.current = nextMenu;
     setSlashMenu(nextMenu);
   }, [closeSlashMenu]);
+  const syncSlashMenuRef = useRef(syncSlashMenu);
+  useEffect(() => {
+    syncSlashMenuRef.current = syncSlashMenu;
+  }, [syncSlashMenu]);
 
   const applyBlockProperty = useCallback((selection: BlockPropertySelection) => {
     const view = viewRef.current;
@@ -211,18 +226,19 @@ export function BlockEditor({
   }, [applySlashCommand, closeSlashMenu, slashCommands]);
 
   useEffect(() => {
-    const initialParsed = initialParsedRef.current;
-    if (!rootRef.current || !editorHostRef.current || !initialParsed.document || initialParsed.mode !== 'blocks') return undefined;
+    const currentParsed = parsedRef.current;
+    if (!isBlockMode || !rootRef.current || !editorHostRef.current || !currentParsed.document || currentParsed.mode !== 'blocks') return undefined;
     const host = rootRef.current;
+    initializingRef.current = true;
 
     const state = EditorState.create({
       schema: blockSchema,
-      doc: initialParsed.document,
+      doc: currentParsed.document,
       plugins: createBlockPlugins(),
     });
 
     const publish = (value: string) => {
-      if (!initializingRef.current && value !== useAppStore.getState().content) onMarkdownChange(value);
+      if (!initializingRef.current && value !== useAppStore.getState().content) onMarkdownChangeRef.current(value);
     };
 
     const view = new EditorView({ mount: editorHostRef.current }, {
@@ -236,33 +252,33 @@ export function BlockEditor({
         const active = controller?.getSelection();
         if (active) {
           const line = controller.lineAt(active.from).number;
-          onActiveLineChange?.(line);
-          if (transaction.selectionSet) onActiveLineReveal?.(line);
+          onActiveLineChangeRef.current?.(line);
+          if (transaction.selectionSet) onActiveLineRevealRef.current?.(line);
         }
-        syncSlashMenu();
+        syncSlashMenuRef.current();
       },
     });
     viewRef.current = view;
 
     const controller = createBlockEditorController(view, host, {
       onMarkdownChange: publish,
-      onUnsupportedMarkdown,
+      onUnsupportedMarkdown: capability => onUnsupportedMarkdownRef.current(capability),
       onActiveSourceLine: line => {
-        onActiveLineChange?.(line);
-        onActiveLineReveal?.(line);
+        onActiveLineChangeRef.current?.(line);
+        onActiveLineRevealRef.current?.(line);
       },
     });
     controllerRef.current = controller;
-    setEditorView(controller);
+    useAppStore.getState().setEditorView(controller);
     initializingRef.current = false;
 
     return () => {
-      setEditorView(null);
+      useAppStore.getState().setEditorView(null);
       controllerRef.current = null;
       viewRef.current?.destroy();
       viewRef.current = null;
     };
-  }, [onActiveLineChange, onActiveLineReveal, onMarkdownChange, onUnsupportedMarkdown, setEditorView, syncSlashMenu]);
+  }, [isBlockMode]);
 
   useEffect(() => {
     const view = viewRef.current;
@@ -274,6 +290,7 @@ export function BlockEditor({
       doc: parsedExternal.document,
       plugins: createBlockPlugins(),
     }));
+    controllerRef.current?.syncDocument();
   }, [markdown]);
 
   useEffect(() => {
@@ -314,23 +331,23 @@ export function BlockEditor({
           }}
         >
           <div ref={editorHostRef} className="block-editor-content" />
-          <div className="block-editor-overlay" aria-hidden="true">
-          {blockHandle && (
-            <button
-              type="button"
-              className="block-handle"
-              aria-label="打开块属性"
-              title="块属性"
-              style={{ left: blockHandle.left, top: blockHandle.top }}
-              onMouseDown={event => event.preventDefault()}
-              onClick={event => {
-                const rect = event.currentTarget.getBoundingClientRect();
-                setBlockPropertyMenu({ index: blockHandle.index, left: rect.right + 8, top: rect.top });
-              }}
-            >
-              ⋮⋮
-            </button>
-          )}
+          <div className="block-editor-overlay">
+            {blockHandle && (
+              <button
+                type="button"
+                className="block-handle"
+                aria-label="打开块属性"
+                title="块属性"
+                style={{ left: blockHandle.left, top: blockHandle.top }}
+                onMouseDown={event => event.preventDefault()}
+                onClick={event => {
+                  const rect = event.currentTarget.getBoundingClientRect();
+                  setBlockPropertyMenu({ index: blockHandle.index, left: rect.right + 8, top: rect.top });
+                }}
+              >
+                ⋮⋮
+              </button>
+            )}
           </div>
         </div>
       </div>

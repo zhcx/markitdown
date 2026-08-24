@@ -15,9 +15,13 @@ function createHarness(markdown: string) {
   const dispatch = (transaction: Parameters<typeof currentState.apply>[0]) => {
     currentState = currentState.apply(transaction);
   };
+  const updateState = (nextState: EditorState) => {
+    currentState = nextState;
+  };
   const view = {
     get state() { return currentState; },
     dispatch,
+    updateState,
     focus() {},
     coordsAtPos(position: number) {
       coordsPosition = position;
@@ -39,6 +43,7 @@ function createHarness(markdown: string) {
     controller,
     changes,
     dispatch,
+    updateState,
     get state() { return currentState; },
     get coordsPosition() { return coordsPosition; },
     get fallback() { return fallback; },
@@ -82,4 +87,16 @@ test('syncDocument refreshes controller values after a direct editor transaction
   assert.deepEqual(harness.controller.getSelection(), { from: 0, to: 6, empty: false });
   harness.controller.coordsAtPos(6);
   assert.equal(harness.coordsPosition, 7);
+});
+
+test('syncDocument refreshes controller values after an external state replacement', () => {
+  const harness = createHarness('Original\n');
+  const parsed = parseMarkdown('External document\n');
+  if (!parsed.document) throw new Error('expected block document');
+
+  harness.updateState(EditorState.create({ schema: blockSchema, doc: parsed.document }));
+  harness.controller.syncDocument();
+
+  assert.equal(harness.controller.getValue(), 'External document\n');
+  assert.equal(harness.controller.line(1).text, 'External document');
 });

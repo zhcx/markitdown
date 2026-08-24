@@ -33,3 +33,23 @@ test('React declares a stable ProseMirror mount instead of appending unmanaged c
   assert.doesNotMatch(source, /document\.createElement\('div'\)/);
   assert.doesNotMatch(source, /appendChild\(editorHost\)/);
 });
+
+test('BlockEditor keeps the interactive handle out of an aria-hidden overlay', () => {
+  const source = read('src/components/Editor/BlockEditor.tsx');
+  assert.match(source, /className="block-editor-overlay"/);
+  assert.doesNotMatch(source, /className="block-editor-overlay"\s+aria-hidden/);
+  assert.match(source, /className="block-handle"\s+aria-label=/);
+});
+
+test('BlockEditor construction is mount-scoped and uses the current supported document', () => {
+  const source = read('src/components/Editor/BlockEditor.tsx');
+  assert.match(source, /const parsedRef = useRef\(parsed\);[\s\S]*parsedRef\.current = parsed/);
+  assert.match(source, /const currentParsed = parsedRef\.current;/);
+  assert.doesNotMatch(source, /initialParsedRef/);
+  assert.match(source, /new EditorView[\s\S]*\}, \[isBlockMode\]\);/);
+});
+
+test('BlockEditor refreshes the controller snapshot after external state changes', () => {
+  const source = read('src/components/Editor/BlockEditor.tsx');
+  assert.match(source, /view\.updateState\(EditorState\.create\([\s\S]*?\}\)\);\s*controllerRef\.current\?\.syncDocument\(\);/);
+});
