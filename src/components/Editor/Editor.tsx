@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { useAppStore } from '../../stores/appStore';
 import type { EditorMode } from '../../types/blockEditor.ts';
 import { parseMarkdown } from '../../utils/markdownBlockCodec.ts';
+import { resolveEditorMode } from '../../utils/editorMode.ts';
 import { BlockEditor } from './BlockEditor.tsx';
 import { EditorModeToggle } from './EditorModeToggle.tsx';
 import { EditorUnsupportedNotice } from './EditorUnsupportedNotice.tsx';
@@ -14,7 +15,7 @@ export function Editor({ className, style, onActiveLineChange, onActiveLineRevea
   const requestedMode: EditorMode = activeTab?.editorMode === 'source' ? 'source' : 'blocks';
   const capability = useMemo(() => parseMarkdown(content).capability, [content]);
   const [forcedSourceTabId, setForcedSourceTabId] = useState<string | null>(null);
-  const effectiveMode: EditorMode = forcedSourceTabId === activeTabId ? 'source' : requestedMode;
+  const effectiveMode = resolveEditorMode(requestedMode, capability, forcedSourceTabId === activeTabId);
   const handleBlockChange = useCallback((markdown: string) => setContent(markdown), [setContent]);
   const handleUnsupported = useCallback(() => {
     if (activeTabId) setForcedSourceTabId(activeTabId);
