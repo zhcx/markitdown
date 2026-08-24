@@ -14,6 +14,7 @@ test('BlockEditor exposes a clickable property handle and property menu', () => 
 
 test('block editor surface is not styled as a form input', () => {
   const styles = read('src/components/Editor/BlockEditor.css');
+  assert.match(styles, /\.editor-host[\s\S]*position:\s*relative/);
   assert.match(styles, /\.block-editor-content\.ProseMirror[\s\S]*outline:\s*none/);
   assert.match(styles, /white-space:\s*pre-wrap/);
   assert.match(styles, /\.block-editor-container[\s\S]*padding:\s*0/);
