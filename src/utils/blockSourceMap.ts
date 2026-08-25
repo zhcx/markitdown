@@ -21,6 +21,7 @@ function nodeType(node: Node): BlockNodeType {
     case 'code_block':
     case 'horizontal_rule':
     case 'table':
+    case 'raw_markdown':
     case 'image':
     case 'paragraph':
       return node.type.name;

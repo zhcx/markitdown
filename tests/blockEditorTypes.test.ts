@@ -5,7 +5,7 @@ import { BLOCK_NODE_TYPES, DEFAULT_BLOCK_EDITOR_MODE } from '../src/types/blockE
 test('block editor exposes the supported node types', () => {
   assert.deepEqual(BLOCK_NODE_TYPES, [
     'paragraph', 'heading', 'bullet_list', 'ordered_list', 'task_list',
-    'blockquote', 'code_block', 'horizontal_rule', 'table', 'image',
+    'blockquote', 'code_block', 'horizontal_rule', 'table', 'raw_markdown', 'image',
   ]);
   assert.equal(DEFAULT_BLOCK_EDITOR_MODE, 'blocks');
 });

@@ -4,7 +4,7 @@ import { Fragment, type Node } from 'prosemirror-model';
 import { blockSchema } from './blockSchema.ts';
 import type { BlockNodeType } from '../../types/blockEditor.ts';
 
-export type BlockPropertyType = Exclude<BlockNodeType, 'image'>;
+export type BlockPropertyType = Exclude<BlockNodeType, 'image' | 'table' | 'raw_markdown'>;
 
 function createInsertedBlock(type: BlockNodeType, schema = blockSchema): Node {
   switch (type) {

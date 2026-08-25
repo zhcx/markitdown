@@ -105,6 +105,20 @@ export const blockSchema = new Schema({
       isolating: true,
       toDOM: tableCellToDOM,
     },
+    raw_markdown: {
+      attrs: { kind: { default: 'unknown' } },
+      content: 'text*',
+      group: 'block',
+      code: true,
+      marks: '',
+      defining: true,
+      isolating: true,
+      toDOM: node => [
+        'pre',
+        { class: 'raw-markdown-block', 'data-raw-markdown-kind': node.attrs.kind },
+        ['code', 0],
+      ],
+    },
     image: {
       inline: true,
       attrs: { src: {}, alt: { default: null }, title: { default: null } },
@@ -189,6 +203,10 @@ export const blockMarkdownSerializer = new MarkdownSerializer(
     },
     table_row: renderTableRow,
     table_cell: (state, node) => state.renderInline(node, false),
+    raw_markdown: (state, node) => {
+      state.write(node.textContent);
+      state.closeBlock(node);
+    },
   },
   defaultMarkdownSerializer.marks,
   { escapeExtraCharacters: /\|/g },

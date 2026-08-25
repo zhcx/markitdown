@@ -24,6 +24,7 @@ export type BlockNodeType =
   | 'code_block'
   | 'horizontal_rule'
   | 'table'
+  | 'raw_markdown'
   | 'image';
 
 export type UnsupportedMarkdownKind =
@@ -69,6 +70,7 @@ export const BLOCK_NODE_TYPES: BlockNodeType[] = [
   'code_block',
   'horizontal_rule',
   'table',
+  'raw_markdown',
   'image',
 ];
 
