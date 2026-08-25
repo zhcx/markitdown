@@ -30,3 +30,14 @@ test('pane dragging uses latest-frame scheduling and flushes the final pointer',
   assert.doesNotMatch(app, /setSplitRatio\([^)]*\)[\s\S]{0,200}mousemove/iu);
   assert.match(styles, /html\.panel-resizing \.document-pane[\s\S]*contain:\s*layout paint/);
 });
+
+test('scroll sync uses one latest-frame task and suspends geometry during panel resize', () => {
+  const app = read('src/App.tsx');
+  assert.match(app, /createLatestFrameTask<ScrollSyncRequest>/);
+  assert.match(app, /createSuspendableInvalidation/);
+  assert.match(app, /scrollGeometryControlRef\.current\.suspend\(\)/);
+  assert.match(app, /scrollGeometryControlRef\.current\.invalidate\(\)/);
+  assert.match(app, /scrollGeometryControlRef\.current\.resume\(\)/);
+  assert.match(app, /typeof ResizeObserver === 'undefined'/);
+  assert.doesNotMatch(app, /useEffect\([\s\S]*\}, \[mode, editorView, previewScrollElement, previewRenderVersion, splitRatio\]\)/);
+});

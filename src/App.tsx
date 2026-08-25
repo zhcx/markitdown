@@ -30,8 +30,10 @@ import { getImmersiveWorkspacePolicy } from './utils/immersiveWorkspace';
 import { guardWindowClose, type CloseGuardTab, type UnsavedChangesAction } from './utils/windowCloseGuard';
 import { findActiveSourceElement } from './utils/activeSourceLine';
 import {
+  browserDelayDriver,
   browserFrameDriver,
   createLatestFrameTask,
+  createSuspendableInvalidation,
   hasMeaningfulPixelDelta,
 } from './utils/paneInteraction';
 import './styles/main.css';
@@ -79,6 +81,12 @@ function applyThemeToDocument(preference: string) {
   return resolvedTheme;
 }
 
+interface ScrollGeometryControl {
+  suspend: () => void;
+  invalidate: () => void;
+  resume: () => void;
+}
+
 function App() {
   const {
     mode,
@@ -117,13 +125,11 @@ function App() {
   const [immersiveOutlineCollapsed, setImmersiveOutlineCollapsed] = useState(false);
   const [immersivePreviewScrollElement, setImmersivePreviewScrollElement] = useState<HTMLDivElement | null>(null);
   const [closePromptTabs, setClosePromptTabs] = useState<CloseGuardTab[] | null>(null);
-  const scrollSyncFrame = useRef<number | null>(null);
-  const pendingScrollSync = useRef<{
-    source: ObservableScrollViewport;
-    target: ObservableScrollViewport;
-    anchors: ScrollAnchor[];
-    range: ScrollRange;
-  } | null>(null);
+  const scrollGeometryControlRef = useRef<ScrollGeometryControl>({
+    suspend: () => undefined,
+    invalidate: () => undefined,
+    resume: () => undefined,
+  });
   const programmaticScrollTargetsRef = useRef(new Map<ObservableScrollViewport, number>());
   const revealPreviewLineRef = useRef<(lineNumber: number) => void>(() => undefined);
   const revealEditorLineRef = useRef<(lineNumber: number) => void>(() => undefined);
@@ -423,6 +429,8 @@ function App() {
     dragBounds.current = dividerRef.current?.parentElement?.getBoundingClientRect() || null;
     layoutWidth.current = (dividerRef.current?.closest('.app-body') as HTMLElement | null)?.clientWidth ?? null;
     document.documentElement.classList.add('panel-resizing');
+    scrollGeometryControlRef.current.suspend();
+    scrollGeometryControlRef.current.invalidate();
   }, []);
 
   const handleSplitMouseMove = useCallback((e: MouseEvent) => {
@@ -439,6 +447,8 @@ function App() {
     dragBounds.current = sidebarDividerRef.current?.parentElement?.getBoundingClientRect() || null;
     layoutWidth.current = (sidebarDividerRef.current?.closest('.app-body') as HTMLElement | null)?.clientWidth ?? null;
     document.documentElement.classList.add('panel-resizing');
+    scrollGeometryControlRef.current.suspend();
+    scrollGeometryControlRef.current.invalidate();
   }, []);
 
   const handleSidebarMouseMove = useCallback((e: MouseEvent) => {
@@ -455,6 +465,8 @@ function App() {
     dragBounds.current = proofreadDividerRef.current?.parentElement?.getBoundingClientRect() || null;
     layoutWidth.current = (proofreadDividerRef.current?.closest('.app-body') as HTMLElement | null)?.clientWidth ?? null;
     document.documentElement.classList.add('panel-resizing');
+    scrollGeometryControlRef.current.suspend();
+    scrollGeometryControlRef.current.invalidate();
   }, []);
 
   const handleProofreadMouseMove = useCallback((e: MouseEvent) => {
@@ -471,6 +483,8 @@ function App() {
     dragBounds.current = chatbotDividerRef.current?.parentElement?.getBoundingClientRect() || null;
     layoutWidth.current = (chatbotDividerRef.current?.closest('.app-body') as HTMLElement | null)?.clientWidth ?? null;
     document.documentElement.classList.add('panel-resizing');
+    scrollGeometryControlRef.current.suspend();
+    scrollGeometryControlRef.current.invalidate();
   }, []);
 
   const handleChatbotMouseMove = useCallback((e: MouseEvent) => {
@@ -564,6 +578,7 @@ function App() {
     dragBounds.current = null;
     layoutWidth.current = null;
     document.documentElement.classList.remove('panel-resizing');
+    scrollGeometryControlRef.current.resume();
   }, [dragFrameTask, setChatbotPanelWidth, setProofreadPanelWidth, setSidebarWidth, setSplitRatio]);
 
   useEffect(() => {
@@ -666,11 +681,7 @@ function App() {
     rebuildScrollAnchors();
 
     const stopPendingScrollSync = () => {
-      pendingScrollSync.current = null;
-      if (scrollSyncFrame.current !== null) {
-        window.cancelAnimationFrame(scrollSyncFrame.current);
-        scrollSyncFrame.current = null;
-      }
+      scrollFrameTask.cancel();
     };
     const alignEditorLineWithPreview = (lineNumber: number, direction: 'editor-to-preview' | 'preview-to-editor') => {
       const target = findActiveSourceElement(previewScrollElement, lineNumber);
@@ -724,6 +735,24 @@ function App() {
     revealPreviewLineRef.current = revealPreviewLine;
     revealEditorLineRef.current = revealEditorLine;
 
+    type ScrollSyncRequest = {
+      source: ObservableScrollViewport;
+      target: ObservableScrollViewport;
+      anchors: ScrollAnchor[];
+      range: ScrollRange;
+    };
+
+    const scrollFrameTask = createLatestFrameTask<ScrollSyncRequest>(browserFrameDriver, request => {
+      const nextTop = getSyncedScrollTop(request.source, request.target, request.anchors, request.range);
+
+      // A tiny threshold avoids expensive layout work from sub-pixel scroll events
+      // while preserving the feel of one-to-one scrolling for long documents.
+      if (Math.abs(request.target.getScrollTop() - nextTop) < 0.5) return;
+
+      programmaticScrollTargets.set(request.target, nextTop);
+      request.target.setScrollTop(nextTop);
+    });
+
     const syncScroll = (
       source: ObservableScrollViewport,
       target: ObservableScrollViewport,
@@ -736,25 +765,7 @@ function App() {
         if (Math.abs(source.getScrollTop() - ignoredTop) < 0.5) return;
       }
 
-      pendingScrollSync.current = { source, target, anchors, range };
-      if (scrollSyncFrame.current !== null) return;
-
-      scrollSyncFrame.current = window.requestAnimationFrame(() => {
-        scrollSyncFrame.current = null;
-        const request = pendingScrollSync.current;
-        pendingScrollSync.current = null;
-        if (!request) return;
-
-        const { source: latestSource, target: latestTarget, anchors: latestAnchors, range: latestRange } = request;
-        const nextTop = getSyncedScrollTop(latestSource, latestTarget, latestAnchors, latestRange);
-
-        // A tiny threshold avoids expensive layout work from sub-pixel scroll events
-        // while preserving the feel of one-to-one scrolling for long documents.
-        if (Math.abs(latestTarget.getScrollTop() - nextTop) < 0.5) return;
-
-        programmaticScrollTargets.set(latestTarget, nextTop);
-        latestTarget.setScrollTop(nextTop);
-      });
+      scrollFrameTask.schedule({ source, target, anchors, range });
     };
 
     const syncEditorToPreview = () => syncScroll(
@@ -772,21 +783,29 @@ function App() {
     const stopEditorScroll = editorViewport.onScroll(syncEditorToPreview);
     const stopPreviewScroll = previewViewport.onScroll(syncPreviewToEditor);
 
-    let anchorRebuildTimer: number | null = null;
-    const scheduleAnchorRebuild = () => {
-      if (anchorRebuildTimer !== null) window.clearTimeout(anchorRebuildTimer);
-      anchorRebuildTimer = window.setTimeout(() => {
-        anchorRebuildTimer = null;
+    const geometryInvalidation = createSuspendableInvalidation(
+      browserDelayDriver,
+      () => {
         rebuildScrollAnchors();
         syncEditorToPreview();
-      }, 80);
+      },
+      80,
+    );
+    scrollGeometryControlRef.current = {
+      suspend: geometryInvalidation.suspend,
+      invalidate: geometryInvalidation.invalidate,
+      resume: geometryInvalidation.resume,
     };
-    const geometryObserver = new ResizeObserver(scheduleAnchorRebuild);
-    geometryObserver.observe(previewScrollElement);
+
+    const geometryObserver = typeof ResizeObserver === 'undefined'
+      ? null
+      : new ResizeObserver(geometryInvalidation.invalidate);
+    geometryObserver?.observe(previewScrollElement);
     const previewDocument = previewScrollElement.querySelector<HTMLElement>('.preview-document');
-    if (previewDocument) geometryObserver.observe(previewDocument);
+    if (previewDocument) geometryObserver?.observe(previewDocument);
     const editorContent = editorView.scrollDOM.querySelector<HTMLElement>('.lines-content, .block-editor-content');
-    geometryObserver.observe(editorContent || editorView.scrollDOM);
+    geometryObserver?.observe(editorContent || editorView.scrollDOM);
+    window.addEventListener('resize', geometryInvalidation.invalidate);
 
     // Rendering Markdown, images or diagrams changes preview geometry. Keep
     // the editor as the source of truth and realign once the new layout exists.
@@ -795,20 +814,21 @@ function App() {
     return () => {
       stopEditorScroll();
       stopPreviewScroll();
-      geometryObserver.disconnect();
-      if (anchorRebuildTimer !== null) window.clearTimeout(anchorRebuildTimer);
+      scrollFrameTask.cancel();
+      geometryInvalidation.dispose();
+      geometryObserver?.disconnect();
+      window.removeEventListener('resize', geometryInvalidation.invalidate);
+      scrollGeometryControlRef.current = {
+        suspend: () => undefined,
+        invalidate: () => undefined,
+        resume: () => undefined,
+      };
 
-      if (scrollSyncFrame.current !== null) {
-        window.cancelAnimationFrame(scrollSyncFrame.current);
-        scrollSyncFrame.current = null;
-      }
-
-      pendingScrollSync.current = null;
       programmaticScrollTargets.clear();
       if (revealPreviewLineRef.current === revealPreviewLine) revealPreviewLineRef.current = () => undefined;
       if (revealEditorLineRef.current === revealEditorLine) revealEditorLineRef.current = () => undefined;
     };
-  }, [mode, editorView, previewScrollElement, previewRenderVersion, splitRatio]);
+  }, [mode, editorView, previewScrollElement, previewRenderVersion]);
 
   return (
     <div className={`app ${immersivePolicy.active ? 'immersive-mode-active' : ''} ${mode === 'zen' ? 'zen-mode' : ''}`}>
