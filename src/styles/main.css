@@ -390,6 +390,7 @@ html.panel-resizing .chatbot-side-panel {
   transition: none !important;
 }
 
+html.panel-resizing .document-pane,
 html.panel-resizing .editor-pane,
 html.panel-resizing .preview-pane,
 html.panel-resizing .proofread-side-panel,

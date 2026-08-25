@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback, useState } from 'react';
+import { useEffect, useRef, useCallback, useState, useMemo } from 'react';
 import { useAppStore } from './stores/appStore';
 import { useAIStore } from './stores/aiStore';
 import { useWebDavStore } from './stores/webdavStore';
@@ -29,6 +29,11 @@ import { createElementScrollViewport, getAlignedScrollTop, getSyncedScrollTop, i
 import { getImmersiveWorkspacePolicy } from './utils/immersiveWorkspace';
 import { guardWindowClose, type CloseGuardTab, type UnsavedChangesAction } from './utils/windowCloseGuard';
 import { findActiveSourceElement } from './utils/activeSourceLine';
+import {
+  browserFrameDriver,
+  createLatestFrameTask,
+  hasMeaningfulPixelDelta,
+} from './utils/paneInteraction';
 import './styles/main.css';
 import './styles/workbench.css';
 
@@ -36,6 +41,11 @@ interface DragDropPayload {
   paths: string[];
   position: { x: number; y: number };
 }
+
+type PendingPanelDrag = {
+  type: 'split' | 'sidebar' | 'proofread' | 'chatbot';
+  clientX: number;
+};
 
 const DEFAULT_EDITOR_RATIO = 0.5;
 const SUPPORTED_THEMES = new Set(['vscode-light', 'vscode-dark']);
@@ -96,8 +106,6 @@ function App() {
   const isDraggingSidebar = useRef(false);
   const isDraggingProofread = useRef(false);
   const isDraggingChatbot = useRef(false);
-  const dragFrame = useRef<number | null>(null);
-  const pendingDrag = useRef<{ type: 'split' | 'sidebar' | 'proofread' | 'chatbot'; clientX: number } | null>(null);
   const dragBounds = useRef<DOMRect | null>(null);
   const layoutWidth = useRef<number | null>(null);
   const [proofreadPanelWidth, setProofreadPanelWidth] = useState(280);
@@ -204,47 +212,65 @@ function App() {
     dragValues.current.splitRatio = ratio;
   }, [chatbotPanelWidth, chatbotVisible, outlineVisible, proofreadPanelWidth, proofreadResults.length, sidebarVisible, sidebarWidth]);
 
-  const scheduleDragFrame = useCallback((type: 'split' | 'sidebar' | 'proofread' | 'chatbot', clientX: number) => {
-    pendingDrag.current = { type, clientX };
-    if (dragFrame.current !== null) return;
+  const applyPanelDrag = useCallback((drag: PendingPanelDrag) => {
+    const bounds = dragBounds.current;
+    if (!bounds) return;
 
-    dragFrame.current = window.requestAnimationFrame(() => {
-      dragFrame.current = null;
-      const drag = pendingDrag.current;
-      const bounds = dragBounds.current;
-      if (!drag || !bounds) return;
+    if (drag.type === 'split') {
+      const sidebarOffset = sidebarVisible ? sidebarWidth : 0;
+      const availableWidth = Math.max(1, bounds.width - sidebarOffset);
+      const ratio = Math.max(0.1, Math.min(0.9,
+        (drag.clientX - bounds.left - sidebarOffset) / availableWidth,
+      ));
+      if (!hasMeaningfulPixelDelta(
+        dragValues.current.splitRatio * availableWidth,
+        ratio * availableWidth,
+      )) return;
+      const divider = dividerRef.current;
+      const editor = divider?.previousElementSibling as HTMLElement | null;
+      const preview = divider?.nextElementSibling as HTMLElement | null;
+      if (editor) editor.style.flex = String(ratio);
+      if (preview) preview.style.flex = String(1 - ratio);
+      dragValues.current.splitRatio = ratio;
+      return;
+    }
 
-      if (drag.type === 'split') {
-        const sidebarOffset = sidebarVisible ? sidebarWidth : 0;
-        const ratio = Math.max(0.1, Math.min(0.9,
-          (drag.clientX - bounds.left - sidebarOffset) / (bounds.width - sidebarOffset),
-        ));
-        const divider = dividerRef.current;
-        const editor = divider?.previousElementSibling as HTMLElement | null;
-        const preview = divider?.nextElementSibling as HTMLElement | null;
-        if (editor) editor.style.flex = String(ratio);
-        if (preview) preview.style.flex = String(1 - ratio);
-        dragValues.current.splitRatio = ratio;
-      } else if (drag.type === 'sidebar') {
-        const width = Math.max(150, Math.min(400, drag.clientX - bounds.left));
-        const sidebar = sidebarDividerRef.current?.previousElementSibling as HTMLElement | null;
-        if (sidebar) sidebar.style.width = `${width}px`;
-        dragValues.current.sidebarWidth = width;
-      } else if (drag.type === 'proofread') {
-        const width = Math.max(200, Math.min(500, bounds.right - drag.clientX));
-        const panel = proofreadDividerRef.current?.nextElementSibling as HTMLElement | null;
-        if (panel) panel.style.width = `${width}px`;
-        dragValues.current.proofreadPanelWidth = width;
-        balanceDocumentPanes(width, dragValues.current.chatbotPanelWidth);
-      } else {
-        const width = Math.max(200, Math.min(500, bounds.right - drag.clientX));
-        const panel = chatbotDividerRef.current?.nextElementSibling as HTMLElement | null;
-        if (panel) panel.style.width = `${width}px`;
-        dragValues.current.chatbotPanelWidth = width;
-        balanceDocumentPanes(dragValues.current.proofreadPanelWidth, width);
-      }
-    });
+    if (drag.type === 'sidebar') {
+      const width = Math.max(150, Math.min(400, drag.clientX - bounds.left));
+      if (!hasMeaningfulPixelDelta(dragValues.current.sidebarWidth, width)) return;
+      const sidebar = sidebarDividerRef.current?.previousElementSibling as HTMLElement | null;
+      if (sidebar) sidebar.style.width = `${width}px`;
+      dragValues.current.sidebarWidth = width;
+      return;
+    }
+
+    const width = Math.max(200, Math.min(500, bounds.right - drag.clientX));
+    if (drag.type === 'proofread') {
+      if (!hasMeaningfulPixelDelta(dragValues.current.proofreadPanelWidth, width)) return;
+      const panel = proofreadDividerRef.current?.nextElementSibling as HTMLElement | null;
+      if (panel) panel.style.width = `${width}px`;
+      dragValues.current.proofreadPanelWidth = width;
+      balanceDocumentPanes(width, dragValues.current.chatbotPanelWidth);
+      return;
+    }
+
+    if (!hasMeaningfulPixelDelta(dragValues.current.chatbotPanelWidth, width)) return;
+    const panel = chatbotDividerRef.current?.nextElementSibling as HTMLElement | null;
+    if (panel) panel.style.width = `${width}px`;
+    dragValues.current.chatbotPanelWidth = width;
+    balanceDocumentPanes(dragValues.current.proofreadPanelWidth, width);
   }, [balanceDocumentPanes, sidebarVisible, sidebarWidth]);
+
+  const dragFrameTask = useMemo(
+    () => createLatestFrameTask<PendingPanelDrag>(browserFrameDriver, applyPanelDrag),
+    [applyPanelDrag],
+  );
+
+  useEffect(() => () => dragFrameTask.cancel(), [dragFrameTask]);
+
+  const scheduleDragFrame = useCallback((type: PendingPanelDrag['type'], clientX: number) => {
+    dragFrameTask.schedule({ type, clientX });
+  }, [dragFrameTask]);
 
   useEffect(() => {
     void loadSettings().then(() => {
@@ -508,6 +534,8 @@ function App() {
   }, []);
 
   const handleMouseUp = useCallback(() => {
+    dragFrameTask.flush();
+
     if (isDragging.current) {
       isDragging.current = false;
       setSplitRatio(dragValues.current.splitRatio);
@@ -533,11 +561,10 @@ function App() {
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
     }
-    pendingDrag.current = null;
     dragBounds.current = null;
     layoutWidth.current = null;
     document.documentElement.classList.remove('panel-resizing');
-  }, [setChatbotPanelWidth, setProofreadPanelWidth, setSidebarWidth, setSplitRatio]);
+  }, [dragFrameTask, setChatbotPanelWidth, setProofreadPanelWidth, setSidebarWidth, setSplitRatio]);
 
   useEffect(() => {
     document.addEventListener('mousemove', handleSplitMouseMove);
@@ -545,12 +572,14 @@ function App() {
     document.addEventListener('mousemove', handleProofreadMouseMove);
     document.addEventListener('mousemove', handleChatbotMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
+    window.addEventListener('blur', handleMouseUp);
     return () => {
       document.removeEventListener('mousemove', handleSplitMouseMove);
       document.removeEventListener('mousemove', handleSidebarMouseMove);
       document.removeEventListener('mousemove', handleProofreadMouseMove);
       document.removeEventListener('mousemove', handleChatbotMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener('blur', handleMouseUp);
     };
   }, [handleSplitMouseMove, handleSidebarMouseMove, handleProofreadMouseMove, handleChatbotMouseMove, handleMouseUp]);
 
