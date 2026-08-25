@@ -56,6 +56,37 @@ test('always maps the current source bottom to the current target bottom', () =>
   assert.equal(target.top, 2000);
 });
 
+test('aligns the content bottoms before either pane reaches its scroll extent', () => {
+  // The editor content ends 120px before its scroll extent (tall tail pad),
+  // the preview content ends 60px before its own extent. When the editor's
+  // last content line hits the viewport bottom (top 700) the preview's last
+  // content line must hit its viewport bottom too (top 1700), not lag behind
+  // until the editor's empty tail pad is fully scrolled.
+  const source = viewport(700, 1120, 200); // sourceMax = 920
+  const target = viewport(0, 2180, 400); // targetMax = 1780
+
+  assert.equal(getSyncedScrollTop(source.value, target.value, [
+    { sourceTop: 0, targetTop: 0 },
+    { sourceTop: 700, targetTop: 1700 },
+    { sourceTop: 920, targetTop: 1780 },
+  ]), 1700);
+});
+
+test('smooths the trailing insets linearly between content bottom and scroll end', () => {
+  const source = viewport(850, 1120, 200);
+  const target = viewport(0, 2180, 400);
+
+  syncScrollPosition(source.value, target.value, [
+    { sourceTop: 0, targetTop: 0 },
+    { sourceTop: 700, targetTop: 1700 },
+    { sourceTop: 920, targetTop: 1780 },
+  ]);
+
+  // 850 is 150/220 of the way through [700, 920], so the target advances the
+  // same fraction of [1700, 1780] instead of snapping at the content bottom.
+  assert.ok(Math.abs(target.top - (1700 + (150 / 220) * 80)) < 0.01);
+});
+
 test('uses cached scroll ranges without reading layout dimensions', () => {
   const source: ScrollViewport = {
     getScrollTop: () => 400,

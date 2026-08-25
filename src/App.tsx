@@ -687,11 +687,18 @@ function App() {
       previewToEditorRange.targetMax = editorMax;
       const previewBounds = previewScrollElement.getBoundingClientRect();
       const anchorsByLine = new Map<number, ScrollAnchor>();
+      let lastContentBottom = 0;
 
       previewScrollElement.querySelectorAll<HTMLElement>('[data-source-line]').forEach((element) => {
         const lineNumber = Number(element.dataset.sourceLine);
-        if (!Number.isFinite(lineNumber) || anchorsByLine.has(lineNumber)) return;
-        const targetTop = element.getBoundingClientRect().top
+        if (!Number.isFinite(lineNumber)) return;
+        const rect = element.getBoundingClientRect();
+        const elementBottom = rect.bottom
+          - previewBounds.top
+          + previewScrollElement.scrollTop;
+        if (elementBottom > lastContentBottom) lastContentBottom = elementBottom;
+        if (anchorsByLine.has(lineNumber)) return;
+        const targetTop = rect.top
           - previewBounds.top
           + previewScrollElement.scrollTop;
         anchorsByLine.set(lineNumber, {
@@ -700,9 +707,31 @@ function App() {
         });
       });
 
+      // Content-bottom anchor. The panes have different tail insets (the
+      // editor reserves a tall bottom pad while the preview keeps its own), so
+      // a final { editorMax, previewMax } endpoint alone lets the editor's
+      // empty tail pad dominate the last segment and leaves preview content
+      // unrevealed until the editor is fully bottomed out. Anchoring "the last
+      // content line reaches the bottom of its viewport" on both panes makes
+      // them run out of content together; the trailing insets then scroll
+      // proportionally to the very end.
+      let contentBottomSource = 0;
+      let contentBottomTarget = 0;
+      if (anchorsByLine.size > 0) {
+        // The editor scroll surface reserves its own tail pad (120px in block
+        // mode), so the content bottom is the scroll extent minus that pad.
+        const editorBottomPad = parseFloat(getComputedStyle(editorView.scrollDOM).paddingBottom) || 0;
+        contentBottomSource = Math.max(0, Math.min(
+          editorView.getScrollHeight() - editorBottomPad - editorView.getClientHeight(),
+          editorMax,
+        ));
+        contentBottomTarget = Math.max(0, Math.min(lastContentBottom - previewViewport.getClientHeight(), previewMax));
+      }
+
       const nextEditorAnchors = [
         { sourceTop: 0, targetTop: 0 },
         ...anchorsByLine.values(),
+        { sourceTop: contentBottomSource, targetTop: contentBottomTarget },
         { sourceTop: editorMax, targetTop: previewMax },
       ];
       editorToPreviewAnchors = nextEditorAnchors;

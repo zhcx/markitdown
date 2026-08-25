@@ -87,6 +87,20 @@ test('scroll sync uses one latest-frame task and suspends geometry during panel 
   assert.doesNotMatch(app, /useEffect\([\s\S]*\}, \[mode, editorView, previewScrollElement, previewRenderVersion, splitRatio\]\)/);
 });
 
+test('scroll anchors a content-bottom pair so the panes run out of content together', () => {
+  const app = read('src/App.tsx');
+  const sync = read('src/utils/scrollSync.ts');
+  // The editor reserves a taller tail pad than the preview, so the final
+  // anchor pair must be "last content line hits the viewport bottom" on both
+  // panes instead of relying on raw scroll extents alone.
+  assert.match(app, /lastContentBottom/);
+  assert.match(app, /getComputedStyle\(editorView\.scrollDOM\)\.paddingBottom/);
+  assert.match(app, /editorView\.getScrollHeight\(\)\s*-\s*editorBottomPad/);
+  assert.match(app, /lastContentBottom\s*-\s*previewViewport\.getClientHeight\(\)/);
+  // Interpolation stays linear between the content-bottom anchor and the end.
+  assert.match(sync, /sourceTop\s*-\s*lower\.sourceTop[\s\S]*upper\.targetTop\s*-\s*lower\.targetTop/);
+});
+
 test('drag suspension survives scroll effect re-runs mid-drag', () => {
   const app = read('src/App.tsx');
   // A panel drag that triggers a scroll-sync effect re-run (e.g. previewRenderVersion
