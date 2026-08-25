@@ -2,7 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   createLatestFrameTask,
+  createSuspendableInvalidation,
   hasMeaningfulPixelDelta,
+  type DelayDriver,
   type FrameDriver,
 } from '../src/utils/paneInteraction.ts';
 
@@ -62,4 +64,51 @@ test('cancel prevents queued work and pixel threshold ignores subpixel noise', (
   assert.deepEqual(values, []);
   assert.equal(hasMeaningfulPixelDelta(100, 100.75), false);
   assert.equal(hasMeaningfulPixelDelta(100, 101), true);
+});
+
+function fakeDelays() {
+  let nextId = 1;
+  const callbacks = new Map<number, () => void>();
+  const driver: DelayDriver = {
+    schedule: callback => {
+      const id = nextId++;
+      callbacks.set(id, callback);
+      return id;
+    },
+    cancel: id => { callbacks.delete(id); },
+  };
+  return {
+    driver,
+    flush: () => {
+      const queued = [...callbacks.values()];
+      callbacks.clear();
+      queued.forEach(callback => callback());
+    },
+    get size() { return callbacks.size; },
+  };
+}
+
+test('suspended invalidation defers all work and resumes once', () => {
+  const delays = fakeDelays();
+  let refreshes = 0;
+  const invalidation = createSuspendableInvalidation(delays.driver, () => { refreshes += 1; }, 80);
+  invalidation.suspend();
+  invalidation.invalidate();
+  invalidation.invalidate();
+  delays.flush();
+  assert.equal(refreshes, 0);
+  invalidation.resume();
+  assert.equal(delays.size, 1);
+  delays.flush();
+  assert.equal(refreshes, 1);
+});
+
+test('dispose cancels a pending geometry refresh', () => {
+  const delays = fakeDelays();
+  let refreshes = 0;
+  const invalidation = createSuspendableInvalidation(delays.driver, () => { refreshes += 1; }, 80);
+  invalidation.invalidate();
+  invalidation.dispose();
+  delays.flush();
+  assert.equal(refreshes, 0);
 });

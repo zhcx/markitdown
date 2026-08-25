@@ -54,3 +54,56 @@ export function createLatestFrameTask<T>(
 export function hasMeaningfulPixelDelta(previous: number, next: number, minimum = 1) {
   return Math.abs(next - previous) >= minimum;
 }
+
+export interface DelayDriver {
+  schedule: (callback: () => void, delayMs: number) => number;
+  cancel: (handle: number) => void;
+}
+
+export const browserDelayDriver: DelayDriver = {
+  schedule: (callback, delayMs) => window.setTimeout(callback, delayMs),
+  cancel: handle => window.clearTimeout(handle),
+};
+
+export function createSuspendableInvalidation(
+  driver: DelayDriver,
+  refresh: () => void,
+  delayMs: number,
+) {
+  let suspended = false;
+  let dirty = false;
+  let handle: number | null = null;
+
+  const run = () => {
+    handle = null;
+    if (suspended || !dirty) return;
+    dirty = false;
+    refresh();
+  };
+  const schedule = () => {
+    if (suspended || handle !== null || !dirty) return;
+    handle = driver.schedule(run, delayMs);
+  };
+
+  return {
+    invalidate() {
+      dirty = true;
+      schedule();
+    },
+    suspend() {
+      suspended = true;
+      if (handle !== null) driver.cancel(handle);
+      handle = null;
+    },
+    resume() {
+      suspended = false;
+      schedule();
+    },
+    dispose() {
+      if (handle !== null) driver.cancel(handle);
+      handle = null;
+      dirty = false;
+      suspended = true;
+    },
+  };
+}
