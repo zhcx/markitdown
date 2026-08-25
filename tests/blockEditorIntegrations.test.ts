@@ -1,6 +1,8 @@
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { EDITOR_COMMANDS } from '../src/utils/editorCommandRegistry.ts';
+import { parseMarkdown } from '../src/utils/markdownBlockCodec.ts';
 import { SLASH_COMMANDS, filterSlashCommands } from '../src/utils/slashCommands.ts';
 
 const read = (path: string) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
@@ -36,4 +38,17 @@ test('BlockEditor routes slash and AI actions through the shared registry', () =
   assert.match(editor, /surfaces\.includes\('slash'\)/);
   assert.match(editor, /replaceRange\(menu\.from,\s*menu\.to,\s*''/);
   assert.match(editor, /finally[\s\S]*controller\.focus\(\)/);
+});
+
+test('complex Slash insertions stay in block mode through raw blocks', () => {
+  const editor = read('src/components/Editor/BlockEditor.tsx');
+  for (const id of ['table', 'mermaid', 'math', 'math-block', 'details', 'footnote', 'video', 'toc']) {
+    const command = EDITOR_COMMANDS.find(item => item.id === id);
+    assert.ok(command, id);
+    assert.ok(command.surfaces.includes('slash'), id);
+    assert.ok(command.insertion, id);
+    assert.equal(parseMarkdown(command.insertion.text).mode, 'blocks', id);
+  }
+  assert.match(editor, /controller\.replaceRange/);
+  assert.doesNotMatch(editor, /command\.id === '(?:mermaid|math|details)'[\s\S]*onUnsupportedMarkdown/);
 });
