@@ -6,7 +6,6 @@ import { EditorState, Plugin } from 'prosemirror-state';
 import { Decoration, DecorationSet, EditorView } from 'prosemirror-view';
 import { useAppStore } from '../../stores/appStore';
 import { useAIStore } from '../../stores/aiStore';
-import type { MarkdownCapability } from '../../types/blockEditor.ts';
 import { createBlockEditorController } from '../../utils/blockEditorController.ts';
 import {
   EDITOR_COMMANDS,
@@ -32,7 +31,7 @@ export interface BlockEditorProps {
   className?: string;
   style?: React.CSSProperties;
   onMarkdownChange: (markdown: string) => void;
-  onUnsupportedMarkdown: (capability: MarkdownCapability) => void;
+  onUnsupportedMarkdown: (markdown: string) => void;
   onActiveLineChange?: (lineNumber: number) => void;
   onActiveLineReveal?: (lineNumber: number) => void;
   onSwitchToSource?: () => void;
@@ -110,10 +109,12 @@ export function BlockEditor({
   const [slashSelectedIndex, setSlashSelectedIndex] = useState(0);
   const [blockHandle, setBlockHandle] = useState<BlockHandleState | null>(null);
   const [blockPropertyMenu, setBlockPropertyMenu] = useState<BlockPropertyMenuState | null>(null);
+  const [initializationError, setInitializationError] = useState<string | null>(null);
   const aiEnabled = useAppStore(state => state.settings.ai.enabled);
   const aiConfigured = useAppStore(state => Boolean(state.settings.ai.api_key.trim()));
   const parsed = parseMarkdown(markdown);
   const parsedRef = useRef(parsed);
+  const markdownRef = useRef(markdown);
   const isBlockMode = parsed.mode === 'blocks' && !!parsed.document;
   const onMarkdownChangeRef = useRef(onMarkdownChange);
   const onUnsupportedMarkdownRef = useRef(onUnsupportedMarkdown);
@@ -121,11 +122,12 @@ export function BlockEditor({
   const onActiveLineRevealRef = useRef(onActiveLineReveal);
   useEffect(() => {
     parsedRef.current = parsed;
+    markdownRef.current = markdown;
     onMarkdownChangeRef.current = onMarkdownChange;
     onUnsupportedMarkdownRef.current = onUnsupportedMarkdown;
     onActiveLineChangeRef.current = onActiveLineChange;
     onActiveLineRevealRef.current = onActiveLineReveal;
-  }, [onActiveLineChange, onActiveLineReveal, onMarkdownChange, onUnsupportedMarkdown, parsed]);
+  }, [markdown, onActiveLineChange, onActiveLineReveal, onMarkdownChange, onUnsupportedMarkdown, parsed]);
   const commandContext = useMemo<EditorCommandContext>(() => ({
     mode: 'blocks',
     aiEnabled,
@@ -274,67 +276,82 @@ export function BlockEditor({
     if (!isBlockMode || !rootRef.current || !editorHostRef.current || !currentParsed.document || currentParsed.mode !== 'blocks') return undefined;
     const host = rootRef.current;
     initializingRef.current = true;
+    let createdView: EditorView | null = null;
+    try {
+      const state = EditorState.create({
+        schema: blockSchema,
+        doc: currentParsed.document,
+        plugins: createBlockPlugins(),
+      });
 
-    const state = EditorState.create({
-      schema: blockSchema,
-      doc: currentParsed.document,
-      plugins: createBlockPlugins(),
-    });
+      const publish = (value: string) => {
+        if (!initializingRef.current && value !== useAppStore.getState().content) onMarkdownChangeRef.current(value);
+      };
 
-    const publish = (value: string) => {
-      if (!initializingRef.current && value !== useAppStore.getState().content) onMarkdownChangeRef.current(value);
-    };
+      const view = new EditorView({ mount: editorHostRef.current }, {
+        state,
+        dispatchTransaction: transaction => {
+          const nextState = view.state.apply(transaction);
+          view.updateState(nextState);
+          const snapshot = controllerRef.current?.syncDocument();
+          if (transaction.docChanged && snapshot) publish(snapshot.markdown);
+          const controller = controllerRef.current;
+          const active = controller?.getSelection();
+          if (active) {
+            const line = controller.lineAt(active.from).number;
+            onActiveLineChangeRef.current?.(line);
+            if (transaction.selectionSet) onActiveLineRevealRef.current?.(line);
+          }
+          syncSlashMenuRef.current();
+        },
+      });
+      createdView = view;
+      viewRef.current = view;
 
-    const view = new EditorView({ mount: editorHostRef.current }, {
-      state,
-      dispatchTransaction: transaction => {
-        const nextState = view.state.apply(transaction);
-        view.updateState(nextState);
-        const snapshot = controllerRef.current?.syncDocument();
-        if (transaction.docChanged && snapshot) publish(snapshot.markdown);
-        const controller = controllerRef.current;
-        const active = controller?.getSelection();
-        if (active) {
-          const line = controller.lineAt(active.from).number;
+      const controller = createBlockEditorController(view, host, {
+        onMarkdownChange: publish,
+        onUnsupportedMarkdown: nextSource => onUnsupportedMarkdownRef.current(nextSource),
+        onActiveSourceLine: line => {
           onActiveLineChangeRef.current?.(line);
-          if (transaction.selectionSet) onActiveLineRevealRef.current?.(line);
-        }
-        syncSlashMenuRef.current();
-      },
-    });
-    viewRef.current = view;
+          onActiveLineRevealRef.current?.(line);
+        },
+      });
+      controllerRef.current = controller;
+      useAppStore.getState().setEditorView(controller);
+      initializingRef.current = false;
 
-    const controller = createBlockEditorController(view, host, {
-      onMarkdownChange: publish,
-      onUnsupportedMarkdown: capability => onUnsupportedMarkdownRef.current(capability),
-      onActiveSourceLine: line => {
-        onActiveLineChangeRef.current?.(line);
-        onActiveLineRevealRef.current?.(line);
-      },
-    });
-    controllerRef.current = controller;
-    useAppStore.getState().setEditorView(controller);
-    initializingRef.current = false;
-
-    return () => {
-      useAppStore.getState().setEditorView(null);
-      controllerRef.current = null;
-      viewRef.current?.destroy();
+      return () => {
+        useAppStore.getState().setEditorView(null);
+        controllerRef.current = null;
+        viewRef.current?.destroy();
+        viewRef.current = null;
+      };
+    } catch (error) {
+      createdView?.destroy();
       viewRef.current = null;
-    };
+      controllerRef.current = null;
+      initializingRef.current = false;
+      const message = error instanceof Error ? error.message : String(error);
+      queueMicrotask(() => setInitializationError(message));
+      onUnsupportedMarkdownRef.current(markdownRef.current);
+      return undefined;
+    }
   }, [isBlockMode]);
 
   useEffect(() => {
     const view = viewRef.current;
+    const controller = controllerRef.current;
     const parsedExternal = parseMarkdown(markdown);
-    if (!view || initializingRef.current || parsedExternal.mode !== 'blocks' || !parsedExternal.document) return;
-    if (serializeMarkdown(view.state.doc) === serializeMarkdown(parsedExternal.document)) return;
+    if (!view || !controller || initializingRef.current || parsedExternal.mode !== 'blocks' || !parsedExternal.document) return;
+    if (controller.getValue() === markdown) return;
+    const selection = controller.getSelection();
     view.updateState(EditorState.create({
       schema: blockSchema,
       doc: parsedExternal.document,
       plugins: createBlockPlugins(),
     }));
-    controllerRef.current?.syncDocument();
+    controller.syncDocument();
+    controller.setSelection(selection.from, selection.to);
   }, [markdown]);
 
   useEffect(() => {
@@ -354,10 +371,10 @@ export function BlockEditor({
     return () => window.removeEventListener('pointerdown', closeOnOutsidePointer, true);
   }, [blockPropertyMenu]);
 
-  if (parsed.mode !== 'blocks' || !parsed.document) {
+  if (initializationError || parsed.mode !== 'blocks' || !parsed.document) {
     return (
       <div className={`editor-container block-editor-container ${className || ''}`} style={style}>
-        <EditorUnsupportedNotice capability={parsed.capability} onSwitchToSource={onSwitchToSource} />
+        <EditorUnsupportedNotice capability={parsed.capability} reason={initializationError} onSwitchToSource={onSwitchToSource} />
       </div>
     );
   }

@@ -17,9 +17,16 @@ export function Editor({ className, style, onActiveLineChange, onActiveLineRevea
   const [forcedSourceTabId, setForcedSourceTabId] = useState<string | null>(null);
   const effectiveMode = resolveEditorMode(requestedMode, capability, forcedSourceTabId === activeTabId);
   const handleBlockChange = useCallback((markdown: string) => setContent(markdown), [setContent]);
-  const handleUnsupported = useCallback(() => {
+  const handleUnsupported = useCallback((markdown: string) => {
+    setContent(markdown);
     if (activeTabId) setForcedSourceTabId(activeTabId);
-  }, [activeTabId]);
+  }, [activeTabId, setContent]);
+
+  const switchToSource = useCallback(() => {
+    setForcedSourceTabId(activeTabId);
+    if (activeTabId) setTabEditorMode(activeTabId, 'source');
+    setEditorView(null);
+  }, [activeTabId, setEditorView, setTabEditorMode]);
 
   const handleModeChange = (mode: EditorMode) => {
     if (mode === 'blocks' && !capability.supported) return;
@@ -32,17 +39,20 @@ export function Editor({ className, style, onActiveLineChange, onActiveLineRevea
     <div className="editor-host" style={style}>
       <EditorModeToggle mode={effectiveMode} onChange={handleModeChange} />
       {effectiveMode === 'blocks' ? (
-        <BlockEditor
-          className={className}
-          markdown={content}
-          onMarkdownChange={handleBlockChange}
-          onUnsupportedMarkdown={handleUnsupported}
-          onActiveLineChange={onActiveLineChange}
+          <BlockEditor
+            className={className}
+            markdown={content}
+            onMarkdownChange={handleBlockChange}
+            onUnsupportedMarkdown={handleUnsupported}
+            onSwitchToSource={switchToSource}
+            onActiveLineChange={onActiveLineChange}
           onActiveLineReveal={onActiveLineReveal}
         />
       ) : (
         <>
-          {forcedSourceTabId === activeTabId && <EditorUnsupportedNotice capability={capability} />}
+          {!capability.supported || forcedSourceTabId === activeTabId ? (
+            <EditorUnsupportedNotice capability={capability} onSwitchToSource={switchToSource} />
+          ) : null}
           <SourceEditor
             className={className}
             style={{ height: '100%' }}

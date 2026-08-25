@@ -13,7 +13,7 @@ interface BlockEditorRoot extends HTMLElement {
 
 export interface BlockControllerHost {
   onMarkdownChange: (markdown: string) => void;
-  onUnsupportedMarkdown: (capability: MarkdownCapability) => void;
+  onUnsupportedMarkdown: (markdown: string, capability: MarkdownCapability) => void;
   onActiveSourceLine: (lineNumber: number) => void;
 }
 
@@ -90,7 +90,7 @@ export function createBlockEditorController(
     const parsed = parseMarkdown(nextSource);
     if (parsed.mode === 'source' || !parsed.document) {
       host.onMarkdownChange(nextSource);
-      host.onUnsupportedMarkdown(parsed.capability);
+      host.onUnsupportedMarkdown(nextSource, parsed.capability);
       return;
     }
     const transaction = view.state.tr.replaceWith(0, view.state.doc.content.size, parsed.document.content);

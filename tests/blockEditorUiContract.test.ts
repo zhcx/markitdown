@@ -51,5 +51,6 @@ test('BlockEditor construction is mount-scoped and uses the current supported do
 
 test('BlockEditor refreshes the controller snapshot after external state changes', () => {
   const source = read('src/components/Editor/BlockEditor.tsx');
-  assert.match(source, /view\.updateState\(EditorState\.create\([\s\S]*?\}\)\);\s*controllerRef\.current\?\.syncDocument\(\);/);
+  assert.match(source, /if \(controller\.getValue\(\) === markdown\) return;/);
+  assert.match(source, /view\.updateState\(EditorState\.create\([\s\S]*?\}\)\);\s*controller\.syncDocument\(\);/);
 });
