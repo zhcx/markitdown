@@ -27,6 +27,7 @@ test('pane dragging uses latest-frame scheduling and flushes the final pointer',
   assert.match(app, /dragFrameTaskRef\.current\?\.flush\(\)/);
   assert.match(app, /hasMeaningfulPixelDelta/);
   assert.match(app, /window\.addEventListener\('blur', handleMouseUp\)/);
+  assert.match(app, /window\.addEventListener\('pointercancel', handleMouseUp\)/);
   assert.doesNotMatch(app, /setSplitRatio\([^)]*\)[\s\S]{0,200}mousemove/iu);
   assert.match(styles, /html\.panel-resizing \.document-pane[\s\S]*contain:\s*layout paint/);
 });
@@ -40,4 +41,14 @@ test('scroll sync uses one latest-frame task and suspends geometry during panel 
   assert.match(app, /scrollGeometryControlRef\.current\.resume\(\)/);
   assert.match(app, /typeof ResizeObserver === 'undefined'/);
   assert.doesNotMatch(app, /useEffect\([\s\S]*\}, \[mode, editorView, previewScrollElement, previewRenderVersion, splitRatio\]\)/);
+});
+
+test('drag suspension survives scroll effect re-runs mid-drag', () => {
+  const app = read('src/App.tsx');
+  // A panel drag that triggers a scroll-sync effect re-run (e.g. previewRenderVersion
+  // bump on a deferred render) must not silently drop the suspension: the effect must
+  // re-suspend the fresh invalidation and skip the initial sync while the drag lives.
+  assert.match(app, /panelDragActiveRef/);
+  assert.match(app, /if\s*\(panelDragActiveRef\.current\)\s*\{[\s\S]*?geometryInvalidation\.suspend\(\)/);
+  assert.match(app, /if\s*\(!panelDragActiveRef\.current\)\s*\{[\s\S]*?syncEditorToPreview\(\)/);
 });

@@ -116,6 +116,9 @@ function App() {
   const isDraggingSidebar = useRef(false);
   const isDraggingProofread = useRef(false);
   const isDraggingChatbot = useRef(false);
+  // Survives scroll-sync effect re-runs: a previewRenderVersion bump during a
+  // drag must not silently drop the geometry suspension.
+  const panelDragActiveRef = useRef(false);
   const dragBounds = useRef<DOMRect | null>(null);
   const layoutWidth = useRef<number | null>(null);
   const [proofreadPanelWidth, setProofreadPanelWidth] = useState(280);
@@ -272,11 +275,22 @@ function App() {
     balanceDocumentPanes(dragValues.current.proofreadPanelWidth, width);
   }, [balanceDocumentPanes]);
 
+  // The frame task is created once and always dispatches through the latest
+  // callback, so a state change that re-creates `applyPanelDrag` (its deps pull
+  // in panel widths / proofread results) can never cancel a mid-drag pending
+  // pointer frame.
+  const applyPanelDragRef = useRef(applyPanelDrag);
+  useEffect(() => {
+    applyPanelDragRef.current = applyPanelDrag;
+  });
   const dragFrameTaskRef = useRef<LatestFrameTask<PendingPanelDrag> | null>(null);
   useEffect(() => {
-    dragFrameTaskRef.current = createLatestFrameTask<PendingPanelDrag>(browserFrameDriver, applyPanelDrag);
+    dragFrameTaskRef.current = createLatestFrameTask<PendingPanelDrag>(
+      browserFrameDriver,
+      drag => applyPanelDragRef.current(drag),
+    );
     return () => dragFrameTaskRef.current?.cancel();
-  }, [applyPanelDrag]);
+  }, []);
 
   const scheduleDragFrame = useCallback((type: PendingPanelDrag['type'], clientX: number) => {
     dragFrameTaskRef.current?.schedule({ type, clientX });
@@ -428,6 +442,7 @@ function App() {
   const handleSplitMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     isDragging.current = true;
+    panelDragActiveRef.current = true;
     document.body.style.cursor = 'col-resize';
     document.body.style.userSelect = 'none';
     dragBounds.current = dividerRef.current?.parentElement?.getBoundingClientRect() || null;
@@ -447,6 +462,7 @@ function App() {
   const handleSidebarMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     isDraggingSidebar.current = true;
+    panelDragActiveRef.current = true;
     document.body.style.cursor = 'col-resize';
     document.body.style.userSelect = 'none';
     dragBounds.current = sidebarDividerRef.current?.parentElement?.getBoundingClientRect() || null;
@@ -465,6 +481,7 @@ function App() {
   const handleProofreadMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     isDraggingProofread.current = true;
+    panelDragActiveRef.current = true;
     document.body.style.cursor = 'col-resize';
     document.body.style.userSelect = 'none';
     dragBounds.current = proofreadDividerRef.current?.parentElement?.getBoundingClientRect() || null;
@@ -483,6 +500,7 @@ function App() {
   const handleChatbotMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     isDraggingChatbot.current = true;
+    panelDragActiveRef.current = true;
     document.body.style.cursor = 'col-resize';
     document.body.style.userSelect = 'none';
     dragBounds.current = chatbotDividerRef.current?.parentElement?.getBoundingClientRect() || null;
@@ -583,6 +601,7 @@ function App() {
     dragBounds.current = null;
     layoutWidth.current = null;
     document.documentElement.classList.remove('panel-resizing');
+    panelDragActiveRef.current = false;
     scrollGeometryControlRef.current.resume();
   }, [setChatbotPanelWidth, setProofreadPanelWidth, setSidebarWidth, setSplitRatio]);
 
@@ -593,6 +612,10 @@ function App() {
     document.addEventListener('mousemove', handleChatbotMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
     window.addEventListener('blur', handleMouseUp);
+    // pointercancel fires when a drag is interrupted (release outside the
+    // window, gesture recognizer, etc.) without a document mouseup, so the
+    // phantom-drag state always recovers.
+    window.addEventListener('pointercancel', handleMouseUp);
     return () => {
       document.removeEventListener('mousemove', handleSplitMouseMove);
       document.removeEventListener('mousemove', handleSidebarMouseMove);
@@ -600,6 +623,11 @@ function App() {
       document.removeEventListener('mousemove', handleChatbotMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
       window.removeEventListener('blur', handleMouseUp);
+      window.removeEventListener('pointercancel', handleMouseUp);
+      // Unmounting mid-drag must not leave the app in a phantom-drag state
+      // (col-resize cursor, user-select none, panel-resizing class, suspended
+      // geometry). handleMouseUp re-enters the flush/reset path idempotently.
+      handleMouseUp();
     };
   }, [handleSplitMouseMove, handleSidebarMouseMove, handleProofreadMouseMove, handleChatbotMouseMove, handleMouseUp]);
 
@@ -801,6 +829,13 @@ function App() {
       invalidate: geometryInvalidation.invalidate,
       resume: geometryInvalidation.resume,
     };
+    // A previewRenderVersion bump (deferred render / mermaid / image load) can
+    // re-run this effect while a panel drag is in progress. The suspension must
+    // survive the re-run: re-suspend the fresh instance and skip the initial
+    // sync so the drag never rebuilds anchors against unstable mid-drag geometry.
+    if (panelDragActiveRef.current) {
+      geometryInvalidation.suspend();
+    }
 
     const geometryObserver = typeof ResizeObserver === 'undefined'
       ? null
@@ -814,7 +849,11 @@ function App() {
 
     // Rendering Markdown, images or diagrams changes preview geometry. Keep
     // the editor as the source of truth and realign once the new layout exists.
-    syncEditorToPreview();
+    // Skip the initial sync while a panel drag is live — the geometry is
+    // unstable and mouseup's resume() will realign exactly once afterwards.
+    if (!panelDragActiveRef.current) {
+      syncEditorToPreview();
+    }
 
     return () => {
       stopEditorScroll();
