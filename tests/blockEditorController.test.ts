@@ -67,10 +67,12 @@ test('replaceRange reparses Markdown and notifies the host', () => {
   assert.equal(harness.fallback, false);
 });
 
-test('external unsupported replacement requests source-mode fallback', () => {
+test('external complex Markdown replacement stays in block mode through a raw block', () => {
   const harness = createHarness('Title\n');
   harness.controller.replaceRange(0, 6, '$$\nx + y\n$$\n');
-  assert.equal(harness.fallback, true);
+  assert.equal(harness.fallback, false);
+  assert.equal(harness.state.doc.firstChild?.type.name, 'raw_markdown');
+  assert.equal(harness.controller.getValue(), '$$\nx + y\n$$\n');
 });
 
 test('syncDocument refreshes controller values after a direct editor transaction', () => {

@@ -1,13 +1,19 @@
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import type { MarkdownCapability } from '../src/types/blockEditor.ts';
 import { resolveEditorMode } from '../src/utils/editorMode.ts';
 import { inspectMarkdownCapability } from '../src/utils/markdownBlockCapability.ts';
 
 const read = (path: string) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 
 test('unsupported Markdown always resolves to source mode', () => {
-  const capability = inspectMarkdownCapability('$$\nx + y\n$$\n');
+  const capability: MarkdownCapability = {
+    supported: false,
+    unsupported: ['unknown'],
+    rawKinds: [],
+    message: '无法安全初始化块模式',
+  };
   assert.equal(resolveEditorMode('blocks', capability, false), 'source');
 });
 
@@ -24,7 +30,12 @@ test('a supported document can stay in blocks unless the user forced source mode
 });
 
 test('fallback resolution does not expose document content in its result', () => {
-  const capability = inspectMarkdownCapability('<script>secret()</script>\n');
+  const capability: MarkdownCapability = {
+    supported: false,
+    unsupported: ['unknown'],
+    rawKinds: [],
+    message: '无法安全初始化块模式',
+  };
   const mode = resolveEditorMode('blocks', capability, false);
   assert.equal(mode, 'source');
   assert.doesNotMatch(String(mode), /secret/);

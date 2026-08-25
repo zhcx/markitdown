@@ -41,6 +41,7 @@ export type UnsupportedMarkdownKind =
 export interface MarkdownCapability {
   supported: boolean;
   unsupported: UnsupportedMarkdownKind[];
+  rawKinds: RawMarkdownKind[];
   message: string;
 }
 

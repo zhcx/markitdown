@@ -34,16 +34,16 @@ test('does not silently change the number of cells in a parsed table', () => {
   assert.equal(serializeMarkdown(result.document!), source);
 });
 
-test('falls back without rewriting unsupported Markdown', () => {
+test('preserves formulas through raw Markdown blocks', () => {
   const source = '# 保留\n\n$$\nx + y\n$$\n';
   const capability = inspectMarkdownCapability(source);
-  assert.equal(capability.supported, false);
-  assert.deepEqual(capability.unsupported, ['math']);
-  assert.equal(parseMarkdown(source).mode, 'source');
-  assert.equal(parseMarkdown(source).source, source);
+  assert.equal(capability.supported, true);
+  assert.deepEqual(capability.rawKinds, ['math']);
+  assert.equal(parseMarkdown(source).mode, 'blocks');
+  assert.ok(serializeMarkdown(parseMarkdown(source).document!).includes('$$\nx + y\n$$'));
 });
 
-test('treats normal fenced code as supported but Mermaid as unsupported', () => {
+test('treats normal fenced code as structured and Mermaid as raw-compatible', () => {
   assert.equal(inspectMarkdownCapability('```ts\nlet x = 1;\n```').supported, true);
-  assert.deepEqual(inspectMarkdownCapability('```mermaid\nflowchart LR\n```').unsupported, ['mermaid']);
+  assert.deepEqual(inspectMarkdownCapability('```mermaid\nflowchart LR\n```').rawKinds, ['mermaid']);
 });

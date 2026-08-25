@@ -3,6 +3,7 @@ import type { BlockNodeType, MarkdownCapability, BlockSourceMap } from '../types
 import { blockMarkdownParser, blockMarkdownSerializer, blockSchema } from '../components/Editor/blockSchema.ts';
 import { inspectMarkdownCapability } from './markdownBlockCapability.ts';
 import { buildBlockSourceMap } from './blockSourceMap.ts';
+import { segmentMarkdown } from './markdownBlockSegments.ts';
 
 function withNodeContent(node: Node, content: readonly Node[]): Node {
   if (node.isText || node.isLeaf) return node;
@@ -91,7 +92,25 @@ export function parseMarkdown(source: string): ParsedMarkdown {
     };
   }
 
-  const document = normalizeTaskLists(blockMarkdownParser.parse(source));
+  const nodes: Node[] = [];
+  for (const segment of segmentMarkdown(source)) {
+    if (segment.kind === 'raw') {
+      const content = segment.source ? blockSchema.text(segment.source) : undefined;
+      nodes.push(blockSchema.nodes.raw_markdown.create({ kind: segment.rawKind }, content));
+      continue;
+    }
+    try {
+      const parsed = normalizeTaskLists(blockMarkdownParser.parse(segment.source));
+      parsed.forEach(node => nodes.push(node));
+    } catch {
+      const content = segment.source ? blockSchema.text(segment.source) : undefined;
+      nodes.push(blockSchema.nodes.raw_markdown.create({ kind: 'unknown' }, content));
+    }
+  }
+  const document = blockSchema.topNodeType.create(
+    null,
+    nodes.length ? nodes : [blockSchema.nodes.paragraph.create()],
+  );
   const blockTypes = document.content.content
     .map(blockType)
     .filter((type): type is BlockNodeType => type !== null);

@@ -1,34 +1,24 @@
-import MarkdownIt from 'markdown-it';
-import type { MarkdownCapability, UnsupportedMarkdownKind } from '../types/blockEditor.ts';
-
-const markdown = new MarkdownIt({ html: true, linkify: false, typographer: false });
-
-const addUnique = (items: UnsupportedMarkdownKind[], kind: UnsupportedMarkdownKind) => {
-  if (!items.includes(kind)) items.push(kind);
-};
+import type { MarkdownCapability, RawMarkdownKind } from '../types/blockEditor.ts';
+import { segmentMarkdown } from './markdownBlockSegments.ts';
 
 export function inspectMarkdownCapability(source: string): MarkdownCapability {
-  const unsupported: UnsupportedMarkdownKind[] = [];
-  const tokens = markdown.parse(source, {});
-
-  for (const token of tokens) {
-    if (token.type === 'html_block' || token.type === 'html_inline') addUnique(unsupported, 'html');
-    if (token.type === 'fence' && /^\s*mermaid(?:\s|$)/iu.test(token.info || '')) addUnique(unsupported, 'mermaid');
+  try {
+    const rawKinds: RawMarkdownKind[] = [];
+    for (const segment of segmentMarkdown(source)) {
+      if (segment.kind === 'raw' && !rawKinds.includes(segment.rawKind)) rawKinds.push(segment.rawKind);
+    }
+    return {
+      supported: true,
+      unsupported: [],
+      rawKinds,
+      message: rawKinds.length ? `块模式将以源码保真块承载：${rawKinds.join('、')}` : '',
+    };
+  } catch {
+    return {
+      supported: false,
+      unsupported: ['unknown'],
+      rawKinds: [],
+      message: '该文档无法安全初始化块模式，请使用源码模式。',
+    };
   }
-
-  if (/(?:^|\n)\s*<\s*(?:details|summary)\b/iu.test(source)) {
-    addUnique(unsupported, 'details');
-  }
-  if (/(?:^|\n)\s*\[TOC\]\s*(?:\n|$)/iu.test(source)) addUnique(unsupported, 'toc');
-  if (/@\[(?:video|youtube|bilibili)\]\(/iu.test(source)) addUnique(unsupported, 'video');
-  if (/(?:^|\n)\s*\[\^[^\]]+\]:/u.test(source) || /\[\^[^\]]+\]/u.test(source)) addUnique(unsupported, 'footnote');
-  if (/(?:^|\n)\s*\$\$[\s\S]*?\$\$/u.test(source) || /(?<!\\)\$[^$\n]+\$/u.test(source)) addUnique(unsupported, 'math');
-
-  return {
-    supported: unsupported.length === 0,
-    unsupported,
-    message: unsupported.length === 0
-      ? ''
-      : `该文档包含暂不支持的 Markdown 结构：${unsupported.join('、')}`,
-  };
 }
