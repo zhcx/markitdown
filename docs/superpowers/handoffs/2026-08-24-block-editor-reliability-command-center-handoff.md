@@ -131,3 +131,22 @@ Get-Content -Raw -Encoding UTF8 'docs\superpowers\plans\2026-08-24-block-editor-
 ```
 
 从 Task 3 继续，不重复 Task 1–2。
+
+## 2026-08-25 续开发更新
+
+以下内容覆盖上面的旧工作区快照：
+
+- 实际开发工作树为 `D:\Documents\Code\zeditor`，当前分支为 `fix/block-editor-reliability-command-center`；原文提到的 `.worktrees\block-editor-reliability-command-center` 当前未注册为 Git worktree。
+- 当前提交：`3265e65 fix: 完善块编辑回退与错误恢复`；工作树干净。本轮新增提交：
+  - `8a584b3 fix: 恢复块编辑预览同步并优化留白`
+  - `4cd3eb9 feat: 建立统一编辑命令注册表`
+  - `9fbc8a4 feat: 接入块级 AI 差异确认命令`
+  - `8079ffe feat: 统一块编辑命令入口`
+  - `3265e65 fix: 完善块编辑回退与错误恢复`
+- Task 3–7 已完成：滚动可见性与锚点重建、自适应留白/预览侧线、统一命令注册表、AI 当前块/选区差异提案、Slash/块菜单/源码编辑器/工具栏接入、源码回退和初始化错误恢复均已落地。
+- 当前 Node 为 `v24.12.0`，满足 JSDOM 29 的运行要求；项目 `engines` 仍保留 `>=22.6.0` 声明，后续如需支持该最低版本，应改用兼容的 JSDOM 版本或提高下限。
+- 最新验证：`npm test` 203/203 通过，`npm run lint` 通过，`npm run build` 通过，`cargo check --manifest-path src-tauri/Cargo.toml` 通过。
+- `npm run tauri build` 已成功生成：
+  - `src-tauri/target/release/bundle/nsis/Zeditor_0.4.0_x64-setup.exe`，SHA-256：`8A8D0DA89CC25D012D23766F51C65530323ECE6F062ACFE385DA5BCB5A712FB4`
+  - `src-tauri/target/release/bundle/msi/Zeditor_0.4.0_x64_en-US.msi`，SHA-256：`42C7A2CDCB900CC89D796948992705EE0BF580A6561BE323A2516409599A81D2`
+- Task 8 的真实桌面交互冒烟尚未执行：本机 Computer Use native pipe 不可用（系统找不到指定的文件），无法安全控制 Tauri 窗口；没有把构建成功当作 GUI 交互验证。
