@@ -103,7 +103,11 @@ export function createSuspendableInvalidation(
     refresh();
   };
   const schedule = () => {
-    if (suspended || handle !== null || !dirty) return;
+    if (suspended || !dirty) return;
+    // Debounce: a geometry stream (ResizeObserver firing per frame) cancels the
+    // pending timer so the rebuild runs once, 80ms after the last event, rather
+    // than once per event (throttle) while the layout is still churning.
+    if (handle !== null) driver.cancel(handle);
     handle = driver.schedule(run, delayMs);
   };
 

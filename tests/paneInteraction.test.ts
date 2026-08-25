@@ -70,16 +70,22 @@ test('cancel prevents queued work and pixel threshold ignores subpixel noise', (
 function fakeDelays() {
   let nextId = 1;
   const callbacks = new Map<number, () => void>();
+  const ops: string[] = [];
   const driver: DelayDriver = {
     schedule: callback => {
       const id = nextId++;
+      ops.push(`schedule:${id}`);
       callbacks.set(id, callback);
       return id;
     },
-    cancel: id => { callbacks.delete(id); },
+    cancel: id => {
+      ops.push(`cancel:${id}`);
+      callbacks.delete(id);
+    },
   };
   return {
     driver,
+    ops,
     flush: () => {
       const queued = [...callbacks.values()];
       callbacks.clear();
@@ -112,6 +118,28 @@ test('dispose cancels a pending geometry refresh', () => {
   invalidation.dispose();
   delays.flush();
   assert.equal(refreshes, 0);
+});
+
+test('continuous invalidation debounces to one refresh after the stream settles', () => {
+  const delays = fakeDelays();
+  let refreshes = 0;
+  const invalidation = createSuspendableInvalidation(delays.driver, () => { refreshes += 1; }, 80);
+
+  invalidation.invalidate();
+  delays.flush();
+  assert.equal(refreshes, 1);
+
+  // A continuous stream of geometry events (ResizeObserver per frame) must
+  // cancel the pending timer and reschedule it, so the refresh runs once,
+  // 80ms after the LAST event — not once per event.
+  invalidation.invalidate();
+  invalidation.invalidate();
+  invalidation.invalidate();
+  const cancellations = delays.ops.filter(op => op.startsWith('cancel:')).length;
+  assert.ok(cancellations >= 2, `expected pending timer resets, got ops: ${delays.ops.join(',')}`);
+  assert.equal(delays.size, 1);
+  delays.flush();
+  assert.equal(refreshes, 2);
 });
 
 test('split ratio maps the pointer to the divider relative to main-content bounds', () => {
