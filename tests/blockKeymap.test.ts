@@ -46,6 +46,15 @@ test('Enter splits a paragraph into two paragraphs', () => {
   assert.equal(next.doc.child(1).textContent, 'B');
 });
 
+test('Enter inserts a newline inside a raw Markdown block', () => {
+  const raw = blockSchema.nodes.raw_markdown.create({ kind: 'math' }, blockSchema.text('$$x$$'));
+  const doc = blockSchema.nodes.doc.create(null, raw);
+  const state = EditorState.create({ schema: blockSchema, doc, selection: TextSelection.create(doc, 3) });
+  const next = apply(createBlockKeyBindings().Enter, state);
+  assert.equal(next.doc.firstChild?.type.name, 'raw_markdown');
+  assert.equal(next.doc.firstChild?.textContent, '$$\nx$$');
+});
+
 test('Enter splits bullet and ordered list items', () => {
   const paragraph = blockSchema.nodes.paragraph.create(null, blockSchema.text('AB'));
   for (const list of [

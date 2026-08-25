@@ -66,10 +66,12 @@ function createBlockMetadataPlugin() {
         state.doc.forEach((node, offset, index) => {
           const block = blocks[index];
           if (!block) return;
-          decorations.push(Decoration.node(offset, offset + node.nodeSize, {
+          const attrs: Record<string, string> = {
             'data-block-id': block.blockId,
             'data-source-line': String(block.lineFrom),
-          }));
+          };
+          if (node.type.name === 'raw_markdown') attrs['data-raw-kind'] = String(node.attrs.kind);
+          decorations.push(Decoration.node(offset, offset + node.nodeSize, attrs));
         });
         return DecorationSet.create(state.doc, decorations);
       },

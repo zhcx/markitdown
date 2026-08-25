@@ -25,3 +25,11 @@ test('clamps block offsets and finds the nearest block at blank lines', () => {
   assert.equal(map.sourceOffsetForBlock(first.blockId, 999), first.sourceTo);
   assert.equal(map.blockForSourceOffset(first.sourceTo + 1)?.blockId, second.blockId);
 });
+
+test('maps a raw Markdown block as one top-level source anchor', () => {
+  const parsed = parseMarkdown('Before\n\n$$\nx\n$$\n\nAfter\n');
+  const raw = parsed.sourceMap?.blocks.find(block => block.type === 'raw_markdown');
+  assert.ok(raw);
+  assert.equal(raw.lineFrom, 3);
+  assert.equal(raw.lineTo, 5);
+});

@@ -36,3 +36,11 @@ test('block layout uses adaptive padding and preview highlight stays subtle', ()
   assert.match(mainStyles, /is-active-source-block::before[\s\S]*width:\s*2px/);
   assert.doesNotMatch(mainStyles, /is-active-source-block[\s\S]*box-shadow:\s*-2px\s+0\s+0/);
 });
+
+test('raw Markdown blocks expose their kind and a source-preserving visual treatment', () => {
+  const editor = read('src/components/Editor/BlockEditor.tsx');
+  const styles = read('src/components/Editor/BlockEditor.css');
+  assert.match(editor, /node\.type\.name === 'raw_markdown'[\s\S]*data-raw-kind/);
+  assert.match(styles, /\.raw-markdown-block[\s\S]*white-space:\s*pre-wrap/);
+  assert.match(styles, /\.raw-markdown-block::before[\s\S]*源码保真/);
+});

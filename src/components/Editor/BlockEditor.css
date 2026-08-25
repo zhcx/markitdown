@@ -124,6 +124,30 @@
   background: color-mix(in srgb, var(--bg-document) 96%, var(--surface-muted));
 }
 
+.block-editor-content .raw-markdown-block {
+  position: relative;
+  padding: 30px 14px 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  background: var(--surface-muted);
+  color: var(--code-text);
+  font-family: var(--font-mono);
+  font-size: .9em;
+  white-space: pre-wrap;
+}
+
+.block-editor-content .raw-markdown-block::before {
+  content: attr(data-raw-kind) ' · 源码保真';
+  position: absolute;
+  top: 8px;
+  left: 14px;
+  color: var(--text-muted);
+  font: 700 10px/1 var(--font-sans);
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  pointer-events: none;
+}
+
 .block-editor-content > p:only-child:has(> br.ProseMirror-trailingBreak)::before {
   content: '开始写作，输入 / 打开命令';
   position: absolute;
