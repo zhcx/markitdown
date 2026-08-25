@@ -88,3 +88,33 @@ test('BlockEditor preserves its live controller across callback rerenders and cl
   assert.equal(destroyCalls, 1);
   assert.equal(container.innerHTML, '');
 });
+
+test('clicking a task checkbox toggles the task and publishes Markdown', async (context) => {
+  const dom = installDom();
+  context.after(() => dom.window.close());
+
+  const { BlockEditor } = await import('../src/components/Editor/BlockEditor.tsx');
+  const container = document.createElement('div');
+  document.body.append(container);
+  const root = createRoot(container);
+  let markdown = '- [ ] 完成任务\n';
+
+  await act(async () => {
+    root.render(React.createElement(BlockEditor, {
+      markdown,
+      onMarkdownChange: value => { markdown = value; },
+      onUnsupportedMarkdown: () => {},
+    }));
+  });
+
+  const checkbox = container.querySelector<HTMLInputElement>('.task-checkbox input[type="checkbox"]');
+  assert.ok(checkbox);
+  assert.equal(checkbox.disabled, false);
+
+  await act(async () => { checkbox.click(); });
+
+  assert.match(markdown, /- \[x\] 完成任务/);
+  assert.equal(checkbox.checked, true);
+
+  await act(async () => { root.unmount(); });
+});

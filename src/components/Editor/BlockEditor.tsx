@@ -79,10 +79,35 @@ function createBlockMetadataPlugin() {
   });
 }
 
+function createTaskCheckboxPlugin() {
+  return new Plugin({
+    props: {
+      handleDOMEvents: {
+        click(view, event) {
+          const target = event.target instanceof Element ? event.target : null;
+          const checkbox = target?.closest<HTMLInputElement>('.task-checkbox input[type="checkbox"]');
+          const itemContent = checkbox?.closest<HTMLElement>('.task-item')
+            ?.querySelector<HTMLElement>('.task-item-content');
+          if (!checkbox || !itemContent) return false;
+          const nodePosition = view.posAtDOM(itemContent, 0) - 1;
+          const node = view.state.doc.nodeAt(nodePosition);
+          if (!node || node.type.name !== 'task_item') return false;
+          view.dispatch(view.state.tr.setNodeMarkup(nodePosition, undefined, {
+            ...node.attrs,
+            checked: !node.attrs.checked,
+          }));
+          return true;
+        },
+      },
+    },
+  });
+}
+
 function createBlockPlugins() {
   return [
     history(),
     createBlockMetadataPlugin(),
+    createTaskCheckboxPlugin(),
     createBlockInputRules(),
     createBlockKeymap(),
     dropCursor(),

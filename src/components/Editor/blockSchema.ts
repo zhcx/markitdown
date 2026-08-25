@@ -19,7 +19,11 @@ const taskItemToDOM = (node: Node): DOMOutputSpec => [
   { class: node.attrs.checked ? 'task-item is-checked' : 'task-item' },
   ['span', { class: 'task-checkbox', contenteditable: 'false' }, [
     'input',
-    { type: 'checkbox', checked: node.attrs.checked ? 'checked' : null, disabled: 'disabled' },
+    {
+      type: 'checkbox',
+      checked: node.attrs.checked ? 'checked' : null,
+      'aria-label': 'Toggle task completion',
+    },
   ]],
   ['div', { class: 'task-item-content' }, 0],
 ];
