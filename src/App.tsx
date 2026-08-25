@@ -32,6 +32,7 @@ import { findActiveSourceElement } from './utils/activeSourceLine';
 import {
   browserDelayDriver,
   browserFrameDriver,
+  computeSplitRatio,
   createLatestFrameTask,
   createSuspendableInvalidation,
   hasMeaningfulPixelDelta,
@@ -136,6 +137,7 @@ function App() {
   const closeGuardInProgress = useRef(false);
   const closePromptResolver = useRef<((action: UnsavedChangesAction) => void) | null>(null);
   const dragValues = useRef({ splitRatio, sidebarWidth, proofreadPanelWidth, chatbotPanelWidth });
+  const dragDividerWidth = useRef(0);
   const immersivePolicy = getImmersiveWorkspacePolicy(mode, chatbotVisible);
 
   const promptUnsavedChanges = useCallback((tabs: CloseGuardTab[]) => new Promise<UnsavedChangesAction>((resolve) => {
@@ -223,11 +225,10 @@ function App() {
     if (!bounds) return;
 
     if (drag.type === 'split') {
-      const sidebarOffset = sidebarVisible ? sidebarWidth : 0;
-      const availableWidth = Math.max(1, bounds.width - sidebarOffset);
-      const ratio = Math.max(0.1, Math.min(0.9,
-        (drag.clientX - bounds.left - sidebarOffset) / availableWidth,
-      ));
+      // The sidebar is a sibling of `.main-content`, not a child: the divider
+      // only tracks the pointer across the editor+preview flex area.
+      const availableWidth = Math.max(1, bounds.width - dragDividerWidth.current);
+      const ratio = computeSplitRatio(drag.clientX, bounds, dragDividerWidth.current);
       if (!hasMeaningfulPixelDelta(
         dragValues.current.splitRatio * availableWidth,
         ratio * availableWidth,
@@ -265,7 +266,7 @@ function App() {
     if (panel) panel.style.width = `${width}px`;
     dragValues.current.chatbotPanelWidth = width;
     balanceDocumentPanes(dragValues.current.proofreadPanelWidth, width);
-  }, [balanceDocumentPanes, sidebarVisible, sidebarWidth]);
+  }, [balanceDocumentPanes]);
 
   const dragFrameTask = useMemo(
     () => createLatestFrameTask<PendingPanelDrag>(browserFrameDriver, applyPanelDrag),
@@ -427,6 +428,7 @@ function App() {
     document.body.style.cursor = 'col-resize';
     document.body.style.userSelect = 'none';
     dragBounds.current = dividerRef.current?.parentElement?.getBoundingClientRect() || null;
+    dragDividerWidth.current = dividerRef.current?.getBoundingClientRect().width ?? 0;
     layoutWidth.current = (dividerRef.current?.closest('.app-body') as HTMLElement | null)?.clientWidth ?? null;
     document.documentElement.classList.add('panel-resizing');
     scrollGeometryControlRef.current.suspend();

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  computeSplitRatio,
   createLatestFrameTask,
   createSuspendableInvalidation,
   hasMeaningfulPixelDelta,
@@ -111,4 +112,26 @@ test('dispose cancels a pending geometry refresh', () => {
   invalidation.dispose();
   delays.flush();
   assert.equal(refreshes, 0);
+});
+
+test('split ratio maps the pointer to the divider relative to main-content bounds', () => {
+  // The sidebar is a sibling of `.main-content`, not a child: the divider only
+  // sees the editor/preview flex area, so the mapping must NOT subtract a
+  // sidebar offset. Bounds = `.main-content` rect, divider width = 7px.
+  const bounds = { left: 272, width: 986 };
+  const dividerWidth = 7;
+  const available = bounds.width - dividerWidth;
+
+  assert.equal(computeSplitRatio(900, bounds, dividerWidth), (900 - bounds.left) / available);
+  assert.equal(computeSplitRatio(765, bounds, dividerWidth), (765 - bounds.left) / available);
+  assert.equal(computeSplitRatio(762, bounds, dividerWidth), (762 - bounds.left) / available);
+});
+
+test('split ratio clamps to the same envelope as the pane flex layout', () => {
+  const bounds = { left: 272, width: 986 };
+  const dividerWidth = 7;
+  assert.equal(computeSplitRatio(100, bounds, dividerWidth), 0.1);
+  assert.equal(computeSplitRatio(1258, bounds, dividerWidth), 0.9);
+  assert.equal(computeSplitRatio(272, bounds, dividerWidth), 0.1);
+  assert.equal(computeSplitRatio(1251, bounds, dividerWidth), 0.9);
 });

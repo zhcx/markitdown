@@ -55,6 +55,28 @@ export function hasMeaningfulPixelDelta(previous: number, next: number, minimum 
   return Math.abs(next - previous) >= minimum;
 }
 
+export interface SplitDragBounds {
+  left: number;
+  width: number;
+}
+
+const MIN_SPLIT_RATIO = 0.1;
+const MAX_SPLIT_RATIO = 0.9;
+
+// Maps the pointer's clientX to the editor flex ratio. The bounds are the
+// `.main-content` split container, which already sits beside (not around) the
+// sidebar, so no sidebar offset is subtracted: the divider must track the
+// pointer across the editor+preview flex area only.
+export function computeSplitRatio(
+  clientX: number,
+  bounds: SplitDragBounds,
+  dividerWidth: number,
+) {
+  const availableWidth = Math.max(1, bounds.width - dividerWidth);
+  const ratio = (clientX - bounds.left) / availableWidth;
+  return Math.max(MIN_SPLIT_RATIO, Math.min(MAX_SPLIT_RATIO, ratio));
+}
+
 export interface DelayDriver {
   schedule: (callback: () => void, delayMs: number) => number;
   cancel: (handle: number) => void;
