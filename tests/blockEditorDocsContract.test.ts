@@ -30,3 +30,14 @@ test('CHANGELOG documents the first block editor release boundary', () => {
   assert.match(changelog, /WebDAV/);
   assert.match(changelog, /S3/);
 });
+
+test('documentation explains native tables and raw Markdown compatibility', () => {
+  const docs = read('docs/block-editor.md');
+  assert.match(docs, /表格.*原生|原生.*表格/s);
+  assert.match(docs, /原始 Markdown 块/);
+  assert.match(docs, /Mermaid/);
+  assert.match(docs, /公式/);
+  assert.match(docs, /HTML/);
+  assert.match(docs, /未知扩展/);
+  assert.match(docs, /不执行.*脚本/s);
+});
