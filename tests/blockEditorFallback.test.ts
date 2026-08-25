@@ -38,3 +38,24 @@ test('equivalent external Markdown does not recreate ProseMirror state', () => {
   assert.match(effect, /controller\.getValue\(\)\s*===\s*markdown/);
   assert.ok(effect.indexOf('controller.getValue()') < effect.indexOf('EditorState.create'));
 });
+
+test('known unsupported Markdown enters source mode without a persistent fallback notice', () => {
+  const editor = read('src/components/Editor/Editor.tsx');
+  assert.match(editor, /forcedSourceTabId === activeTabId && \(/);
+  assert.doesNotMatch(editor, /!capability\.supported \|\| forcedSourceTabId === activeTabId/);
+});
+
+test('confirming source fallback preserves the mounted source editor controller', () => {
+  const editor = read('src/components/Editor/Editor.tsx');
+  const handler = editor.match(/const switchToSource = useCallback\(\(\) => \{[\s\S]*?\}, \[[\s\S]*?\]\);/)?.[0] || '';
+  assert.match(handler, /setForcedSourceTabId\(null\)/);
+  assert.doesNotMatch(handler, /setEditorView\(null\)/);
+});
+
+test('runtime fallback notice overlays the source editor instead of shrinking it', () => {
+  const styles = read('src/components/Editor/BlockEditor.css');
+  const noticeRule = styles.match(/\.editor-unsupported-notice\s*\{[\s\S]*?\}/)?.[0] || '';
+  assert.match(noticeRule, /position:\s*absolute/);
+  assert.match(noticeRule, /margin:\s*0/);
+  assert.match(noticeRule, /z-index:\s*\d+/);
+});

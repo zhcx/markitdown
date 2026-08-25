@@ -3934,10 +3934,23 @@ textarea {
 }
 
 .preview-document .is-active-source-block {
+  position: relative;
   border-radius: 4px;
   background: color-mix(in srgb, var(--accent-color) 5%, transparent) !important;
-  box-shadow: -2px 0 0 color-mix(in srgb, var(--accent-color) 58%, transparent);
-  transition: background-color 120ms ease, box-shadow 120ms ease;
+  box-shadow: none;
+  transition: background-color 120ms ease;
+}
+
+.preview-document .is-active-source-block::before {
+  content: '';
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  left: -10px;
+  width: 2px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--accent-color) 58%, transparent);
+  pointer-events: none;
 }
 
 .preview-document .preview-list-item-content {

@@ -23,10 +23,9 @@ export function Editor({ className, style, onActiveLineChange, onActiveLineRevea
   }, [activeTabId, setContent]);
 
   const switchToSource = useCallback(() => {
-    setForcedSourceTabId(activeTabId);
+    setForcedSourceTabId(null);
     if (activeTabId) setTabEditorMode(activeTabId, 'source');
-    setEditorView(null);
-  }, [activeTabId, setEditorView, setTabEditorMode]);
+  }, [activeTabId, setTabEditorMode]);
 
   const handleModeChange = (mode: EditorMode) => {
     if (mode === 'blocks' && !capability.supported) return;
@@ -50,9 +49,9 @@ export function Editor({ className, style, onActiveLineChange, onActiveLineRevea
         />
       ) : (
         <>
-          {!capability.supported || forcedSourceTabId === activeTabId ? (
+          {forcedSourceTabId === activeTabId && (
             <EditorUnsupportedNotice capability={capability} onSwitchToSource={switchToSource} />
-          ) : null}
+          )}
           <SourceEditor
             className={className}
             style={{ height: '100%' }}

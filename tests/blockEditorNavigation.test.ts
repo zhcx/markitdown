@@ -32,6 +32,7 @@ test('block layout uses adaptive padding and preview highlight stays subtle', ()
   const mainStyles = read('src/styles/main.css');
   assert.match(blockStyles, /padding:\s*32px\s+clamp\(20px,\s*4vw,\s*48px\)/);
   assert.match(blockStyles, /max-width:\s*980px/);
-  assert.match(mainStyles, /is-active-source-block[\s\S]*box-shadow:\s*-2px\s+0\s+0/);
-  assert.doesNotMatch(mainStyles, /is-active-source-block[\s\S]*box-shadow:\s*-4px\s+0\s+0/);
+  assert.match(mainStyles, /is-active-source-block::before[\s\S]*left:\s*-10px/);
+  assert.match(mainStyles, /is-active-source-block::before[\s\S]*width:\s*2px/);
+  assert.doesNotMatch(mainStyles, /is-active-source-block[\s\S]*box-shadow:\s*-2px\s+0\s+0/);
 });
