@@ -25,7 +25,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { message, save as chooseSaveFile } from '@tauri-apps/plugin-dialog';
-import { createElementScrollViewport, getAlignedScrollTop, getSyncedScrollTop, isTargetVisible, type ObservableScrollViewport, type ScrollAnchor, type ScrollRange } from './utils/scrollSync';
+import { createElementScrollViewport, getSyncedScrollTop, isTargetVisible, type ObservableScrollViewport, type ScrollAnchor, type ScrollRange } from './utils/scrollSync';
 import { getImmersiveWorkspacePolicy } from './utils/immersiveWorkspace';
 import { guardWindowClose, type CloseGuardTab, type UnsavedChangesAction } from './utils/windowCloseGuard';
 import { findActiveSourceElement } from './utils/activeSourceLine';
@@ -136,8 +136,8 @@ function App() {
     resume: () => undefined,
   });
   const programmaticScrollTargetsRef = useRef(new Map<ObservableScrollViewport, number>());
-  const revealPreviewLineRef = useRef<(lineNumber: number) => void>(() => undefined);
-  const revealEditorLineRef = useRef<(lineNumber: number) => void>(() => undefined);
+  const revealPreviewLineRef = useRef<() => void>(() => undefined);
+  const revealEditorLineRef = useRef<() => void>(() => undefined);
   const closeGuardInProgress = useRef(false);
   const closePromptResolver = useRef<((action: UnsavedChangesAction) => void) | null>(null);
   const dragValues = useRef({ splitRatio, sidebarWidth, proofreadPanelWidth, chatbotPanelWidth });
@@ -652,7 +652,7 @@ function App() {
         24,
       )) return;
     }
-    revealPreviewLineRef.current(lineNumber);
+    revealPreviewLineRef.current();
   }, [previewScrollElement]);
 
   const handlePreviewSourceClick = useCallback((lineNumber: number) => {
@@ -661,7 +661,7 @@ function App() {
     const line = editor.line(lineNumber);
     setActiveEditorLine(line.number);
     editor.setSelection(line.from);
-    revealEditorLineRef.current(line.number);
+    revealEditorLineRef.current();
     editor.focus();
   }, []);
 
@@ -716,55 +716,30 @@ function App() {
     const stopPendingScrollSync = () => {
       scrollFrameTask.cancel();
     };
-    const alignEditorLineWithPreview = (lineNumber: number, direction: 'editor-to-preview' | 'preview-to-editor') => {
-      const target = findActiveSourceElement(previewScrollElement, lineNumber);
-      if (!target) return;
-
-      const editorBounds = editorView.scrollDOM.getBoundingClientRect();
-      const previewBounds = previewScrollElement.getBoundingClientRect();
-      const targetBounds = target.getBoundingClientRect();
-      const editorLineTop = editorView.getTopForLineNumber(lineNumber);
+    // Relative alignment maps the source pane's current scroll position onto
+    // the target pane through the shared line anchors. Unlike absolute pixel
+    // alignment it never factors in the panes' own screen tops, so the target
+    // position stays stable regardless of toolbar or top-inset differences.
+    const alignEditorLineWithPreview = (direction: 'editor-to-preview' | 'preview-to-editor') => {
       stopPendingScrollSync();
 
       if (direction === 'editor-to-preview') {
-        const editorLineScreenTop = editorBounds.top + editorLineTop - editorViewport.getScrollTop();
-        const targetContentTop = previewViewport.getScrollTop() + targetBounds.top - previewBounds.top;
-        const previewMaxScroll = Math.max(0, previewViewport.getScrollHeight() - previewViewport.getClientHeight());
-        const nextTop = getAlignedScrollTop(previewBounds.top, targetContentTop, editorLineScreenTop, previewMaxScroll);
+        const nextTop = getSyncedScrollTop(editorViewport, previewViewport, editorToPreviewAnchors, editorToPreviewRange);
         if (Math.abs(previewViewport.getScrollTop() - nextTop) >= 0.5) {
           programmaticScrollTargets.set(previewViewport, nextTop);
           previewViewport.setScrollTop(nextTop);
         }
-
-        const previewTargetScreenTop = previewBounds.top + targetContentTop - nextTop;
-        const editorMaxScroll = Math.max(0, editorViewport.getScrollHeight() - editorViewport.getClientHeight());
-        const fallbackEditorTop = getAlignedScrollTop(editorBounds.top, editorLineTop, previewTargetScreenTop, editorMaxScroll);
-        if (Math.abs(editorViewport.getScrollTop() - fallbackEditorTop) >= 0.5) {
-          programmaticScrollTargets.set(editorViewport, fallbackEditorTop);
-          editorViewport.setScrollTop(fallbackEditorTop);
-        }
         return;
       }
 
-      const previewTargetScreenTop = targetBounds.top;
-      const editorMaxScroll = Math.max(0, editorViewport.getScrollHeight() - editorViewport.getClientHeight());
-      const nextTop = getAlignedScrollTop(editorBounds.top, editorLineTop, previewTargetScreenTop, editorMaxScroll);
+      const nextTop = getSyncedScrollTop(previewViewport, editorViewport, previewToEditorAnchors, previewToEditorRange);
       if (Math.abs(editorViewport.getScrollTop() - nextTop) >= 0.5) {
         programmaticScrollTargets.set(editorViewport, nextTop);
         editorViewport.setScrollTop(nextTop);
       }
-
-      const editorLineScreenTop = editorBounds.top + editorLineTop - nextTop;
-      const targetContentTop = previewViewport.getScrollTop() + targetBounds.top - previewBounds.top;
-      const previewMaxScroll = Math.max(0, previewViewport.getScrollHeight() - previewViewport.getClientHeight());
-      const fallbackPreviewTop = getAlignedScrollTop(previewBounds.top, targetContentTop, editorLineScreenTop, previewMaxScroll);
-      if (Math.abs(previewViewport.getScrollTop() - fallbackPreviewTop) >= 0.5) {
-        programmaticScrollTargets.set(previewViewport, fallbackPreviewTop);
-        previewViewport.setScrollTop(fallbackPreviewTop);
-      }
     };
-    const revealPreviewLine = (lineNumber: number) => alignEditorLineWithPreview(lineNumber, 'editor-to-preview');
-    const revealEditorLine = (lineNumber: number) => alignEditorLineWithPreview(lineNumber, 'preview-to-editor');
+    const revealPreviewLine = () => alignEditorLineWithPreview('editor-to-preview');
+    const revealEditorLine = () => alignEditorLineWithPreview('preview-to-editor');
     revealPreviewLineRef.current = revealPreviewLine;
     revealEditorLineRef.current = revealEditorLine;
 
@@ -935,7 +910,6 @@ function App() {
                   <TabsBar />
                 </div>
                 {settings.editor.pin_toolbar && <div className="preview-toolbar-offset" aria-hidden="true" />}
-                <div className="preview-mode-row-spacer" aria-hidden="true" />
                 <div className="preview-with-panel">
                   <Preview
                     className="preview-pane"

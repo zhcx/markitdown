@@ -23,22 +23,22 @@ function readCssVar(css: string, name: string): string | null {
   return match ? match[1].trim() : null;
 }
 
-test('split editor and preview reserve the same mode row and content top inset', () => {
+test('editor mode row keeps its fixed height while the preview uses relative scroll sync', () => {
   const app = read('src/App.tsx');
   const editor = read('src/components/Editor/Editor.tsx');
   const blockStyles = read('src/components/Editor/BlockEditor.css');
   const mainStyles = read('src/styles/main.css');
 
   assert.match(editor, /className="editor-mode-row"[\s\S]*<EditorModeToggle/);
-  assert.match(app, /className="preview-mode-row-spacer"/);
   assert.match(mainStyles, /--editor-mode-row-height:\s*31px/);
-  assert.match(mainStyles, /--document-content-top-padding:\s*32px/);
-  assert.match(mainStyles, /\.preview-mode-row-spacer[\s\S]*var\(--editor-mode-row-height\)/);
-  assert.match(mainStyles, /\.preview-workspace-pane \.preview-document[\s\S]*var\(--document-content-top-padding\)/);
   assert.match(blockStyles, /\.block-editor-scroll[\s\S]*var\(--document-content-top-padding/);
+  // The preview pane no longer reserves a mode-row spacer or a forced top
+  // inset: line alignment is relative through shared anchors, not absolute.
+  assert.doesNotMatch(app, /className="preview-mode-row-spacer"/);
+  assert.doesNotMatch(mainStyles, /\.preview-workspace-pane \.preview-document[\s\S]*var\(--document-content-top-padding\)/);
 });
 
-test('alignment variables resolve to the same numeric heights on both panes', () => {
+test('editor tokens stay pixel-based and the preview no longer forces a top inset', () => {
   const blockStyles = read('src/components/Editor/BlockEditor.css');
   const mainStyles = read('src/styles/main.css');
 
@@ -48,21 +48,19 @@ test('alignment variables resolve to the same numeric heights on both panes', ()
   assert.match(modeRow ?? '', /^\d+px$/);
   assert.match(topPad ?? '', /^\d+px$/);
 
-  // The editor mode row and the preview spacer both use the same token.
+  // The editor mode row and content top inset both use their shared tokens.
   const editorRowHeight = readCssValue(blockStyles, '.editor-mode-row', 'height');
   const editorRowBasis = readCssValue(blockStyles, '.editor-mode-row', 'flex-basis');
-  const spacerBlock = readCssValue(mainStyles, '.preview-mode-row-spacer', 'flex') ?? '';
-  const spacerHeight = readCssValue(mainStyles, '.preview-mode-row-spacer', 'height');
-  for (const value of [editorRowHeight, editorRowBasis, spacerHeight]) {
+  for (const value of [editorRowHeight, editorRowBasis]) {
     assert.match(value ?? '', /var\(--editor-mode-row-height/);
   }
-  assert.match(spacerBlock, /var\(--editor-mode-row-height/);
-
-  // Both content surfaces pad their first block from the same top inset.
   const editorPad = readCssValue(blockStyles, '.block-editor-scroll', 'padding') ?? '';
-  const previewPadTop = readCssValue(mainStyles, '.preview-workspace-pane .preview-document', 'padding-top');
   assert.match(editorPad, /var\(--document-content-top-padding/);
-  assert.match(previewPadTop ?? '', /var\(--document-content-top-padding/);
+
+  // The preview pane no longer reserves a mode-row spacer or a top padding:
+  // scroll sync relies on relative anchor mapping instead of shared insets.
+  assert.equal(readCssValue(mainStyles, '.preview-mode-row-spacer', 'flex'), null);
+  assert.equal(readCssValue(mainStyles, '.preview-workspace-pane .preview-document', 'padding-top'), null);
 });
 
 test('pane dragging uses latest-frame scheduling and flushes the final pointer', () => {

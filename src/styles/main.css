@@ -3945,8 +3945,8 @@ textarea {
 .preview-document .is-active-source-block::before {
   content: '';
   position: absolute;
-  top: 3px;
-  bottom: 3px;
+  top: 6px;
+  bottom: 6px;
   left: -10px;
   width: 2px;
   border-radius: 2px;
@@ -7565,16 +7565,6 @@ textarea:focus-visible {
 
 .preview-workspace-pane > .preview-with-panel {
   width: 100%;
-}
-
-.preview-mode-row-spacer {
-  flex: 0 0 var(--editor-mode-row-height);
-  height: var(--editor-mode-row-height);
-  background: var(--bg-document);
-}
-
-.preview-workspace-pane .preview-document {
-  padding-top: var(--document-content-top-padding);
 }
 
 .main-content.split > .document-pane {
