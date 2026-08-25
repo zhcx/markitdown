@@ -41,3 +41,10 @@ test('documentation explains native tables and raw Markdown compatibility', () =
   assert.match(docs, /未知扩展/);
   assert.match(docs, /不执行.*脚本/s);
 });
+
+test('performance guide documents latest-frame sync and drag-time geometry suspension', () => {
+  const performance = read('docs/performance.md');
+  assert.match(performance, /latest[- ]frame|最新.*帧/iu);
+  assert.match(performance, /拖动期间.*锚点/iu);
+  assert.match(performance, /松手.*一次/iu);
+});
