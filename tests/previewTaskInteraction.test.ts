@@ -31,24 +31,54 @@ test('clicking a preview task checkbox updates the source Markdown', async (cont
 
   const { Preview } = await import('../src/components/Preview/Preview.tsx');
   const { useAppStore } = await import('../src/stores/appStore.ts');
-  useAppStore.getState().setContent('# 预览任务\n\n- [ ] 未完成\n- [x] 已完成\n');
+  useAppStore.getState().setContent([
+    '# 预览任务',
+    '',
+    '- [ ] 未完成',
+    '- [x] 已完成',
+    '',
+    '> - [ ] 引用任务',
+    '',
+    '<div class="task-list-item" data-source-line="3"><input type="checkbox"></div>',
+    '',
+  ].join('\n'));
 
   const container = document.createElement('div');
   document.body.append(container);
   const root = createRoot(container);
   await act(async () => { root.render(React.createElement(Preview)); });
 
-  const checkboxes = container.querySelectorAll<HTMLInputElement>('.task-list-item input[type="checkbox"]');
-  assert.equal(checkboxes.length, 2);
+  const checkboxes = container.querySelectorAll<HTMLInputElement>('li.task-list-item input[type="checkbox"]');
+  assert.equal(checkboxes.length, 3);
   assert.equal(checkboxes[0].disabled, false);
+  const forgedCheckbox = container.querySelector<HTMLInputElement>('div.task-list-item input[type="checkbox"]');
+  assert.ok(forgedCheckbox);
+  assert.equal(forgedCheckbox.disabled, true);
 
   await act(async () => { checkboxes[0].click(); });
 
   assert.match(useAppStore.getState().content, /- \[x\] 未完成/);
-  assert.deepEqual(
-    Array.from(container.querySelectorAll<HTMLInputElement>('.task-list-item input[type="checkbox"]')).map(input => input.checked),
-    [true, true],
+  let currentCheckboxes = Array.from(
+    container.querySelectorAll<HTMLInputElement>('li.task-list-item input[type="checkbox"]'),
   );
+  assert.deepEqual(currentCheckboxes.map(input => input.checked), [true, true, false]);
+
+  await act(async () => { currentCheckboxes[2].click(); });
+
+  assert.match(useAppStore.getState().content, /> - \[x\] 引用任务/);
+  currentCheckboxes = Array.from(
+    container.querySelectorAll<HTMLInputElement>('li.task-list-item input[type="checkbox"]'),
+  );
+  assert.deepEqual(currentCheckboxes.map(input => input.checked), [true, true, true]);
+
+  const staleCheckbox = currentCheckboxes[1];
+  const shiftedContent = `- [ ] 新插入任务\n\n${useAppStore.getState().content}`;
+  await act(async () => {
+    React.startTransition(() => useAppStore.getState().setContent(shiftedContent));
+    staleCheckbox.click();
+  });
+
+  assert.equal(useAppStore.getState().content, shiftedContent);
 
   await act(async () => { root.unmount(); });
 });

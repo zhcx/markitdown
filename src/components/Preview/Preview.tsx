@@ -38,6 +38,14 @@ const md = new MarkdownIt({
   },
 });
 md.use(taskLists);
+md.renderer.rules.list_item_open = (tokens, index, options, env, self) => {
+  const token = tokens[index];
+  const classes = token.attrGet('class')?.split(/\s+/u) || [];
+  if (classes.includes('task-list-item') && typeof env?.zeditorTaskToken === 'string') {
+    token.attrSet('data-zeditor-task-token', env.zeditorTaskToken);
+  }
+  return self.renderToken(tokens, index, options);
+};
 const sourceAnchorTokenTypes = new Set([
   'heading_open',
   'paragraph_open',
@@ -87,13 +95,17 @@ function setTaskCheckedAtSourceLine(source: string, lineNumber: number, checked:
   const lines = source.split('\n');
   const index = lineNumber - 1;
   if (index >= lines.length) return source;
-  const taskMarker = /^(\s*(?:(?:[-+*])|(?:\d+[.)]))\s+\[)([ xX])(\])/u;
+  const taskMarker = /^((?:[ \t]*>[ \t]*)*[ \t]*(?:(?:[-+*])|(?:\d+[.)]))[ \t]+\[)([ xX])(\])/u;
   if (!taskMarker.test(lines[index])) return source;
   lines[index] = lines[index].replace(
     taskMarker,
     (_match, before: string, _state: string, after: string) => `${before}${checked ? 'x' : ' '}${after}`,
   );
   return lines.join('\n');
+}
+
+function createPreviewTaskToken() {
+  return globalThis.crypto.randomUUID();
 }
 
 function videoEmbedUrl(rawUrl: string) {
@@ -173,6 +185,8 @@ export function Preview({ className, style, onScrollContainerReady, onContentRen
   // refresh when the theme changes.
   const resolvedThemeRef = useRef(document.documentElement.dataset.theme || 'vscode-dark');
   const contentRef = useRef('');
+  const renderedContentRef = useRef('');
+  const interactiveTaskItemsRef = useRef(new WeakSet<HTMLElement>());
   const mermaidSequenceRef = useRef(0);
   const [mermaidThemeVersion, setMermaidThemeVersion] = useState(0);
   const { content, settings, setContent } = useAppStore();
@@ -210,14 +224,29 @@ export function Preview({ className, style, onScrollContainerReady, onContentRen
     if (!containerRef.current) return;
     let disposed = false;
 
-    const rendered = sanitizeRenderedHtml(md.render(renderMath(renderVideoExtensions(deferredContent))));
+    const taskToken = createPreviewTaskToken();
+    const rendered = sanitizeRenderedHtml(md.render(
+      renderMath(renderVideoExtensions(deferredContent)),
+      { zeditorTaskToken: taskToken },
+    ));
     containerRef.current.innerHTML = rendered;
     addHeadingAnchors(containerRef.current);
     addListItemContentAnchors(containerRef.current);
+    const interactiveTaskItems = new WeakSet<HTMLElement>();
     containerRef.current.querySelectorAll<HTMLInputElement>('.task-list-item input[type="checkbox"]').forEach((checkbox) => {
+      checkbox.disabled = true;
+    });
+    containerRef.current.querySelectorAll<HTMLElement>('li.task-list-item[data-zeditor-task-token]').forEach((taskItem) => {
+      if (taskItem.dataset.zeditorTaskToken !== taskToken) return;
+      taskItem.removeAttribute('data-zeditor-task-token');
+      const checkbox = taskItem.querySelector<HTMLInputElement>('input[type="checkbox"]');
+      if (!checkbox) return;
       checkbox.disabled = false;
       checkbox.setAttribute('aria-label', checkbox.checked ? '标记任务为未完成' : '标记任务为已完成');
+      interactiveTaskItems.add(taskItem);
     });
+    interactiveTaskItemsRef.current = interactiveTaskItems;
+    renderedContentRef.current = deferredContent;
     onContentRendered?.();
 
     // Mermaid is imported and rendered only when a diagram is close to the
@@ -306,9 +335,15 @@ export function Preview({ className, style, onScrollContainerReady, onContentRen
     const taskCheckbox = clickedElement?.closest<HTMLInputElement>('.task-list-item input[type="checkbox"]');
     if (taskCheckbox) {
       const taskItem = taskCheckbox.closest<HTMLElement>('.task-list-item[data-source-line]');
+      if (!taskItem || !interactiveTaskItemsRef.current.has(taskItem)) return;
+      const currentContent = useAppStore.getState().content;
+      if (currentContent !== renderedContentRef.current) {
+        event.preventDefault();
+        return;
+      }
       const lineNumber = Number(taskItem?.dataset.sourceLine);
-      const nextContent = setTaskCheckedAtSourceLine(contentRef.current, lineNumber, taskCheckbox.checked);
-      if (nextContent !== contentRef.current) setContent(nextContent);
+      const nextContent = setTaskCheckedAtSourceLine(currentContent, lineNumber, taskCheckbox.checked);
+      if (nextContent !== currentContent) setContent(nextContent);
       return;
     }
     const localLink = clickedElement?.closest<HTMLAnchorElement>('a[href^="#"]');
