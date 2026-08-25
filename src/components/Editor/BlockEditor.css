@@ -160,13 +160,15 @@
 
 .block-editor-content .task-item {
   list-style: none;
+  position: relative;
 }
 
 .block-editor-content .task-checkbox {
-  display: inline-flex;
+  display: flex;
+  position: absolute;
+  top: .22em;
+  left: -1.25em;
   width: 1.25em;
-  margin-left: -1.25em;
-  vertical-align: baseline;
 }
 
 .block-editor-content .task-checkbox input {
@@ -176,7 +178,7 @@
   accent-color: var(--accent-color);
 }
 
-.block-editor-content .task-item.is-checked > p {
+.block-editor-content .task-item.is-checked > .task-item-content > p:first-child {
   color: var(--text-muted);
   text-decoration: line-through;
 }

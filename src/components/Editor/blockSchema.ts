@@ -21,7 +21,7 @@ const taskItemToDOM = (node: Node): DOMOutputSpec => [
     'input',
     { type: 'checkbox', checked: node.attrs.checked ? 'checked' : null, disabled: 'disabled' },
   ]],
-  0,
+  ['div', { class: 'task-item-content' }, 0],
 ];
 
 const imageToDOM = (node: Node): DOMOutputSpec => {
