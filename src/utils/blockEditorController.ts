@@ -193,12 +193,18 @@ export function createBlockEditorController(
         const element = block ? blockElements.get(block.blockId) : null;
         if (!element) continue;
         const blockHeight = element.offsetHeight;
-        const span = Math.max(1, block.lineTo - block.lineFrom);
-        const ratio = Math.max(0, Math.min(1, (lineNumber - block.lineFrom) / span));
-        layouts.set(lineNumber, {
-          top: element.offsetTop + ratio * blockHeight,
-          bottom: element.offsetTop + ((lineNumber - block.lineFrom + 1) / span) * blockHeight,
-        });
+        // A block spans lineFrom..lineTo inclusive, so it holds
+        // `lineTo - lineFrom + 1` markdown lines. Dividing by that count maps
+        // the first line to the block's top and the last line to its bottom.
+        // Using `lineTo - lineFrom` instead overshoots the bottom edge of any
+        // multi-line block (a code fence, a wrapped paragraph, a table) and
+        // pushes the content-bottom anchor past where the last content truly
+        // ends — the preview tail then never catches up when the editor bottoms
+        // out.
+        const lineCount = block.lineTo - block.lineFrom + 1;
+        const top = element.offsetTop + ((lineNumber - block.lineFrom) / lineCount) * blockHeight;
+        const bottom = element.offsetTop + ((lineNumber - block.lineFrom + 1) / lineCount) * blockHeight;
+        layouts.set(lineNumber, { top, bottom });
       }
       return layouts;
     },

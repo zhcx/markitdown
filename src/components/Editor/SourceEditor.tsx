@@ -154,7 +154,13 @@ function createController(editor: monaco.editor.IStandaloneCodeEditor, model: mo
         if (!Number.isFinite(lineNumber)) continue;
         const safeLine = Math.max(1, Math.min(lineNumber, lineCount));
         const top = editor.getTopForLineNumber(safeLine);
-        layouts.set(lineNumber, { top, bottom: top + lineHeight });
+        // wordWrap is enabled, so a wrapped line spans several visual rows.
+        // `top + lineHeight` under-measures those lines; the next line's top is
+        // the exact bottom edge of this line (including its wrapped rows).
+        const nextTop = safeLine < lineCount
+          ? editor.getTopForLineNumber(safeLine + 1)
+          : top + lineHeight;
+        layouts.set(lineNumber, { top, bottom: Math.max(top + lineHeight, nextTop) });
       }
       return layouts;
     },

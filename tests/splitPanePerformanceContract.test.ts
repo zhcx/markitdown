@@ -120,6 +120,25 @@ test('editor scroll listeners stay passive so scrolling never blocks on the pane
   assert.match(source, /getLineLayouts/);
 });
 
+test('line layouts divide by the block line count so the last line lands on the block bottom', () => {
+  const block = read('src/utils/blockEditorController.ts');
+  const source = read('src/components/Editor/SourceEditor.tsx');
+  // A block spans lineFrom..lineTo inclusive, so it holds `lineTo - lineFrom + 1`
+  // markdown lines. Dividing by `lineTo - lineFrom` overshoots the bottom edge of
+  // any multi-line block (code fence, wrapped paragraph, table) and pushes the
+  // content-bottom anchor past where the last content truly ends — the preview
+  // tail then never catches up when the editor bottoms out.
+  assert.match(block, /const lineCount = block\.lineTo - block\.lineFrom \+ 1;/);
+  assert.match(block, /\(lineNumber - block\.lineFrom \+ 1\) \/ lineCount/);
+  // The old one-short denominator must not survive as the bottom divisor.
+  assert.doesNotMatch(block, /\(lineNumber - block\.lineFrom \+ 1\) \/ span/);
+  // Monaco wraps lines (wordWrap: 'on'), so a line's bottom is the next line's
+  // top, not a single fixed lineHeight (which under-measures wrapped rows).
+  assert.match(source, /wordWrap: 'on'/);
+  assert.match(source, /getTopForLineNumber\(safeLine \+ 1\)/);
+  assert.match(source, /bottom: Math\.max\(top \+ lineHeight, nextTop\)/);
+});
+
 test('scroll sync refreshes live extents on every frame so async preview growth never cuts the tail', () => {
   const app = read('src/App.tsx');
   // rebuildScrollAnchors captures editorMax/previewMax and the trailing
