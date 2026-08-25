@@ -9407,6 +9407,18 @@ html[data-theme] .preview-container,
   scrollbar-width: thin;
 }
 
+.slash-command-group + .slash-command-group {
+  margin-top: 4px;
+}
+
+.slash-command-group-label {
+  padding: 5px 10px 4px;
+  color: var(--text-muted);
+  font: 700 10px/1.2 var(--font-sans);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
 .slash-command-item {
   width: 100%;
   min-height: 54px;
@@ -9431,6 +9443,17 @@ html[data-theme] .preview-container,
 
 .slash-command-item.selected {
   box-shadow: inset 3px 0 0 var(--accent-color);
+}
+
+.slash-command-item:disabled,
+.slash-command-item.disabled {
+  cursor: not-allowed;
+  opacity: .58;
+}
+
+.slash-command-item:disabled:hover,
+.slash-command-item.disabled:hover {
+  background: transparent;
 }
 
 .slash-command-icon {

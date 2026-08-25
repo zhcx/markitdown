@@ -5,6 +5,7 @@ export interface SlashCommandInsertion {
 }
 
 export type BlockSlashAction =
+  | { kind: 'turn-into'; type: 'paragraph' }
   | { kind: 'turn-into'; type: 'heading'; level: 1 | 2 | 3 | 4 }
   | { kind: 'insert'; type: 'bullet_list' | 'ordered_list' | 'task_list' | 'blockquote' | 'code_block' | 'horizontal_rule' | 'image' };
 

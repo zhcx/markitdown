@@ -9,6 +9,7 @@ import { useAppStore, type Settings } from '../../stores/appStore';
 import { useAIStore, type ProofreadResult } from '../../stores/aiStore';
 import type { EditorController, EditorDispatchSpec, EditorLine } from '../../types/editor';
 import { EDITOR_OVERFLOW_OPTIONS, EDITOR_UNICODE_HIGHLIGHT_OPTIONS } from '../../utils/editorLayout';
+import type { EditorCommandDefinition } from '../../utils/editorCommandRegistry.ts';
 import { filterSlashCommands, findSlashCommandTrigger, type SlashCommand } from '../../utils/slashCommands';
 import { SlashCommandMenu, type SlashMenuAnchor } from './SlashCommandMenu';
 import { ImageOptionsModal, Toolbar } from '../Toolbar/Toolbar';
@@ -359,7 +360,7 @@ export function SourceEditor({ className, style, onActiveLineChange, onActiveLin
     setSlashSelectedIndex(index);
   }, []);
 
-  const applySlashCommand = useCallback((command: SlashCommand) => {
+  const applySlashCommand = useCallback((command: EditorCommandDefinition | SlashCommand) => {
     const menu = slashMenuRef.current;
     const controller = controllerRef.current;
     if (!menu || !controller) return;

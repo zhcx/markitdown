@@ -1,4 +1,11 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import {
+  EDITOR_COMMANDS,
+  getEditorCommandAvailability,
+  groupEditorCommands,
+  type EditorCommandContext,
+  type EditorCommandDefinition,
+} from '../../utils/editorCommandRegistry.ts';
 import type { SlashCommand } from '../../utils/slashCommands';
 
 export interface SlashMenuAnchor {
@@ -9,16 +16,35 @@ export interface SlashMenuAnchor {
 
 interface SlashCommandMenuProps {
   anchor: SlashMenuAnchor;
-  commands: SlashCommand[];
+  commands: Array<EditorCommandDefinition | SlashCommand>;
   selectedIndex: number;
   query: string;
-  onSelect: (command: SlashCommand) => void;
+  onSelect: (command: EditorCommandDefinition) => void;
   onSelectedIndexChange: (index: number) => void;
   onClose: () => void;
+  context?: EditorCommandContext;
 }
 
 const VIEWPORT_GAP = 12;
 const CURSOR_GAP = 8;
+const DEFAULT_CONTEXT: EditorCommandContext = {
+  mode: 'source',
+  aiEnabled: false,
+  aiConfigured: false,
+};
+
+function toEditorCommand(command: EditorCommandDefinition | SlashCommand): EditorCommandDefinition {
+  if ('category' in command) return command;
+  const registered = EDITOR_COMMANDS.find(item => item.id === command.id);
+  if (registered) return registered;
+  return {
+    ...command,
+    category: 'media',
+    aliases: command.keywords.split(/\s+/u).filter(Boolean),
+    keywords: command.keywords.split(/\s+/u).filter(Boolean),
+    surfaces: ['slash'],
+  };
+}
 
 export function SlashCommandMenu({
   anchor,
@@ -28,8 +54,18 @@ export function SlashCommandMenu({
   onSelect,
   onSelectedIndexChange,
   onClose,
+  context = DEFAULT_CONTEXT,
 }: SlashCommandMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
+  const groups = groupEditorCommands(commands.map(toEditorCommand));
+  const commandIndexById = new Map<string, number>();
+  let nextCommandIndex = 0;
+  for (const group of groups) {
+    for (const command of group.commands) {
+      commandIndexById.set(command.id, nextCommandIndex);
+      nextCommandIndex += 1;
+    }
+  }
   const [position, setPosition] = useState({
     left: anchor.left,
     top: anchor.bottom + CURSOR_GAP,
@@ -49,7 +85,7 @@ export function SlashCommandMenu({
       ? anchor.bottom + CURSOR_GAP
       : Math.max(VIEWPORT_GAP, anchor.top - Math.min(rect.height, maxHeight) - CURSOR_GAP);
     setPosition({ left, top, maxHeight });
-  }, [anchor, commands.length]);
+  }, [anchor, nextCommandIndex]);
 
   useEffect(() => {
     const handlePointerDown = (event: PointerEvent) => {
@@ -74,32 +110,45 @@ export function SlashCommandMenu({
       aria-label="Markdown 快捷命令"
     >
       <div className="slash-command-header">
-        <span>{query ? `搜索“${query}”` : '基础块'}</span>
+        <span>{query ? `搜索“${query}”` : '编辑命令'}</span>
         <span className="slash-command-key-hint">↑↓ 选择 · Enter 插入</span>
       </div>
       <div className="slash-command-list">
-        {commands.length > 0 ? commands.map((command, index) => (
-          <button
-            type="button"
-            id={`slash-command-${command.id}`}
-            key={command.id}
-            role="option"
-            aria-selected={index === selectedIndex}
-            data-command-index={index}
-            className={`slash-command-item${index === selectedIndex ? ' selected' : ''}`}
-            onMouseMove={() => onSelectedIndexChange(index)}
-            onMouseDown={(event) => {
-              event.preventDefault();
-              onSelect(command);
-            }}
-          >
-            <span className="slash-command-icon" aria-hidden="true">{command.icon}</span>
-            <span className="slash-command-copy">
-              <strong>{command.title}</strong>
-              <small>{command.description}</small>
-            </span>
-            <span className="slash-command-shortcut">{command.shortcut}</span>
-          </button>
+        {nextCommandIndex > 0 ? groups.map(group => (
+          <div className="slash-command-group" key={group.category}>
+            <div className="slash-command-group-label">{group.label}</div>
+            {group.commands.map(command => {
+              const index = commandIndexById.get(command.id) ?? 0;
+              const availability = getEditorCommandAvailability(command, context);
+              if (!availability.visible) return null;
+              return (
+                <button
+                  type="button"
+                  id={`slash-command-${command.id}`}
+                  key={command.id}
+                  role="option"
+                  aria-selected={index === selectedIndex}
+                  aria-disabled={!availability.enabled}
+                  data-command-index={index}
+                  className={`slash-command-item${index === selectedIndex ? ' selected' : ''}${availability.enabled ? '' : ' disabled'}`}
+                  title={availability.reason}
+                  disabled={!availability.enabled}
+                  onMouseMove={() => onSelectedIndexChange(index)}
+                  onMouseDown={(event) => {
+                    event.preventDefault();
+                    if (availability.enabled) onSelect(command);
+                  }}
+                >
+                  <span className="slash-command-icon" aria-hidden="true">{command.icon}</span>
+                  <span className="slash-command-copy">
+                    <strong>{command.title}</strong>
+                    <small>{availability.reason || command.description}</small>
+                  </span>
+                  <span className="slash-command-shortcut">{command.shortcut}</span>
+                </button>
+              );
+            })}
+          </div>
         )) : (
           <div className="slash-command-empty">没有匹配的命令</div>
         )}

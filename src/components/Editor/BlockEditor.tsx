@@ -7,6 +7,7 @@ import { Decoration, DecorationSet, EditorView } from 'prosemirror-view';
 import { useAppStore } from '../../stores/appStore';
 import type { MarkdownCapability } from '../../types/blockEditor.ts';
 import { createBlockEditorController } from '../../utils/blockEditorController.ts';
+import type { EditorCommandDefinition } from '../../utils/editorCommandRegistry.ts';
 import { parseMarkdown, serializeMarkdown } from '../../utils/markdownBlockCodec.ts';
 import { filterSlashCommands, findSlashCommandTrigger, type SlashCommand } from '../../utils/slashCommands.ts';
 import { changeBlockTypeAtIndex, changeCurrentBlockType } from './blockCommands.ts';
@@ -176,7 +177,7 @@ export function BlockEditor({
     syncSlashMenu();
   }, [blockPropertyMenu, syncSlashMenu]);
 
-  const applySlashCommand = useCallback((command: SlashCommand) => {
+  const applySlashCommand = useCallback((command: EditorCommandDefinition | SlashCommand) => {
     const menu = slashMenuRef.current;
     const controller = controllerRef.current;
     if (!menu || !controller) return;
@@ -189,7 +190,11 @@ export function BlockEditor({
       if (view) {
         const action = command.blockAction;
         if (action?.kind === 'turn-into') {
-          changeCurrentBlockType('heading', { level: action.level })(view.state, view.dispatch);
+          if (action.type === 'heading') {
+            changeCurrentBlockType('heading', { level: action.level })(view.state, view.dispatch);
+          } else {
+            changeCurrentBlockType(action.type)(view.state, view.dispatch);
+          }
         } else if (action?.kind === 'insert' && action.type !== 'image') {
           changeCurrentBlockType(action.type)(view.state, view.dispatch);
         }
