@@ -776,6 +776,37 @@ function App() {
     };
     rebuildScrollAnchors();
 
+    // Live extent refresh. rebuildScrollAnchors captures editorMax/previewMax
+    // and the trailing {editorMax, previewMax} anchor at one instant, but the
+    // preview geometry keeps shifting afterwards — image loads, mermaid/KaTeX
+    // rendering, font swap, sub-pixel reflow. ResizeObserver eventually
+    // rebuilds the anchors, but a user can reach the editor's bottom (and
+    // trigger the getSyncedScrollTop "sourceMax - sourceTop <= 0.5" early
+    // return) before that 80ms debounced rebuild lands. Returning a stale
+    // targetMax then leaves the preview's tail content cut off. Refreshing the
+    // extents and re-stitching the trailing anchor with live scrollHeight
+    // values on every sync frame keeps the bottom-out mapping truthful.
+    const refreshLiveScrollExtents = () => {
+      const liveEditorMax = Math.max(0, editorViewport.getScrollHeight() - editorViewport.getClientHeight());
+      const livePreviewMax = Math.max(0, previewViewport.getScrollHeight() - previewViewport.getClientHeight());
+      editorToPreviewRange.sourceMax = liveEditorMax;
+      editorToPreviewRange.targetMax = livePreviewMax;
+      previewToEditorRange.sourceMax = livePreviewMax;
+      previewToEditorRange.targetMax = liveEditorMax;
+      editorMax = liveEditorMax;
+      previewMax = livePreviewMax;
+      if (editorToPreviewAnchors.length >= 2) {
+        editorToPreviewAnchors = [
+          ...editorToPreviewAnchors.slice(0, -1),
+          { sourceTop: liveEditorMax, targetTop: livePreviewMax },
+        ];
+        previewToEditorAnchors = [
+          ...previewToEditorAnchors.slice(0, -1),
+          { sourceTop: livePreviewMax, targetTop: liveEditorMax },
+        ];
+      }
+    };
+
     const stopPendingScrollSync = () => {
       scrollFrameTask.cancel();
     };
@@ -785,6 +816,7 @@ function App() {
     // position stays stable regardless of toolbar or top-inset differences.
     const alignEditorLineWithPreview = (direction: 'editor-to-preview' | 'preview-to-editor') => {
       stopPendingScrollSync();
+      refreshLiveScrollExtents();
 
       if (direction === 'editor-to-preview') {
         const nextTop = getSyncedScrollTop(editorViewport, previewViewport, editorToPreviewAnchors, editorToPreviewRange);
@@ -814,7 +846,17 @@ function App() {
     };
 
     const scrollFrameTask = createLatestFrameTask<ScrollSyncRequest>(browserFrameDriver, request => {
-      const nextTop = getSyncedScrollTop(request.source, request.target, request.anchors, request.range);
+      // Re-read the live scroll extents on every committed frame. The request
+      // captures anchors/range at schedule time, but the preview geometry can
+      // shift between schedule and frame (image load, diagram render, font
+      // reflow); using the stale trailing {editorMax, previewMax} anchor or a
+      // stale range.targetMax leaves the preview's tail cut off when the
+      // editor bottoms out. Refreshing here keeps the bottom-out mapping truthful.
+      refreshLiveScrollExtents();
+      const isEditorSource = request.source === editorViewport;
+      const anchors = isEditorSource ? editorToPreviewAnchors : previewToEditorAnchors;
+      const range = isEditorSource ? editorToPreviewRange : previewToEditorRange;
+      const nextTop = getSyncedScrollTop(request.source, request.target, anchors, range);
 
       // A tiny threshold avoids expensive layout work from sub-pixel scroll events
       // while preserving the feel of one-to-one scrolling for long documents.

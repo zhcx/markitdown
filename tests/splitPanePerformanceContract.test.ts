@@ -120,6 +120,24 @@ test('editor scroll listeners stay passive so scrolling never blocks on the pane
   assert.match(source, /getLineLayouts/);
 });
 
+test('scroll sync refreshes live extents on every frame so async preview growth never cuts the tail', () => {
+  const app = read('src/App.tsx');
+  // rebuildScrollAnchors captures editorMax/previewMax and the trailing
+  // {editorMax, previewMax} anchor at one instant, but the preview keeps
+  // shifting afterwards (image load, mermaid/KaTeX render, font reflow). The
+  // bottom-out early return in getSyncedScrollTop uses range.targetMax, so a
+  // stale value leaves the preview's tail content hidden when the editor
+  // bottoms out. Each committed sync frame must re-read the live scroll
+  // extents and re-stitch the trailing anchor.
+  assert.match(app, /const refreshLiveScrollExtents = \(\) => \{/);
+  assert.match(app, /editorViewport\.getScrollHeight\(\) - editorViewport\.getClientHeight\(\)/);
+  assert.match(app, /previewViewport\.getScrollHeight\(\) - previewViewport\.getClientHeight\(\)/);
+  assert.match(app, /editorToPreviewAnchors = \[[\s\S]*\{ sourceTop: liveEditorMax, targetTop: livePreviewMax \}/);
+  // The refresh runs inside the scroll frame callback (not only at schedule
+  // time) so geometry changes between schedule and frame are picked up.
+  assert.match(app, /createLatestFrameTask<ScrollSyncRequest>\([\s\S]*?refreshLiveScrollExtents\(\)/);
+});
+
 test('drag suspension survives scroll effect re-runs mid-drag', () => {
   const app = read('src/App.tsx');
   // A panel drag that triggers a scroll-sync effect re-run (e.g. previewRenderVersion
