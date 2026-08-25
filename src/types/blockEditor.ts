@@ -1,5 +1,19 @@
 export type EditorMode = 'blocks' | 'source';
 
+export type RawMarkdownKind =
+  | 'mermaid'
+  | 'math'
+  | 'html'
+  | 'details'
+  | 'footnote'
+  | 'video'
+  | 'toc'
+  | 'unknown';
+
+export type MarkdownBlockSegment =
+  | { kind: 'structured'; source: string; from: number; to: number }
+  | { kind: 'raw'; rawKind: RawMarkdownKind; source: string; from: number; to: number };
+
 export type BlockNodeType =
   | 'paragraph'
   | 'heading'
