@@ -27,7 +27,7 @@
   position: relative;
   height: 100%;
   overflow: auto;
-  padding: 32px clamp(20px, 4vw, 48px) 120px;
+  padding: var(--document-content-top-padding, 32px) clamp(20px, 4vw, 48px) 120px;
   font-family: var(--font-content);
   font-size: var(--font-content-size);
   line-height: var(--font-content-line-height);
@@ -269,14 +269,23 @@
   font-weight: 700;
 }
 
+.editor-mode-row {
+  flex: 0 0 auto;
+  display: flex;
+  height: var(--editor-mode-row-height, 31px);
+  flex-basis: var(--editor-mode-row-height, 31px);
+  align-items: flex-start;
+  justify-content: flex-end;
+  box-sizing: border-box;
+  padding: 6px 10px 0;
+}
+
 .editor-mode-toggle {
   position: static;
   z-index: auto;
-  flex: 0 0 auto;
-  align-self: flex-end;
-  margin: 6px 10px 0;
   display: inline-flex;
   gap: 2px;
+  margin: 0;
   padding: 2px;
   border: 1px solid var(--border-soft);
   border-radius: 5px;

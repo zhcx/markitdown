@@ -842,6 +842,7 @@ function App() {
                   <TabsBar />
                 </div>
                 {settings.editor.pin_toolbar && <div className="preview-toolbar-offset" aria-hidden="true" />}
+                <div className="preview-mode-row-spacer" aria-hidden="true" />
                 <div className="preview-with-panel">
                   <Preview
                     className="preview-pane"

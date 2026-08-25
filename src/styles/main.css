@@ -7406,7 +7406,11 @@ textarea:focus-visible {
   padding: 0;
 }
 
-.main-content.split { gap: 0; }
+.main-content.split {
+  --editor-mode-row-height: 31px;
+  --document-content-top-padding: 32px;
+  gap: 0;
+}
 
 .main-content.split > .divider.resizable {
   margin: 0;
@@ -7560,6 +7564,16 @@ textarea:focus-visible {
 
 .preview-workspace-pane > .preview-with-panel {
   width: 100%;
+}
+
+.preview-mode-row-spacer {
+  flex: 0 0 var(--editor-mode-row-height);
+  height: var(--editor-mode-row-height);
+  background: var(--bg-document);
+}
+
+.preview-workspace-pane .preview-document {
+  padding-top: var(--document-content-top-padding);
 }
 
 .main-content.split > .document-pane {

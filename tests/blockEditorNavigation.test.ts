@@ -30,7 +30,7 @@ test('outline and immersive navigation use the public editor controller', () => 
 test('block layout uses adaptive padding and preview highlight stays subtle', () => {
   const blockStyles = read('src/components/Editor/BlockEditor.css');
   const mainStyles = read('src/styles/main.css');
-  assert.match(blockStyles, /padding:\s*32px\s+clamp\(20px,\s*4vw,\s*48px\)/);
+  assert.match(blockStyles, /padding:\s*var\(--document-content-top-padding,\s*32px\)\s+clamp\(20px,\s*4vw,\s*48px\)/);
   assert.match(blockStyles, /max-width:\s*980px/);
   assert.match(mainStyles, /is-active-source-block::before[\s\S]*left:\s*-10px/);
   assert.match(mainStyles, /is-active-source-block::before[\s\S]*width:\s*2px/);

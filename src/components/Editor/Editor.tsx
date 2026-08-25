@@ -36,7 +36,9 @@ export function Editor({ className, style, onActiveLineChange, onActiveLineRevea
 
   return (
     <div className="editor-host" style={style}>
-      <EditorModeToggle mode={effectiveMode} onChange={handleModeChange} />
+      <div className="editor-mode-row">
+        <EditorModeToggle mode={effectiveMode} onChange={handleModeChange} />
+      </div>
       {effectiveMode === 'blocks' ? (
           <BlockEditor
             className={className}
