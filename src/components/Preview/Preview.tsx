@@ -82,6 +82,20 @@ function addListItemContentAnchors(container: HTMLElement) {
   });
 }
 
+function setTaskCheckedAtSourceLine(source: string, lineNumber: number, checked: boolean) {
+  if (!Number.isInteger(lineNumber) || lineNumber < 1) return source;
+  const lines = source.split('\n');
+  const index = lineNumber - 1;
+  if (index >= lines.length) return source;
+  const taskMarker = /^(\s*(?:(?:[-+*])|(?:\d+[.)]))\s+\[)([ xX])(\])/u;
+  if (!taskMarker.test(lines[index])) return source;
+  lines[index] = lines[index].replace(
+    taskMarker,
+    (_match, before: string, _state: string, after: string) => `${before}${checked ? 'x' : ' '}${after}`,
+  );
+  return lines.join('\n');
+}
+
 function videoEmbedUrl(rawUrl: string) {
   try {
     const url = new URL(rawUrl);
@@ -161,7 +175,7 @@ export function Preview({ className, style, onScrollContainerReady, onContentRen
   const contentRef = useRef('');
   const mermaidSequenceRef = useRef(0);
   const [mermaidThemeVersion, setMermaidThemeVersion] = useState(0);
-  const { content, settings } = useAppStore();
+  const { content, settings, setContent } = useAppStore();
   // Markdown parsing, sanitization and DOM replacement are comparatively
   // expensive. Deferring them keeps Monaco's keystroke updates responsive.
   const deferredContent = useDeferredValue(content);
@@ -200,6 +214,10 @@ export function Preview({ className, style, onScrollContainerReady, onContentRen
     containerRef.current.innerHTML = rendered;
     addHeadingAnchors(containerRef.current);
     addListItemContentAnchors(containerRef.current);
+    containerRef.current.querySelectorAll<HTMLInputElement>('.task-list-item input[type="checkbox"]').forEach((checkbox) => {
+      checkbox.disabled = false;
+      checkbox.setAttribute('aria-label', checkbox.checked ? '标记任务为未完成' : '标记任务为已完成');
+    });
     onContentRendered?.();
 
     // Mermaid is imported and rendered only when a diagram is close to the
@@ -285,6 +303,14 @@ export function Preview({ className, style, onScrollContainerReady, onContentRen
   const handleSourceClick = useCallback((event: React.MouseEvent<HTMLElement>) => {
     if (event.button !== 0) return;
     const clickedElement = event.target instanceof Element ? event.target : null;
+    const taskCheckbox = clickedElement?.closest<HTMLInputElement>('.task-list-item input[type="checkbox"]');
+    if (taskCheckbox) {
+      const taskItem = taskCheckbox.closest<HTMLElement>('.task-list-item[data-source-line]');
+      const lineNumber = Number(taskItem?.dataset.sourceLine);
+      const nextContent = setTaskCheckedAtSourceLine(contentRef.current, lineNumber, taskCheckbox.checked);
+      if (nextContent !== contentRef.current) setContent(nextContent);
+      return;
+    }
     const localLink = clickedElement?.closest<HTMLAnchorElement>('a[href^="#"]');
     const container = containerRef.current;
     if (localLink && container) {
@@ -303,7 +329,7 @@ export function Preview({ className, style, onScrollContainerReady, onContentRen
       : null;
     const lineNumber = Number(target?.dataset.sourceLine);
     if (Number.isFinite(lineNumber) && lineNumber > 0) onSourceLineClick?.(lineNumber);
-  }, [onSourceLineClick]);
+  }, [onSourceLineClick, setContent]);
 
   const containerStyle: React.CSSProperties = {
     fontFamily: settings.appearance.font_family,
