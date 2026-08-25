@@ -52,7 +52,11 @@ test('BlockEditor construction is mount-scoped and uses the current supported do
 test('BlockEditor refreshes the controller snapshot after external state changes', () => {
   const source = read('src/components/Editor/BlockEditor.tsx');
   assert.match(source, /if \(controller\.getValue\(\) === markdown\) return;/);
-  assert.match(source, /view\.updateState\(EditorState\.create\([\s\S]*?\}\)\);\s*controller\.syncDocument\(\);/);
+  // The external markdown string is passed to syncDocument so the sourceMap
+  // stays anchored against the same string the preview derives its
+  // [data-source-line] anchors from — never a ProseMirror round-trip.
+  assert.match(source, /view\.updateState\(EditorState\.create\(/);
+  assert.match(source, /controller\.syncDocument\(markdown\);/);
 });
 
 test('an empty new block document shows a visible writing prompt', () => {

@@ -18,7 +18,7 @@ export interface BlockControllerHost {
 }
 
 export interface BlockEditorController extends EditorController {
-  syncDocument: () => BlockDocumentSnapshot;
+  syncDocument: (source?: string) => BlockDocumentSnapshot;
 }
 
 function lineAt(source: string, lineNumber: number): EditorLine {
@@ -76,8 +76,9 @@ export function createBlockEditorController(
   view: EditorView,
   root: BlockEditorRoot,
   host: BlockControllerHost,
+  initialSource: string,
 ): BlockEditorController {
-  const bridge = createBlockDocumentBridge(view.state.doc);
+  const bridge = createBlockDocumentBridge(view.state.doc, initialSource);
 
   const getSelection = (): EditorSelectionRange => {
     const snapshot = bridge.getSnapshot();
@@ -95,7 +96,12 @@ export function createBlockEditorController(
     }
     const transaction = view.state.tr.replaceWith(0, view.state.doc.content.size, parsed.document.content);
     view.dispatch(transaction);
-    bridge.syncDocument(view.state.doc);
+    // Pass the caller-supplied nextSource through to the bridge so the
+    // sourceMap stays anchored against the original markdown the user is
+    // editing (see blockDocumentBridge comment). Without this, syncDocument
+    // would round-trip through ProseMirror and re-anchor against a string
+    // whose line numbers no longer match the preview's [data-source-line].
+    bridge.syncDocument(view.state.doc, nextSource);
     const snapshot = bridge.getSnapshot();
     host.onMarkdownChange(snapshot.markdown);
     const nextSelection = selection || { from: 0, to: 0 };

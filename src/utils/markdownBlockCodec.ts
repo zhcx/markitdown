@@ -120,7 +120,7 @@ export function parseMarkdown(source: string): ParsedMarkdown {
     capability,
     document,
     blockTypes,
-    sourceMap: buildBlockSourceMap(serializeMarkdown(document), document),
+    sourceMap: buildBlockSourceMap(source, document),
   };
 }
 

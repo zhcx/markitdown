@@ -12,32 +12,36 @@ export interface BlockDocumentSnapshot {
 
 export interface BlockDocumentBridge {
   getSnapshot: () => BlockDocumentSnapshot;
-  syncDocument: (document: Node) => BlockDocumentSnapshot;
+  syncDocument: (document: Node, source?: string) => BlockDocumentSnapshot;
 }
 
-function createSnapshot(document: Node, version: number): BlockDocumentSnapshot {
-  const markdown = serializeMarkdown(document);
+// The sourceMap's lineFrom/lineTo are the anchor coordinates that the
+// preview's [data-source-line] attributes are compared against. Those
+// attributes are derived from the markdown string the user is editing, so
+// the sourceMap MUST be anchored against that same string — never against a
+// ProseMirror round-trip that may have re-formatted blank lines, list
+// markers or raw HTML blocks and shifted every line number. Callers pass the
+// user-authored source through on every sync (initial mount, replaceRange,
+// external markdown replacement); doc-only mutations (task toggle, undo)
+// fall back to serializing the doc, which for those no-op structural changes
+// preserves line numbers.
+function createSnapshot(document: Node, version: number, source: string): BlockDocumentSnapshot {
   return {
     document,
-    markdown,
-    sourceMap: buildBlockSourceMap(markdown, document),
+    markdown: source,
+    sourceMap: buildBlockSourceMap(source, document),
     version,
   };
 }
 
-export function createBlockDocumentBridge(document: Node): BlockDocumentBridge {
-  let snapshot = createSnapshot(document, 0);
+export function createBlockDocumentBridge(document: Node, initialSource?: string): BlockDocumentBridge {
+  let snapshot = createSnapshot(document, 0, initialSource ?? serializeMarkdown(document));
   return {
     getSnapshot: () => snapshot,
-    syncDocument: (nextDocument) => {
+    syncDocument: (nextDocument, nextSource) => {
       if (nextDocument === snapshot.document || nextDocument.eq(snapshot.document)) return snapshot;
-      const markdown = serializeMarkdown(nextDocument);
-      snapshot = {
-        document: nextDocument,
-        markdown,
-        sourceMap: buildBlockSourceMap(markdown, nextDocument),
-        version: snapshot.version + 1,
-      };
+      const source = nextSource ?? serializeMarkdown(nextDocument);
+      snapshot = createSnapshot(nextDocument, snapshot.version + 1, source);
       return snapshot;
     },
   };

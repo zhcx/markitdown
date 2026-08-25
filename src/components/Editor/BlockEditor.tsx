@@ -342,7 +342,7 @@ export function BlockEditor({
           onActiveLineChangeRef.current?.(line);
           onActiveLineRevealRef.current?.(line);
         },
-      });
+      }, markdownRef.current);
       controllerRef.current = controller;
       useAppStore.getState().setEditorView(controller);
       initializingRef.current = false;
@@ -377,7 +377,11 @@ export function BlockEditor({
       doc: parsedExternal.document,
       plugins: createBlockPlugins(),
     }));
-    controller.syncDocument();
+    // Anchor the sourceMap against the external markdown string — the same
+    // string the preview derives its [data-source-line] anchors from — so the
+    // block line numbers stay in lockstep with the preview after an external
+    // document replacement.
+    controller.syncDocument(markdown);
     controller.setSelection(selection.from, selection.to);
   }, [markdown]);
 
