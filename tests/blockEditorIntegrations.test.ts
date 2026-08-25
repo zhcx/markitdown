@@ -29,3 +29,11 @@ test('unsupported slash commands retain their source insertion for safe fallback
   assert.match(source, /id: 'math'[\s\S]*insertion:/);
   assert.match(source, /id: 'mermaid'[\s\S]*insertion:/);
 });
+
+test('BlockEditor routes slash and AI actions through the shared registry', () => {
+  const editor = read('src/components/Editor/BlockEditor.tsx');
+  assert.match(editor, /runAIEditorCommand/);
+  assert.match(editor, /surfaces\.includes\('slash'\)/);
+  assert.match(editor, /replaceRange\(menu\.from,\s*menu\.to,\s*''/);
+  assert.match(editor, /finally[\s\S]*controller\.focus\(\)/);
+});

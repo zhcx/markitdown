@@ -5,6 +5,7 @@ import { useAIStore } from '../../stores/aiStore';
 import { open } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
 import { TablePicker } from '../Editor/TablePicker';
+import { EDITOR_COMMANDS } from '../../utils/editorCommandRegistry.ts';
 import { formatMarkdown, type MarkdownFormatResult } from '../../utils/markdownFormatter';
 
 type ToolbarIconName = 'link' | 'image' | 'video' | 'table' | 'folder' | 'chat' | 'proofread' | 'sparkle' | 'palette' | 'rewrite' | 'translate' | 'summary' | 'outline';
@@ -321,6 +322,28 @@ export function Toolbar({ variant = 'pinned' }: ToolbarProps) {
 
   const insertVideo = (url: string) => insertAtCursor(`\n@[video](${url})\n`);
 
+  const executeToolbarCommand = (commandId: string) => {
+    const command = EDITOR_COMMANDS.find(item => item.id === commandId);
+    if (!command?.insertion) return;
+    if (!editorView) {
+      setContent(content + command.insertion.text);
+      return;
+    }
+
+    const selection = editorView.getSelection();
+    const selectedText = editorView.getText(selection.from, selection.to);
+    const { text, selectionStart = text.length, selectionEnd = selectionStart } = command.insertion;
+    const before = text.slice(0, selectionStart);
+    const after = text.slice(selectionEnd);
+    const replacement = `${before}${selectedText}${after}`;
+    const selectedFrom = selection.from + before.length;
+    editorView.replaceRange(selection.from, selection.to, replacement, {
+      from: selectedFrom,
+      to: selectedFrom + selectedText.length,
+    });
+    editorView.focus();
+  };
+
   const runEditorCommand = (command: 'undo' | 'redo') => {
     if (!editorView) return;
     editorView[command]();
@@ -364,10 +387,11 @@ export function Toolbar({ variant = 'pinned' }: ToolbarProps) {
     {
       title: '格式',
       buttons: [
-        { label: 'B', title: '加粗 (Ctrl+B)', action: () => wrapSelection('**', '**') },
-        { label: 'I', title: '斜体 (Ctrl+I)', action: () => wrapSelection('*', '*') },
-        { label: 'S', title: '删除线', action: () => wrapSelection('~~', '~~') },
-        { label: '==', title: '高亮', action: () => wrapSelection('==', '==') },
+        { label: 'B', title: '加粗 (Ctrl+B)', action: () => executeToolbarCommand('bold') },
+        { label: 'I', title: '斜体 (Ctrl+I)', action: () => executeToolbarCommand('italic') },
+        { label: 'S', title: '删除线', action: () => executeToolbarCommand('strikethrough') },
+        { label: '==', title: '高亮', action: () => executeToolbarCommand('highlight') },
+        { label: '`', title: '行内代码', action: () => executeToolbarCommand('inline-code') },
         { label: 'U', title: '下划线', action: () => wrapSelection('<u>', '</u>') },
         { label: '上', title: '上标', action: () => wrapSelection('<sup>', '</sup>') },
         { label: '下', title: '下标', action: () => wrapSelection('<sub>', '</sub>') },
@@ -376,10 +400,10 @@ export function Toolbar({ variant = 'pinned' }: ToolbarProps) {
     {
       title: '标题',
       buttons: [
-        { label: 'H1', title: '一级标题', action: () => insertBlock('# ') },
-        { label: 'H2', title: '二级标题', action: () => insertBlock('## ') },
-        { label: 'H3', title: '三级标题', action: () => insertBlock('### ') },
-        { label: 'H4', title: '四级标题', action: () => insertBlock('#### ') },
+        { label: 'H1', title: '一级标题', action: () => executeToolbarCommand('heading-1') },
+        { label: 'H2', title: '二级标题', action: () => executeToolbarCommand('heading-2') },
+        { label: 'H3', title: '三级标题', action: () => executeToolbarCommand('heading-3') },
+        { label: 'H4', title: '四级标题', action: () => executeToolbarCommand('heading-4') },
         { label: 'H5', title: '五级标题', action: () => insertBlock('##### ') },
         { label: 'H6', title: '六级标题', action: () => insertBlock('###### ') },
       ],
@@ -387,9 +411,9 @@ export function Toolbar({ variant = 'pinned' }: ToolbarProps) {
     {
       title: '列表',
       buttons: [
-        { label: '•', title: '无序列表', action: () => insertBlock('- ') },
-        { label: '1.', title: '有序列表', action: () => insertBlock('1. ') },
-        { label: '☐', title: '任务列表', action: () => insertBlock('- [ ] ') },
+        { label: '•', title: '无序列表', action: () => executeToolbarCommand('unordered-list') },
+        { label: '1.', title: '有序列表', action: () => executeToolbarCommand('ordered-list') },
+        { label: '☐', title: '任务列表', action: () => executeToolbarCommand('task-list') },
         { label: '→', title: '缩进', action: () => insertAtCursor('  ') },
       ],
     },
@@ -406,14 +430,14 @@ export function Toolbar({ variant = 'pinned' }: ToolbarProps) {
     {
       title: '插入',
       buttons: [
-        { icon: 'link', title: '链接', action: () => wrapSelection('[', '](url)') },
+        { icon: 'link', title: '链接', action: () => executeToolbarCommand('link') },
         { icon: 'image', title: '图片', action: () => setShowImageModal(true) },
         { icon: 'video', title: '插入视频（B站 / YouTube / Vimeo）', action: () => setShowVideoModal(true) },
         { label: '😊', title: '插入原生 Emoji', action: () => setShowEmojiPicker(true) },
         { icon: 'table', title: '表格', action: () => insertAtCursor('\n| 列1 | 列2 | 列3 |\n|---|---|---|\n| 内容 | 内容 | 内容 |\n') },
-        { label: '</>', title: '代码块', action: () => insertAtCursor('\n```\ncode\n```\n', 5) },
-        { label: 'Q', title: '引用', action: () => insertBlock('> ') },
-        { label: '—', title: '分割线', action: () => insertAtCursor('\n---\n') },
+        { label: '</>', title: '代码块', action: () => executeToolbarCommand('code') },
+        { label: 'Q', title: '引用', action: () => executeToolbarCommand('quote') },
+        { label: '—', title: '分割线', action: () => executeToolbarCommand('divider') },
       ],
     },
     {

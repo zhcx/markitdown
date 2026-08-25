@@ -8,9 +8,16 @@ import { invoke } from '@tauri-apps/api/core';
 import { useAppStore, type Settings } from '../../stores/appStore';
 import { useAIStore, type ProofreadResult } from '../../stores/aiStore';
 import type { EditorController, EditorDispatchSpec, EditorLine } from '../../types/editor';
+import { runAIEditorCommand } from '../../utils/aiEditorCommands.ts';
 import { EDITOR_OVERFLOW_OPTIONS, EDITOR_UNICODE_HIGHLIGHT_OPTIONS } from '../../utils/editorLayout';
-import type { EditorCommandDefinition } from '../../utils/editorCommandRegistry.ts';
-import { filterSlashCommands, findSlashCommandTrigger, type SlashCommand } from '../../utils/slashCommands';
+import {
+  EDITOR_COMMANDS,
+  filterEditorCommands,
+  getEditorCommandAvailability,
+  type EditorCommandContext,
+  type EditorCommandDefinition,
+} from '../../utils/editorCommandRegistry.ts';
+import { findSlashCommandTrigger } from '../../utils/slashCommands';
 import { SlashCommandMenu, type SlashMenuAnchor } from './SlashCommandMenu';
 import { ImageOptionsModal, Toolbar } from '../Toolbar/Toolbar';
 import { normalizeLanguage, t } from '../../i18n';
@@ -219,7 +226,17 @@ export function SourceEditor({ className, style, onActiveLineChange, onActiveLin
   const { content, currentFile, setContent, settings, setEditorView } = useAppStore();
   const { proofreadResults, rewriteSelection, translateText, setTranslationVisible, setStatus } = useAIStore();
   const initialContentRef = useRef(content);
-  const slashCommands = useMemo(() => filterSlashCommands(slashMenu?.query || ''), [slashMenu?.query]);
+  const aiEnabled = settings.ai.enabled;
+  const aiConfigured = Boolean(settings.ai.api_key.trim());
+  const commandContext = useMemo<EditorCommandContext>(() => ({
+    mode: 'source',
+    aiEnabled,
+    aiConfigured,
+  }), [aiConfigured, aiEnabled]);
+  const slashCommands = useMemo(
+    () => filterEditorCommands(slashMenu?.query || '', EDITOR_COMMANDS.filter(command => command.surfaces.includes('slash'))),
+    [slashMenu?.query],
+  );
   const language = normalizeLanguage(settings.appearance.language);
 
   useEffect(() => {
@@ -360,20 +377,29 @@ export function SourceEditor({ className, style, onActiveLineChange, onActiveLin
     setSlashSelectedIndex(index);
   }, []);
 
-  const applySlashCommand = useCallback((command: EditorCommandDefinition | SlashCommand) => {
+  const applySlashCommand = useCallback(async (command: EditorCommandDefinition) => {
     const menu = slashMenuRef.current;
     const controller = controllerRef.current;
     if (!menu || !controller) return;
-
-    const { text, selectionStart = text.length, selectionEnd = selectionStart } = command.insertion;
-    slashMenuRef.current = null;
-    setSlashMenu(null);
-    controller.replaceRange(menu.from, menu.to, text, {
-      from: menu.from + selectionStart,
-      to: menu.from + selectionEnd,
-    });
-    controller.focus();
-  }, []);
+    if (!getEditorCommandAvailability(command, commandContext).enabled) return;
+    closeSlashMenu();
+    controller.replaceRange(menu.from, menu.to, '');
+    try {
+      if (command.aiAction) {
+        await runAIEditorCommand(command.aiAction, controller);
+      } else if (command.insertion) {
+        const { text, selectionStart = text.length, selectionEnd = selectionStart } = command.insertion;
+        controller.replaceRange(menu.from, menu.from, text, {
+          from: menu.from + selectionStart,
+          to: menu.from + selectionEnd,
+        });
+      }
+    } catch (error) {
+      setStatus('error', error instanceof Error ? error.message : String(error));
+    } finally {
+      controller.focus();
+    }
+  }, [closeSlashMenu, commandContext, setStatus]);
 
   useEffect(() => {
     const root = editorRef.current;
@@ -579,7 +605,7 @@ export function SourceEditor({ className, style, onActiveLineChange, onActiveLin
       const menu = slashMenuRef.current;
       if (!menu) return;
 
-      const commands = filterSlashCommands(menu.query);
+       const commands = filterEditorCommands(menu.query, EDITOR_COMMANDS.filter(command => command.surfaces.includes('slash')));
       const key = event.browserEvent.key;
       if (key === 'Escape') {
         event.preventDefault();
@@ -602,14 +628,7 @@ export function SourceEditor({ className, style, onActiveLineChange, onActiveLin
         event.preventDefault();
         event.stopPropagation();
         const command = commands[Math.min(slashSelectedIndexRef.current, commands.length - 1)];
-        const { text, selectionStart = text.length, selectionEnd = selectionStart } = command.insertion;
-        slashMenuRef.current = null;
-        setSlashMenu(null);
-        controller.replaceRange(menu.from, menu.to, text, {
-          from: menu.from + selectionStart,
-          to: menu.from + selectionEnd,
-        });
-        controller.focus();
+         void applySlashCommand(command);
       }
     });
 
@@ -681,7 +700,7 @@ export function SourceEditor({ className, style, onActiveLineChange, onActiveLin
       slashMenuRef.current = null;
       setEditorView(null);
     };
-  }, [onActiveLineChange, onActiveLineReveal, setContent, setEditorView]);
+  }, [applySlashCommand, onActiveLineChange, onActiveLineReveal, setContent, setEditorView]);
 
   useEffect(() => {
     const model = modelRef.current;
@@ -748,6 +767,7 @@ export function SourceEditor({ className, style, onActiveLineChange, onActiveLin
           onSelect={applySlashCommand}
           onSelectedIndexChange={selectSlashIndex}
           onClose={closeSlashMenu}
+          context={commandContext}
         />
       )}
       {contextMenu && (

@@ -37,3 +37,9 @@ test('slash block actions are applied as node transformations', () => {
   assert.match(editor, /command\.blockAction/);
   assert.match(editor, /changeCurrentBlockType\(/);
 });
+
+test('BlockPropertyMenu consumes registry definitions', () => {
+  const menu = read('src/components/Editor/BlockPropertyMenu.tsx');
+  assert.match(menu, /commands:\s*EditorCommandDefinition\[\]/);
+  assert.doesNotMatch(menu, /const options:/);
+});

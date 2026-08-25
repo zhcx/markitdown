@@ -5,16 +5,24 @@ import { history } from 'prosemirror-history';
 import { EditorState, Plugin } from 'prosemirror-state';
 import { Decoration, DecorationSet, EditorView } from 'prosemirror-view';
 import { useAppStore } from '../../stores/appStore';
+import { useAIStore } from '../../stores/aiStore';
 import type { MarkdownCapability } from '../../types/blockEditor.ts';
 import { createBlockEditorController } from '../../utils/blockEditorController.ts';
-import type { EditorCommandDefinition } from '../../utils/editorCommandRegistry.ts';
+import {
+  EDITOR_COMMANDS,
+  filterEditorCommands,
+  getEditorCommandAvailability,
+  type EditorCommandContext,
+  type EditorCommandDefinition,
+} from '../../utils/editorCommandRegistry.ts';
+import { runAIEditorCommand } from '../../utils/aiEditorCommands.ts';
 import { parseMarkdown, serializeMarkdown } from '../../utils/markdownBlockCodec.ts';
-import { filterSlashCommands, findSlashCommandTrigger, type SlashCommand } from '../../utils/slashCommands.ts';
+import { findSlashCommandTrigger } from '../../utils/slashCommands.ts';
 import { changeBlockTypeAtIndex, changeCurrentBlockType } from './blockCommands.ts';
 import { createBlockInputRules } from './blockInputRules.ts';
 import { createBlockKeymap } from './blockKeymap.ts';
 import { blockSchema } from './blockSchema.ts';
-import { BlockPropertyMenu, type BlockPropertySelection } from './BlockPropertyMenu.tsx';
+import { BlockPropertyMenu } from './BlockPropertyMenu.tsx';
 import { EditorUnsupportedNotice } from './EditorUnsupportedNotice.tsx';
 import { SlashCommandMenu, type SlashMenuAnchor } from './SlashCommandMenu.tsx';
 import './BlockEditor.css';
@@ -102,6 +110,8 @@ export function BlockEditor({
   const [slashSelectedIndex, setSlashSelectedIndex] = useState(0);
   const [blockHandle, setBlockHandle] = useState<BlockHandleState | null>(null);
   const [blockPropertyMenu, setBlockPropertyMenu] = useState<BlockPropertyMenuState | null>(null);
+  const aiEnabled = useAppStore(state => state.settings.ai.enabled);
+  const aiConfigured = useAppStore(state => Boolean(state.settings.ai.api_key.trim()));
   const parsed = parseMarkdown(markdown);
   const parsedRef = useRef(parsed);
   const isBlockMode = parsed.mode === 'blocks' && !!parsed.document;
@@ -116,7 +126,19 @@ export function BlockEditor({
     onActiveLineChangeRef.current = onActiveLineChange;
     onActiveLineRevealRef.current = onActiveLineReveal;
   }, [onActiveLineChange, onActiveLineReveal, onMarkdownChange, onUnsupportedMarkdown, parsed]);
-  const slashCommands = useMemo(() => filterSlashCommands(slashMenu?.query || ''), [slashMenu?.query]);
+  const commandContext = useMemo<EditorCommandContext>(() => ({
+    mode: 'blocks',
+    aiEnabled,
+    aiConfigured,
+  }), [aiConfigured, aiEnabled]);
+  const slashCommands = useMemo(
+    () => filterEditorCommands(slashMenu?.query || '', EDITOR_COMMANDS.filter(command => command.surfaces.includes('slash'))),
+    [slashMenu?.query],
+  );
+  const blockMenuCommands = useMemo(
+    () => EDITOR_COMMANDS.filter(command => command.surfaces.includes('block-menu')),
+    [],
+  );
 
   const updateBlockHandle = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
     const target = event.target instanceof Element ? event.target : null;
@@ -170,44 +192,61 @@ export function BlockEditor({
     syncSlashMenuRef.current = syncSlashMenu;
   }, [syncSlashMenu]);
 
-  const applyBlockProperty = useCallback((selection: BlockPropertySelection) => {
+  const applyBlockProperty = useCallback(async (command: EditorCommandDefinition) => {
+    const controller = controllerRef.current;
     const view = viewRef.current;
-    if (!view || !blockPropertyMenu) return;
-    changeBlockTypeAtIndex(blockPropertyMenu.index, selection.type, selection.attrs)(view.state, view.dispatch);
-    syncSlashMenu();
-  }, [blockPropertyMenu, syncSlashMenu]);
+    if (!controller || !view || !blockPropertyMenu) return;
+    if (!getEditorCommandAvailability(command, commandContext).enabled) return;
 
-  const applySlashCommand = useCallback((command: EditorCommandDefinition | SlashCommand) => {
+    if (command.aiAction) {
+      const snapshot = controller.syncDocument();
+      const block = snapshot.sourceMap.blocks[blockPropertyMenu.index];
+      if (block) controller.setSelection(block.sourceFrom, block.sourceTo);
+      await runAIEditorCommand(command.aiAction, controller);
+    } else if (command.blockAction?.kind === 'turn-into') {
+      if (command.blockAction.type === 'heading') {
+        changeBlockTypeAtIndex(blockPropertyMenu.index, 'heading', { level: command.blockAction.level })(view.state, view.dispatch);
+      } else {
+        changeBlockTypeAtIndex(blockPropertyMenu.index, command.blockAction.type)(view.state, view.dispatch);
+      }
+    } else if (command.blockAction?.kind === 'insert' && command.blockAction.type !== 'image') {
+      changeBlockTypeAtIndex(blockPropertyMenu.index, command.blockAction.type)(view.state, view.dispatch);
+    }
+    syncSlashMenu();
+  }, [blockPropertyMenu, commandContext, syncSlashMenu]);
+
+  const applySlashCommand = useCallback(async (command: EditorCommandDefinition) => {
     const menu = slashMenuRef.current;
     const controller = controllerRef.current;
     if (!menu || !controller) return;
+    if (!getEditorCommandAvailability(command, commandContext).enabled) return;
     closeSlashMenu();
-    if (
-      command.blockAction?.kind === 'turn-into'
-      || (command.blockAction?.kind === 'insert' && command.blockAction.type !== 'image')
-    ) {
-      const view = viewRef.current;
-      if (view) {
-        const action = command.blockAction;
-        if (action?.kind === 'turn-into') {
-          if (action.type === 'heading') {
-            changeCurrentBlockType('heading', { level: action.level })(view.state, view.dispatch);
+    controller.replaceRange(menu.from, menu.to, '');
+    try {
+      if (command.aiAction) {
+        await runAIEditorCommand(command.aiAction, controller);
+      } else if (command.blockAction && command.blockAction.type !== 'image') {
+        const view = viewRef.current;
+        if (view) {
+          if (command.blockAction.kind === 'turn-into' && command.blockAction.type === 'heading') {
+            changeCurrentBlockType('heading', { level: command.blockAction.level })(view.state, view.dispatch);
           } else {
-            changeCurrentBlockType(action.type)(view.state, view.dispatch);
+            changeCurrentBlockType(command.blockAction.type)(view.state, view.dispatch);
           }
-        } else if (action?.kind === 'insert' && action.type !== 'image') {
-          changeCurrentBlockType(action.type)(view.state, view.dispatch);
         }
+      } else if (command.insertion) {
+        const { text, selectionStart = text.length, selectionEnd = selectionStart } = command.insertion;
+        controller.replaceRange(menu.from, menu.from, text, {
+          from: menu.from + selectionStart,
+          to: menu.from + selectionEnd,
+        });
       }
-    } else {
-      const { text, selectionStart = text.length, selectionEnd = selectionStart } = command.insertion;
-      controller.replaceRange(menu.from, menu.to, text, {
-        from: menu.from + selectionStart,
-        to: menu.from + selectionEnd,
-      });
+    } catch (error) {
+      useAIStore.getState().setStatus('error', error instanceof Error ? error.message : String(error));
+    } finally {
+      controller.focus();
     }
-    controller.focus();
-  }, [closeSlashMenu]);
+  }, [closeSlashMenu, commandContext]);
 
   const handleSlashKeyDown = useCallback((event: KeyboardEvent) => {
     if (!slashMenuRef.current || slashCommands.length === 0) return;
@@ -223,7 +262,7 @@ export function BlockEditor({
       setSlashSelectedIndex(next);
     } else if (event.key === 'Enter') {
       event.preventDefault();
-      applySlashCommand(slashCommands[slashSelectedIndexRef.current]);
+      void applySlashCommand(slashCommands[slashSelectedIndexRef.current]);
     } else if (event.key === 'Escape') {
       event.preventDefault();
       closeSlashMenu();
@@ -360,7 +399,9 @@ export function BlockEditor({
         <BlockPropertyMenu
           left={blockPropertyMenu.left}
           top={blockPropertyMenu.top}
-          onSelect={applyBlockProperty}
+          commands={blockMenuCommands}
+          context={commandContext}
+          onSelect={command => { void applyBlockProperty(command); }}
           onClose={() => setBlockPropertyMenu(null)}
         />
       )}
@@ -376,6 +417,7 @@ export function BlockEditor({
             setSlashSelectedIndex(index);
           }}
           onClose={closeSlashMenu}
+          context={commandContext}
         />
       )}
     </div>

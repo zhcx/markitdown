@@ -1,31 +1,23 @@
-import type { BlockPropertyType } from './blockCommands.ts';
-
-export interface BlockPropertySelection {
-  type: BlockPropertyType;
-  attrs?: Record<string, unknown>;
-}
+import {
+  getEditorCommandAvailability,
+  groupEditorCommands,
+  type EditorCommandContext,
+  type EditorCommandDefinition,
+} from '../../utils/editorCommandRegistry.ts';
 
 interface BlockPropertyMenuProps {
   left: number;
   top: number;
-  onSelect: (selection: BlockPropertySelection) => void;
+  commands: EditorCommandDefinition[];
+  context: EditorCommandContext;
+  onSelect: (command: EditorCommandDefinition) => void;
   onClose: () => void;
 }
 
-const options: Array<{ label: string; icon: string; selection: BlockPropertySelection }> = [
-  { label: '文本', icon: 'T', selection: { type: 'paragraph' } },
-  { label: '一级标题', icon: 'H1', selection: { type: 'heading', attrs: { level: 1 } } },
-  { label: '二级标题', icon: 'H2', selection: { type: 'heading', attrs: { level: 2 } } },
-  { label: '三级标题', icon: 'H3', selection: { type: 'heading', attrs: { level: 3 } } },
-  { label: '无序列表', icon: '•', selection: { type: 'bullet_list' } },
-  { label: '有序列表', icon: '1.', selection: { type: 'ordered_list' } },
-  { label: '待办事项', icon: '□', selection: { type: 'task_list' } },
-  { label: '引用', icon: '❯', selection: { type: 'blockquote' } },
-  { label: '代码块', icon: '</>', selection: { type: 'code_block' } },
-  { label: '分隔线', icon: '—', selection: { type: 'horizontal_rule' } },
-];
+const categoryLabel = (category: EditorCommandDefinition['category']) => category === 'ai' ? 'AI 写作' : '转换为';
 
-export function BlockPropertyMenu({ left, top, onSelect, onClose }: BlockPropertyMenuProps) {
+export function BlockPropertyMenu({ left, top, commands, context, onSelect, onClose }: BlockPropertyMenuProps) {
+  const groups = groupEditorCommands(commands);
   return (
     <div
       className="block-property-menu"
@@ -34,20 +26,31 @@ export function BlockPropertyMenu({ left, top, onSelect, onClose }: BlockPropert
       style={{ left, top }}
       onMouseDown={event => event.preventDefault()}
     >
-      <div className="block-property-menu-title">转换为</div>
-      {options.map(option => (
-        <button
-          key={option.label}
-          type="button"
-          role="menuitem"
-          onClick={() => {
-            onSelect(option.selection);
-            onClose();
-          }}
-        >
-          <span className="block-property-menu-icon" aria-hidden="true">{option.icon}</span>
-          <span>{option.label}</span>
-        </button>
+      {groups.map(group => (
+        <div className="block-property-menu-group" key={group.category}>
+          <div className="block-property-menu-title">{categoryLabel(group.category)}</div>
+          {group.commands.map(command => {
+            const availability = getEditorCommandAvailability(command, context);
+            if (!availability.visible) return null;
+            return (
+              <button
+                key={command.id}
+                type="button"
+                role="menuitem"
+                disabled={!availability.enabled}
+                title={availability.reason}
+                onClick={() => {
+                  if (!availability.enabled) return;
+                  onSelect(command);
+                  onClose();
+                }}
+              >
+                <span className="block-property-menu-icon" aria-hidden="true">{command.icon}</span>
+                <span>{command.title}</span>
+              </button>
+            );
+          })}
+        </div>
       ))}
     </div>
   );
