@@ -7170,7 +7170,12 @@ textarea:focus-visible {
 }
 
 .timeline-section { margin-top: 7px; }
+.timeline-section-label {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
 .timeline-file-name {
+  flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   color: var(--text-muted);
@@ -7180,6 +7185,7 @@ textarea:focus-visible {
   white-space: nowrap;
   text-transform: none;
 }
+.timeline-section .explorer-count { flex: 0 0 auto; }
 .timeline-explorer-list {
   position: relative;
   padding: 2px 0 7px;

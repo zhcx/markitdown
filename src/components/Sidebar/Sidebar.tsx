@@ -925,7 +925,7 @@ function ExplorerSidebar({ style }: SidebarProps) {
           <section className="explorer-section timeline-section">
             <button className="explorer-section-heading" onClick={() => setTimelineExpanded(expanded => !expanded)}>
               <Chevron expanded={timelineExpanded} />
-              <span>时间线</span>
+              <span className="timeline-section-label">时间线</span>
               {activeTab && <span className="timeline-file-name">{activeTab.title}</span>}
               {activeTimeline.length > 0 && <span className="explorer-count">{activeTimeline.length}</span>}
             </button>
