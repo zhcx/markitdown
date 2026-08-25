@@ -37,6 +37,16 @@ test('block layout uses adaptive padding and preview highlight stays subtle', ()
   assert.doesNotMatch(mainStyles, /is-active-source-block[\s\S]*box-shadow:\s*-2px\s+0\s+0/);
 });
 
+test('list markers align with paragraph text and keep a clear block-handle gutter', () => {
+  const editor = read('src/components/Editor/BlockEditor.tsx');
+  const styles = read('src/components/Editor/BlockEditor.css');
+  assert.match(
+    styles,
+    /\.block-editor-content ul,\s*\n\.block-editor-content ol\s*{[\s\S]*padding-inline-start:\s*1\.75em/,
+  );
+  assert.match(editor, /left:\s*blockRect\.left\s*-\s*rootRect\.left\s*\+\s*root\.scrollLeft\s*-\s*40/);
+});
+
 test('raw Markdown blocks expose their kind and a source-preserving visual treatment', () => {
   const editor = read('src/components/Editor/BlockEditor.tsx');
   const styles = read('src/components/Editor/BlockEditor.css');

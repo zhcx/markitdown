@@ -158,6 +158,11 @@
 
 .block-editor-content li p { margin: 0; }
 
+.block-editor-content ul,
+.block-editor-content ol {
+  padding-inline-start: 1.75em;
+}
+
 .block-editor-content .task-item {
   list-style: none;
   position: relative;

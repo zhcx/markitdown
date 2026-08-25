@@ -156,7 +156,7 @@ export function BlockEditor({
     setBlockHandle({
       blockId: block.dataset.blockId || '',
       index,
-      left: blockRect.left - rootRect.left + root.scrollLeft - 30,
+      left: blockRect.left - rootRect.left + root.scrollLeft - 40,
       top: blockRect.top - rootRect.top + root.scrollTop + 2,
     });
   }, []);
