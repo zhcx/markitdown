@@ -25,6 +25,11 @@ export interface EditorDispatchSpec {
   scrollIntoView?: boolean;
 }
 
+export interface EditorLineLayout {
+  top: number;
+  bottom: number;
+}
+
 export interface EditorController {
   kind: 'source' | 'blocks';
   scrollDOM: HTMLElement;
@@ -32,6 +37,13 @@ export interface EditorController {
   getScrollHeight: () => number;
   getClientHeight: () => number;
   getTopForLineNumber: (lineNumber: number) => number;
+  /**
+   * Batch layout lookup for scroll anchoring. Returns the content-top and
+   * content-bottom offsets for each requested line so the preview can pair
+   * each block's first/last line without per-line DOM queries. Falls back to
+   * getTopForLineNumber in callers when absent.
+   */
+  getLineLayouts?: (lineNumbers: Iterable<number>) => Map<number, EditorLineLayout>;
   setScrollTop: (top: number) => void;
   onScroll: (listener: () => void) => () => void;
   /** CodeMirror-compatible facade kept for existing toolbar and AI integrations. */

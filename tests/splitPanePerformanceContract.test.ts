@@ -90,15 +90,34 @@ test('scroll sync uses one latest-frame task and suspends geometry during panel 
 test('scroll anchors a content-bottom pair so the panes run out of content together', () => {
   const app = read('src/App.tsx');
   const sync = read('src/utils/scrollSync.ts');
+  const preview = read('src/components/Preview/Preview.tsx');
   // The editor reserves a taller tail pad than the preview, so the final
-  // anchor pair must be "last content line hits the viewport bottom" on both
-  // panes instead of relying on raw scroll extents alone.
+  // anchor pair must be "last content bottom on both panes" instead of
+  // relying on raw scroll extents alone.
   assert.match(app, /lastContentBottom/);
-  assert.match(app, /getComputedStyle\(editorView\.scrollDOM\)\.paddingBottom/);
-  assert.match(app, /editorView\.getScrollHeight\(\)\s*-\s*editorBottomPad/);
-  assert.match(app, /lastContentBottom\s*-\s*previewViewport\.getClientHeight\(\)/);
+  assert.match(app, /lastContentBottom\s*-\s*previewViewport\.getClientHeight\(\), previewMax/);
+  // Preview blocks record their last markdown line so both ends of a tall
+  // block (code fence, table, wrapped paragraph) get pinned anchors.
+  assert.match(preview, /data-source-line-end/);
+  assert.match(app, /requestedLines/);
+  assert.match(app, /getLineLayouts/);
+  // Blocks anchor both their first line top and last line bottom so interior
+  // scrolling stays proportional rather than drifting to the next block.
+  assert.match(app, /lastLine\s*>\s*firstLine/);
+  assert.match(app, /anchors\.push\(\{ sourceTop: firstTop,\s*targetTop \},\s*\{ sourceTop: lastBottom,\s*targetTop: targetBottom \}\)/);
   // Interpolation stays linear between the content-bottom anchor and the end.
   assert.match(sync, /sourceTop\s*-\s*lower\.sourceTop[\s\S]*upper\.targetTop\s*-\s*lower\.targetTop/);
+});
+
+test('editor scroll listeners stay passive so scrolling never blocks on the pane', () => {
+  const block = read('src/utils/blockEditorController.ts');
+  const source = read('src/components/Editor/SourceEditor.tsx');
+  // The preview viewport is already passive; the block editor must be too,
+  // otherwise its scroll listener is treated as cancellable and the main
+  // thread waits on it, which reads as scroll jank.
+  assert.match(block, /addEventListener\('scroll', listener,\s*\{\s*passive:\s*true\s*\}\)/);
+  assert.match(block, /getLineLayouts/);
+  assert.match(source, /getLineLayouts/);
 });
 
 test('drag suspension survives scroll effect re-runs mid-drag', () => {

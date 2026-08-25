@@ -26,6 +26,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { message, save as chooseSaveFile } from '@tauri-apps/plugin-dialog';
 import { createElementScrollViewport, getSyncedScrollTop, isTargetVisible, type ObservableScrollViewport, type ScrollAnchor, type ScrollRange } from './utils/scrollSync';
+import type { EditorLineLayout } from './types/editor';
 import { getImmersiveWorkspacePolicy } from './utils/immersiveWorkspace';
 import { guardWindowClose, type CloseGuardTab, type UnsavedChangesAction } from './utils/windowCloseGuard';
 import { findActiveSourceElement } from './utils/activeSourceLine';
@@ -686,25 +687,59 @@ function App() {
       previewToEditorRange.sourceMax = previewMax;
       previewToEditorRange.targetMax = editorMax;
       const previewBounds = previewScrollElement.getBoundingClientRect();
-      const anchorsByLine = new Map<number, ScrollAnchor>();
+      const previewScrollTop = previewScrollElement.scrollTop;
+
+      // Collect every preview anchor block together with its markdown line
+      // span. Each block contributes two anchors — its first-line top and its
+      // last-line bottom — so the full rendered height is pinned on both panes
+      // and scrolling through a tall block (code fence, table, image) stays
+      // proportional instead of drifting on the editor's line ratio alone.
+      const anchorRequests: { firstLine: number; lastLine: number; top: number; bottom: number }[] = [];
+      const requestedLines = new Set<number>();
       let lastContentBottom = 0;
 
       previewScrollElement.querySelectorAll<HTMLElement>('[data-source-line]').forEach((element) => {
-        const lineNumber = Number(element.dataset.sourceLine);
-        if (!Number.isFinite(lineNumber)) return;
+        const firstLine = Number(element.dataset.sourceLine);
+        if (!Number.isFinite(firstLine)) return;
         const rect = element.getBoundingClientRect();
-        const elementBottom = rect.bottom
-          - previewBounds.top
-          + previewScrollElement.scrollTop;
+        const elementTop = rect.top - previewBounds.top + previewScrollTop;
+        const elementBottom = rect.bottom - previewBounds.top + previewScrollTop;
         if (elementBottom > lastContentBottom) lastContentBottom = elementBottom;
-        if (anchorsByLine.has(lineNumber)) return;
-        const targetTop = rect.top
-          - previewBounds.top
-          + previewScrollElement.scrollTop;
-        anchorsByLine.set(lineNumber, {
-          sourceTop: Math.max(0, Math.min(editorView.getTopForLineNumber(lineNumber), editorMax)),
-          targetTop: Math.max(0, Math.min(targetTop, previewMax)),
-        });
+        const rawLastLine = Number(element.dataset.sourceLineEnd);
+        const lastLine = Number.isFinite(rawLastLine) && rawLastLine > firstLine ? rawLastLine : firstLine;
+        requestedLines.add(firstLine);
+        requestedLines.add(lastLine);
+        anchorRequests.push({ firstLine, lastLine, top: elementTop, bottom: elementBottom });
+      });
+
+      // Batch-resolve the editor-side layout for every requested line in one
+      // DOM scan instead of querying the block map per anchor (the dominant
+      // cost on long documents).
+      const editorLayouts = editorView.getLineLayouts
+        ? editorView.getLineLayouts(requestedLines)
+        : new Map<number, EditorLineLayout>();
+      const resolveLayout = (lineNumber: number) => {
+        const layout = editorLayouts.get(lineNumber);
+        if (layout) return layout;
+        const top = editorView.getTopForLineNumber(lineNumber);
+        return { top, bottom: editorView.getTopForLineNumber(lineNumber + 1) };
+      };
+
+      const anchors: ScrollAnchor[] = [{ sourceTop: 0, targetTop: 0 }];
+      anchorRequests.forEach(({ firstLine, lastLine, top, bottom }) => {
+        const firstLayout = resolveLayout(firstLine);
+        const firstTop = Math.max(0, Math.min(firstLayout.top, editorMax));
+        const targetTop = Math.max(0, Math.min(top, previewMax));
+        if (lastLine > firstLine) {
+          const lastLayout = resolveLayout(lastLine);
+          const lastBottom = Math.max(0, Math.min(lastLayout.bottom, editorMax));
+          const targetBottom = Math.max(0, Math.min(bottom, previewMax));
+          if (lastBottom >= firstTop) {
+            anchors.push({ sourceTop: firstTop, targetTop }, { sourceTop: lastBottom, targetTop: targetBottom });
+            return;
+          }
+        }
+        anchors.push({ sourceTop: firstTop, targetTop });
       });
 
       // Content-bottom anchor. The panes have different tail insets (the
@@ -712,25 +747,24 @@ function App() {
       // a final { editorMax, previewMax } endpoint alone lets the editor's
       // empty tail pad dominate the last segment and leaves preview content
       // unrevealed until the editor is fully bottomed out. Anchoring "the last
-      // content line reaches the bottom of its viewport" on both panes makes
-      // them run out of content together; the trailing insets then scroll
-      // proportionally to the very end.
+      // content bottom on both panes" makes them run out of content together;
+      // the trailing insets then scroll proportionally to the very end. The
+      // editor side is measured from the last block's rendered bottom, not the
+      // scroll extent, so it stays correct even when the tail pad differs.
       let contentBottomSource = 0;
       let contentBottomTarget = 0;
-      if (anchorsByLine.size > 0) {
-        // The editor scroll surface reserves its own tail pad (120px in block
-        // mode), so the content bottom is the scroll extent minus that pad.
-        const editorBottomPad = parseFloat(getComputedStyle(editorView.scrollDOM).paddingBottom) || 0;
-        contentBottomSource = Math.max(0, Math.min(
-          editorView.getScrollHeight() - editorBottomPad - editorView.getClientHeight(),
-          editorMax,
-        ));
+      if (anchorRequests.length > 0) {
+        const lastRequest = anchorRequests[anchorRequests.length - 1];
+        const lastLayout = resolveLayout(lastRequest.lastLine);
+        // The "content bottom" anchor pairs the moment the last content bottom
+        // reaches the viewport bottom on both panes (document coordinate minus
+        // client height), so the panes run out of content at the same time.
+        contentBottomSource = Math.max(0, Math.min(lastLayout.bottom - editorViewport.getClientHeight(), editorMax));
         contentBottomTarget = Math.max(0, Math.min(lastContentBottom - previewViewport.getClientHeight(), previewMax));
       }
 
       const nextEditorAnchors = [
-        { sourceTop: 0, targetTop: 0 },
-        ...anchorsByLine.values(),
+        ...anchors,
         { sourceTop: contentBottomSource, targetTop: contentBottomTarget },
         { sourceTop: editorMax, targetTop: previewMax },
       ];

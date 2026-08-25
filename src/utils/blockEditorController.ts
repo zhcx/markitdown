@@ -3,7 +3,7 @@ import type { Node } from 'prosemirror-model';
 import { TextSelection, type EditorState } from 'prosemirror-state';
 import type { EditorView } from 'prosemirror-view';
 import type { BlockSourceMap, MarkdownCapability } from '../types/blockEditor.ts';
-import type { EditorController, EditorDispatchSpec, EditorLine, EditorSelectionRange } from '../types/editor.ts';
+import type { EditorController, EditorDispatchSpec, EditorLine, EditorLineLayout, EditorSelectionRange } from '../types/editor.ts';
 import { parseMarkdown } from './markdownBlockCodec.ts';
 import { createBlockDocumentBridge, type BlockDocumentSnapshot } from './blockDocumentBridge.ts';
 
@@ -146,19 +146,71 @@ export function createBlockEditorController(
     getScrollTop: () => scrollDOM.scrollTop || 0,
     getScrollHeight: () => scrollDOM.scrollHeight || 0,
     getClientHeight: () => scrollDOM.clientHeight || 0,
-    getTopForLineNumber: (lineNumber: number) => {
+    // Resolve the markdown line to its containing block, then to the rendered
+    // block element. Every resolved line is offset along the block's rendered
+    // height so a multi-line block contributes distinct top/bottom anchors and
+    // mid-block scrolling stays proportional (code fences, paragraphs that
+    // wrap, tables).
+    getLineLayouts: (lineNumbers) => {
       const snapshot = bridge.getSnapshot();
-      const block = snapshot.sourceMap.blocks.find(item => lineNumber >= item.lineFrom && lineNumber <= item.lineTo)
-        || snapshot.sourceMap.blocks.reduce((closest, item) => Math.abs(item.lineFrom - lineNumber) < Math.abs(closest.lineFrom - lineNumber) ? item : closest, snapshot.sourceMap.blocks[0]);
-      const element = block ? root.querySelector<HTMLElement>(`[data-block-id="${block.blockId}"]`) : null;
-      if (element) return element.offsetTop;
-      const lines = Math.max(1, snapshot.markdown.split('\n').length - 1);
-      const max = Math.max(0, scrollDOM.scrollHeight - scrollDOM.clientHeight);
-      return max * Math.max(0, Math.min(1, (lineNumber - 1) / lines));
+      const blocks = snapshot.sourceMap.blocks;
+      if (blocks.length === 0) return new Map<number, EditorLineLayout>();
+      const blockElements = new Map<string, HTMLElement>();
+      root.querySelectorAll<HTMLElement>('[data-block-id]').forEach((element) => {
+        const blockId = element.dataset.blockId;
+        if (blockId) blockElements.set(blockId, element);
+      });
+      // Blocks are emitted in document order; binary search the containing
+      // block for each line instead of a linear scan per anchor.
+      const layouts = new Map<number, EditorLineLayout>();
+      // Binary search returns the block index whose lineFrom <= lineNumber;
+      // the block array is ordered by lineFrom.
+      const resolve = (lineNumber: number) => {
+        let low = 0;
+        let high = blocks.length - 1;
+        let index = 0;
+        while (low <= high) {
+          const middle = (low + high) >> 1;
+          if (blocks[middle].lineFrom <= lineNumber) {
+            index = middle;
+            low = middle + 1;
+          } else {
+            high = middle - 1;
+          }
+        }
+        let block = blocks[index];
+        if (lineNumber > block.lineTo) {
+          // The line falls into a gap between blocks; snap to the closer one
+          // so the anchor stays monotonic.
+          const next = blocks[index + 1];
+          if (next && next.lineFrom - lineNumber < lineNumber - block.lineTo) block = next;
+        }
+        return block;
+      };
+      for (const lineNumber of lineNumbers) {
+        if (!Number.isFinite(lineNumber)) continue;
+        const block = resolve(lineNumber);
+        const element = block ? blockElements.get(block.blockId) : null;
+        if (!element) continue;
+        const blockHeight = element.offsetHeight;
+        const span = Math.max(1, block.lineTo - block.lineFrom);
+        const ratio = Math.max(0, Math.min(1, (lineNumber - block.lineFrom) / span));
+        layouts.set(lineNumber, {
+          top: element.offsetTop + ratio * blockHeight,
+          bottom: element.offsetTop + ((lineNumber - block.lineFrom + 1) / span) * blockHeight,
+        });
+      }
+      return layouts;
     },
+    getTopForLineNumber: (lineNumber: number) => controller.getLineLayouts?.([lineNumber]).get(lineNumber)?.top ?? 0,
     setScrollTop: (top: number) => { scrollDOM.scrollTop = top; },
     onScroll: (listener: () => void) => {
-      scrollDOM.addEventListener('scroll', listener);
+      // Passive keeps the browser's scroll-optimization path intact: the
+      // listener only ever reads the scroll offset, so it never needs to
+      // prevent the default gesture. Without it the editor pane's scroll
+      // events are treated as cancellable and the main thread waits on them,
+      // which is the dominant source of the "sticky pane" jank.
+      scrollDOM.addEventListener('scroll', listener, { passive: true });
       return () => scrollDOM.removeEventListener('scroll', listener);
     },
     getValue: () => bridge.getSnapshot().markdown,

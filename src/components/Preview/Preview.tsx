@@ -60,12 +60,23 @@ md.core.ruler.after('block', 'source_line_anchors', (state) => {
   state.tokens.forEach((token) => {
     if (token.map && !token.hidden && sourceAnchorTokenTypes.has(token.type)) {
       token.attrSet('data-source-line', String(token.map[0] + 1));
+      // A block that spans multiple markdown lines (a code fence, a wrapped
+      // paragraph, a table) records its last line so scroll sync can anchor
+      // both ends of the block and keep mid-block scrolling proportional.
+      if (token.map[1] > token.map[0] + 1) {
+        token.attrSet('data-source-line-end', String(token.map[1]));
+      }
     }
   });
 });
 md.renderer.rules.heading_open = (tokens, index, options, _env, self) => {
   const token = tokens[index];
-  if (token.map) token.attrSet('data-source-line', String(token.map[0] + 1));
+  if (token.map) {
+    token.attrSet('data-source-line', String(token.map[0] + 1));
+    if (token.map[1] > token.map[0] + 1) {
+      token.attrSet('data-source-line-end', String(token.map[1]));
+    }
+  }
   return self.renderToken(tokens, index, options);
 };
 

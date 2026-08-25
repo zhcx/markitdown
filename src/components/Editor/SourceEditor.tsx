@@ -7,7 +7,7 @@ import EditorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker';
 import { invoke } from '@tauri-apps/api/core';
 import { useAppStore, type Settings } from '../../stores/appStore';
 import { useAIStore, type ProofreadResult } from '../../stores/aiStore';
-import type { EditorController, EditorDispatchSpec, EditorLine } from '../../types/editor';
+import type { EditorController, EditorDispatchSpec, EditorLine, EditorLineLayout } from '../../types/editor';
 import { runAIEditorCommand } from '../../utils/aiEditorCommands.ts';
 import { EDITOR_OVERFLOW_OPTIONS, EDITOR_UNICODE_HIGHLIGHT_OPTIONS } from '../../utils/editorLayout';
 import {
@@ -146,6 +146,18 @@ function createController(editor: monaco.editor.IStandaloneCodeEditor, model: mo
     getTopForLineNumber: (lineNumber: number) => editor.getTopForLineNumber(
       Math.max(1, Math.min(lineNumber, model.getLineCount())),
     ),
+    getLineLayouts: (lineNumbers) => {
+      const lineCount = model.getLineCount();
+      const lineHeight = editor.getOption(monaco.editor.EditorOption.lineHeight);
+      const layouts = new Map<number, EditorLineLayout>();
+      for (const lineNumber of lineNumbers) {
+        if (!Number.isFinite(lineNumber)) continue;
+        const safeLine = Math.max(1, Math.min(lineNumber, lineCount));
+        const top = editor.getTopForLineNumber(safeLine);
+        layouts.set(lineNumber, { top, bottom: top + lineHeight });
+      }
+      return layouts;
+    },
     setScrollTop: (top: number) => editor.setScrollTop(top, monaco.editor.ScrollType.Immediate),
     onScroll: (listener: () => void) => {
       const disposable = editor.onDidScrollChange((event) => {

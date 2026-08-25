@@ -72,6 +72,31 @@ test('aligns the content bottoms before either pane reaches its scroll extent', 
   ]), 1700);
 });
 
+test('maps mid-block scrolling proportionally with first/last line anchor pairs', () => {
+  // A tall rendered block (code fence) spans lines 5-8 in the editor and
+  // 400px in the preview. Pinning only the first line would leave the whole
+  // block interior to linear interpolation; the bottom anchor closes the
+  // block so scrolling through it stays proportional on both panes.
+  const source = viewport(0, 2000, 200);
+  const target = viewport(0, 3000, 400);
+
+  // Editor: block A (lines 5-8) at y=400..800, block B (lines 9-12) at y=800..1600.
+  // Preview: block A renders 400px (y=1000..1400), block B 800px (y=1400..2200).
+  const anchors = [
+    { sourceTop: 0, targetTop: 0 },
+    { sourceTop: 400, targetTop: 1000 },   // A first line top
+    { sourceTop: 800, targetTop: 1400 },   // A last line bottom
+    { sourceTop: 800, targetTop: 1400 },   // B first line top (same offset as A bottom)
+    { sourceTop: 1600, targetTop: 2200 },  // B last line bottom
+  ];
+
+  // Halfway through block A (editor y=600 → 50% of [400,800]) the preview must
+  // be halfway through A's rendered box (50% of [1000,1400] = 1200), not
+  // lagging because the next anchor is only B's first line.
+  source.value.setScrollTop(600);
+  assert.equal(getSyncedScrollTop(source.value, target.value, anchors, { sourceMax: 1800, targetMax: 2600 }), 1200);
+});
+
 test('smooths the trailing insets linearly between content bottom and scroll end', () => {
   const source = viewport(850, 1120, 200);
   const target = viewport(0, 2180, 400);
