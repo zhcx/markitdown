@@ -23,8 +23,8 @@ test('pane dragging uses latest-frame scheduling and flushes the final pointer',
   const app = read('src/App.tsx');
   const styles = read('src/styles/main.css');
   assert.match(app, /createLatestFrameTask<PendingPanelDrag>/);
-  assert.match(app, /dragFrameTask\.schedule\(\{ type, clientX \}\)/);
-  assert.match(app, /dragFrameTask\.flush\(\)/);
+  assert.match(app, /dragFrameTaskRef\.current\?\.schedule\(\{ type, clientX \}\)/);
+  assert.match(app, /dragFrameTaskRef\.current\?\.flush\(\)/);
   assert.match(app, /hasMeaningfulPixelDelta/);
   assert.match(app, /window\.addEventListener\('blur', handleMouseUp\)/);
   assert.doesNotMatch(app, /setSplitRatio\([^)]*\)[\s\S]{0,200}mousemove/iu);

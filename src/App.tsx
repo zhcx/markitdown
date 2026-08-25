@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback, useState, useMemo } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import { useAppStore } from './stores/appStore';
 import { useAIStore } from './stores/aiStore';
 import { useWebDavStore } from './stores/webdavStore';
@@ -36,6 +36,7 @@ import {
   createLatestFrameTask,
   createSuspendableInvalidation,
   hasMeaningfulPixelDelta,
+  type LatestFrameTask,
 } from './utils/paneInteraction';
 import './styles/main.css';
 import './styles/workbench.css';
@@ -236,6 +237,9 @@ function App() {
       const divider = dividerRef.current;
       const editor = divider?.previousElementSibling as HTMLElement | null;
       const preview = divider?.nextElementSibling as HTMLElement | null;
+      // Imperative DOM style writes in a drag-frame callback (never render
+      // context); react-hooks/immutability cannot see past the ref read.
+      // eslint-disable-next-line react-hooks/immutability
       if (editor) editor.style.flex = String(ratio);
       if (preview) preview.style.flex = String(1 - ratio);
       dragValues.current.splitRatio = ratio;
@@ -268,16 +272,15 @@ function App() {
     balanceDocumentPanes(dragValues.current.proofreadPanelWidth, width);
   }, [balanceDocumentPanes]);
 
-  const dragFrameTask = useMemo(
-    () => createLatestFrameTask<PendingPanelDrag>(browserFrameDriver, applyPanelDrag),
-    [applyPanelDrag],
-  );
-
-  useEffect(() => () => dragFrameTask.cancel(), [dragFrameTask]);
+  const dragFrameTaskRef = useRef<LatestFrameTask<PendingPanelDrag> | null>(null);
+  useEffect(() => {
+    dragFrameTaskRef.current = createLatestFrameTask<PendingPanelDrag>(browserFrameDriver, applyPanelDrag);
+    return () => dragFrameTaskRef.current?.cancel();
+  }, [applyPanelDrag]);
 
   const scheduleDragFrame = useCallback((type: PendingPanelDrag['type'], clientX: number) => {
-    dragFrameTask.schedule({ type, clientX });
-  }, [dragFrameTask]);
+    dragFrameTaskRef.current?.schedule({ type, clientX });
+  }, []);
 
   useEffect(() => {
     void loadSettings().then(() => {
@@ -550,7 +553,7 @@ function App() {
   }, []);
 
   const handleMouseUp = useCallback(() => {
-    dragFrameTask.flush();
+    dragFrameTaskRef.current?.flush();
 
     if (isDragging.current) {
       isDragging.current = false;
@@ -581,7 +584,7 @@ function App() {
     layoutWidth.current = null;
     document.documentElement.classList.remove('panel-resizing');
     scrollGeometryControlRef.current.resume();
-  }, [dragFrameTask, setChatbotPanelWidth, setProofreadPanelWidth, setSidebarWidth, setSplitRatio]);
+  }, [setChatbotPanelWidth, setProofreadPanelWidth, setSidebarWidth, setSplitRatio]);
 
   useEffect(() => {
     document.addEventListener('mousemove', handleSplitMouseMove);
