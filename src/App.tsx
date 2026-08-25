@@ -25,7 +25,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { message, save as chooseSaveFile } from '@tauri-apps/plugin-dialog';
-import { createElementScrollViewport, getAlignedScrollTop, getSyncedScrollTop, type ObservableScrollViewport, type ScrollAnchor, type ScrollRange } from './utils/scrollSync';
+import { createElementScrollViewport, getAlignedScrollTop, getSyncedScrollTop, isTargetVisible, type ObservableScrollViewport, type ScrollAnchor, type ScrollRange } from './utils/scrollSync';
 import { getImmersiveWorkspacePolicy } from './utils/immersiveWorkspace';
 import { guardWindowClose, type CloseGuardTab, type UnsavedChangesAction } from './utils/windowCloseGuard';
 import { findActiveSourceElement } from './utils/activeSourceLine';
@@ -563,8 +563,20 @@ function App() {
   }, []);
 
   const handleEditorLineReveal = useCallback((lineNumber: number) => {
+    setActiveEditorLine(lineNumber);
+    const preview = previewScrollElement;
+    const target = preview ? findActiveSourceElement(preview, lineNumber) : null;
+    if (preview && target) {
+      const previewBounds = preview.getBoundingClientRect();
+      const targetBounds = target.getBoundingClientRect();
+      if (isTargetVisible(
+        { top: previewBounds.top, bottom: previewBounds.bottom },
+        { top: targetBounds.top, bottom: targetBounds.bottom },
+        24,
+      )) return;
+    }
     revealPreviewLineRef.current(lineNumber);
-  }, []);
+  }, [previewScrollElement]);
 
   const handlePreviewSourceClick = useCallback((lineNumber: number) => {
     const editor = useAppStore.getState().editorView;
@@ -767,7 +779,7 @@ function App() {
       if (revealPreviewLineRef.current === revealPreviewLine) revealPreviewLineRef.current = () => undefined;
       if (revealEditorLineRef.current === revealEditorLine) revealEditorLineRef.current = () => undefined;
     };
-  }, [mode, editorView, previewScrollElement, previewRenderVersion]);
+  }, [mode, editorView, previewScrollElement, previewRenderVersion, splitRatio]);
 
   return (
     <div className={`app ${immersivePolicy.active ? 'immersive-mode-active' : ''} ${mode === 'zen' ? 'zen-mode' : ''}`}>

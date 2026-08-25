@@ -27,7 +27,7 @@
   position: relative;
   height: 100%;
   overflow: auto;
-  padding: 32px clamp(32px, 8vw, 120px) 180px;
+  padding: 32px clamp(20px, 4vw, 48px) 120px;
   font-family: var(--font-content);
   font-size: var(--font-content-size);
   line-height: var(--font-content-line-height);
@@ -35,7 +35,8 @@
 }
 
 .block-editor-content {
-  max-width: 860px;
+  width: min(100%, 980px);
+  max-width: 980px;
   min-height: 100%;
   margin: 0 auto;
   outline: none;

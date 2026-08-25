@@ -3935,8 +3935,8 @@ textarea {
 
 .preview-document .is-active-source-block {
   border-radius: 4px;
-  background: color-mix(in srgb, var(--accent-color) 10%, transparent) !important;
-  box-shadow: -4px 0 0 color-mix(in srgb, var(--accent-color) 42%, transparent);
+  background: color-mix(in srgb, var(--accent-color) 5%, transparent) !important;
+  box-shadow: -2px 0 0 color-mix(in srgb, var(--accent-color) 58%, transparent);
   transition: background-color 120ms ease, box-shadow 120ms ease;
 }
 
@@ -3947,7 +3947,7 @@ textarea {
 }
 
 .preview-document table.is-active-source-block :is(th, td) {
-  background: color-mix(in srgb, var(--accent-color) 10%, transparent) !important;
+  background: color-mix(in srgb, var(--accent-color) 5%, transparent) !important;
 }
 
 .monaco-proofread-error {

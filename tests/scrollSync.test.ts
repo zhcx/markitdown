@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { getAlignedScrollTop, getSyncedScrollTop, syncScrollPosition, type ScrollViewport } from '../src/utils/scrollSync.ts';
+import { getAlignedScrollTop, getSyncedScrollTop, isTargetVisible, syncScrollPosition, type ScrollViewport } from '../src/utils/scrollSync.ts';
 
 function viewport(top: number, height: number, clientHeight: number) {
   let currentTop = top;
@@ -78,4 +78,9 @@ test('clamps line alignment at scroll boundaries so the opposite pane can compen
   assert.equal(getAlignedScrollTop(68, 824, 892, 1000), 0);
   assert.equal(getAlignedScrollTop(68, 1400, 500, 800), 800);
   assert.equal(getAlignedScrollTop(68, 700, 500, 800), 268);
+});
+
+test('treats an active block inside the padded viewport as visible', () => {
+  assert.equal(isTargetVisible({ top: 100, bottom: 700 }, { top: 140, bottom: 180 }, 24), true);
+  assert.equal(isTargetVisible({ top: 100, bottom: 700 }, { top: 690, bottom: 730 }, 24), false);
 });

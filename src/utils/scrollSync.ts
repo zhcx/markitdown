@@ -19,6 +19,16 @@ export interface ScrollRange {
   targetMax: number;
 }
 
+export interface ScreenRange {
+  top: number;
+  bottom: number;
+}
+
+export function isTargetVisible(container: ScreenRange, target: ScreenRange, padding = 0): boolean {
+  const safePadding = Math.max(0, padding);
+  return target.top >= container.top + safePadding && target.bottom <= container.bottom - safePadding;
+}
+
 export function getAlignedScrollTop(
   containerScreenTop: number,
   contentTop: number,
