@@ -69,7 +69,7 @@ test('replaceRange reparses Markdown and notifies the host', () => {
 
 test('external unsupported replacement requests source-mode fallback', () => {
   const harness = createHarness('Title\n');
-  harness.controller.replaceRange(0, 6, '| A | B |\n|---|---|\n| 1 | 2 |\n');
+  harness.controller.replaceRange(0, 6, '$$\nx + y\n$$\n');
   assert.equal(harness.fallback, true);
 });
 

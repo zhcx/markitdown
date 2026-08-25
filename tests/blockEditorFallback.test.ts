@@ -7,8 +7,13 @@ import { inspectMarkdownCapability } from '../src/utils/markdownBlockCapability.
 const read = (path: string) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 
 test('unsupported Markdown always resolves to source mode', () => {
-  const capability = inspectMarkdownCapability('| A | B |\n|---|---|\n| 1 | 2 |\n');
+  const capability = inspectMarkdownCapability('$$\nx + y\n$$\n');
   assert.equal(resolveEditorMode('blocks', capability, false), 'source');
+});
+
+test('standard Markdown tables can resolve to block mode', () => {
+  const capability = inspectMarkdownCapability('| A | B |\n|---|---|\n| 1 | 2 |\n');
+  assert.equal(resolveEditorMode('blocks', capability, false), 'blocks');
 });
 
 test('a supported document can stay in blocks unless the user forced source mode', () => {

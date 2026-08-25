@@ -12,7 +12,6 @@ export function inspectMarkdownCapability(source: string): MarkdownCapability {
   const tokens = markdown.parse(source, {});
 
   for (const token of tokens) {
-    if (token.type === 'table_open') addUnique(unsupported, 'table');
     if (token.type === 'html_block' || token.type === 'html_inline') addUnique(unsupported, 'html');
     if (token.type === 'fence' && /^\s*mermaid(?:\s|$)/iu.test(token.info || '')) addUnique(unsupported, 'mermaid');
   }

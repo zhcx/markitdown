@@ -51,6 +51,7 @@ function blockType(node: Node): BlockNodeType | null {
     case 'blockquote':
     case 'code_block':
     case 'horizontal_rule':
+    case 'table':
     case 'image':
       return node.type.name;
     default:

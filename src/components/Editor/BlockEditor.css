@@ -98,6 +98,40 @@
   border-top: 1px solid var(--border-color);
 }
 
+.block-editor-content table {
+  width: 100%;
+  margin: 0 0 1em;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.block-editor-content th,
+.block-editor-content td {
+  min-width: 72px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-color);
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+
+.block-editor-content th {
+  background: var(--surface-muted);
+  color: var(--text-primary);
+  font-weight: 650;
+}
+
+.block-editor-content td {
+  background: color-mix(in srgb, var(--bg-document) 96%, var(--surface-muted));
+}
+
+.block-editor-content > p:only-child:has(> br.ProseMirror-trailingBreak)::before {
+  content: '开始写作，输入 / 打开命令';
+  position: absolute;
+  color: var(--text-muted);
+  pointer-events: none;
+  opacity: .72;
+}
+
 .block-editor-content li p { margin: 0; }
 
 .block-editor-content .task-item {

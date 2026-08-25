@@ -54,3 +54,10 @@ test('BlockEditor refreshes the controller snapshot after external state changes
   assert.match(source, /if \(controller\.getValue\(\) === markdown\) return;/);
   assert.match(source, /view\.updateState\(EditorState\.create\([\s\S]*?\}\)\);\s*controller\.syncDocument\(\);/);
 });
+
+test('an empty new block document shows a visible writing prompt', () => {
+  const styles = read('src/components/Editor/BlockEditor.css');
+  assert.match(styles, /\.block-editor-content\s*>\s*p:only-child:has\(>\s*br\.ProseMirror-trailingBreak\)::before/);
+  assert.match(styles, /content:\s*['"]开始写作/);
+  assert.match(styles, /pointer-events:\s*none/);
+});

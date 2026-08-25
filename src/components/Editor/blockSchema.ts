@@ -1,4 +1,11 @@
-import { defaultMarkdownParser, defaultMarkdownSerializer, MarkdownParser, MarkdownSerializer } from 'prosemirror-markdown';
+import {
+  defaultMarkdownParser,
+  defaultMarkdownSerializer,
+  MarkdownParser,
+  MarkdownSerializer,
+  type MarkdownSerializerState,
+  type ParseSpec,
+} from 'prosemirror-markdown';
 import { Schema, type DOMOutputSpec, type Node } from 'prosemirror-model';
 import MarkdownIt from 'markdown-it';
 
@@ -22,6 +29,12 @@ const imageToDOM = (node: Node): DOMOutputSpec => {
   if (node.attrs.alt) attrs.alt = node.attrs.alt;
   if (node.attrs.title) attrs.title = node.attrs.title;
   return ['img', attrs];
+};
+
+const tableCellToDOM = (node: Node): DOMOutputSpec => {
+  const attrs: Record<string, string> = {};
+  if (node.attrs.align) attrs.style = `text-align: ${node.attrs.align}`;
+  return [node.attrs.header ? 'th' : 'td', attrs, 0];
 };
 
 export const blockSchema = new Schema({
@@ -76,6 +89,22 @@ export const blockSchema = new Schema({
       defining: true,
       toDOM: taskItemToDOM,
     },
+    table: {
+      content: 'table_row+',
+      group: 'block',
+      isolating: true,
+      toDOM: () => ['table', ['tbody', 0]],
+    },
+    table_row: {
+      content: 'table_cell+',
+      toDOM: () => ['tr', 0],
+    },
+    table_cell: {
+      attrs: { header: { default: false }, align: { default: null } },
+      content: 'inline*',
+      isolating: true,
+      toDOM: tableCellToDOM,
+    },
     image: {
       inline: true,
       attrs: { src: {}, alt: { default: null }, title: { default: null } },
@@ -101,11 +130,43 @@ export const blockSchema = new Schema({
 
 const markdownTokenizer = new MarkdownIt({ html: false, breaks: false, linkify: false, typographer: false });
 
+const cellAttrs = (header: boolean): NonNullable<ParseSpec['getAttrs']> => token => {
+  const style = token.attrGet('style') || '';
+  const align = /text-align:\s*(left|center|right)/iu.exec(style)?.[1] || null;
+  return { header, align };
+};
+
+const tableTokens: Record<string, ParseSpec> = {
+  table: { block: 'table' },
+  thead: { ignore: true },
+  tbody: { ignore: true },
+  tr: { block: 'table_row' },
+  th: { block: 'table_cell', getAttrs: cellAttrs(true) },
+  td: { block: 'table_cell', getAttrs: cellAttrs(false) },
+};
+
 export const blockMarkdownParser = new MarkdownParser(
   blockSchema,
   markdownTokenizer,
-  defaultMarkdownParser.tokens,
+  { ...defaultMarkdownParser.tokens, ...tableTokens },
 );
+
+const renderTableRow = (state: MarkdownSerializerState, row: Node) => {
+  state.write('|');
+  row.forEach(cell => {
+    state.write(' ');
+    state.renderInline(cell, false);
+    state.write(' |');
+  });
+  state.ensureNewLine();
+};
+
+const alignmentDelimiter = (align: string | null) => {
+  if (align === 'left') return ':---';
+  if (align === 'center') return ':---:';
+  if (align === 'right') return '---:';
+  return '---';
+};
 
 export const blockMarkdownSerializer = new MarkdownSerializer(
   {
@@ -116,6 +177,19 @@ export const blockMarkdownSerializer = new MarkdownSerializer(
       index => `- [${node.child(index).attrs.checked ? 'x' : ' '}] `,
     ),
     task_item: (state, node) => state.renderContent(node),
+    table: (state, node) => {
+      const header = node.firstChild;
+      if (!header) return;
+      renderTableRow(state, header);
+      state.write('|');
+      header.forEach(cell => state.write(` ${alignmentDelimiter(cell.attrs.align)} |`));
+      state.ensureNewLine();
+      for (let index = 1; index < node.childCount; index += 1) renderTableRow(state, node.child(index));
+      state.closeBlock(node);
+    },
+    table_row: renderTableRow,
+    table_cell: (state, node) => state.renderInline(node, false),
   },
   defaultMarkdownSerializer.marks,
+  { escapeExtraCharacters: /\|/g },
 );

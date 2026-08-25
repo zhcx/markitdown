@@ -20,6 +20,7 @@ function nodeType(node: Node): BlockNodeType {
     case 'blockquote':
     case 'code_block':
     case 'horizontal_rule':
+    case 'table':
     case 'image':
     case 'paragraph':
       return node.type.name;
