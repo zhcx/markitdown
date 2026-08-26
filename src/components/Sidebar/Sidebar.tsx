@@ -14,16 +14,8 @@ import {
   OPENABLE_FILE_EXTENSIONS,
   isConvertibleDocumentName,
 } from '../../utils/documentFormats';
+import { mergeLoadedChildren, replaceNodeChildren, replaceNodeChildrenMerged, type FileNode } from '../../utils/workspaceTree';
 import { FileTypeIcon } from './FileTypeIcon';
-
-interface FileNode {
-  name: string;
-  path: string;
-  isDirectory: boolean;
-  children?: FileNode[];
-  file?: File;
-  directoryHandle?: FileSystemDirectoryHandle;
-}
 
 interface WorkspaceFolder {
   name: string;
@@ -66,10 +58,6 @@ const isDirectOpenFile = isTextFileName;
 // Keep this in sync with the desktop command. These are the file types offered
 // by Zeditor in the workspace, rather than only files the editor can read.
 const isConvertibleFile = isConvertibleDocumentName;
-const replaceNodeChildren = (nodes: FileNode[], path: string, children: FileNode[]): FileNode[] => nodes.map(node => {
-  if (node.path === path) return { ...node, children };
-  return node.children ? { ...node, children: replaceNodeChildren(node.children, path, children) } : node;
-});
 
 const splitTimelineLines = (value: string) => value.split(/\r?\n/);
 
@@ -300,6 +288,9 @@ function ExplorerSidebar({ style }: SidebarProps) {
   const [renameValue, setRenameValue] = useState('');
   const [fsClipboard, setFsClipboard] = useState<FsClipboard>(null);
   const knownTreeSizeRef = useRef(new Map<string, number>());
+  // 记录最近被关闭的工作区根路径，防止 currentFile 自动添加 effect 把它们
+  // 的子目录重新加为独立根目录。
+  const recentlyRemovedRootsRef = useRef<Set<string>>(new Set());
   const activeTimeline = activeTabId ? timeline[activeTabId] || [] : [];
   const activeTab = tabs.find((tab) => tab.id === activeTabId);
   const outlineContent = selectActiveDocumentContent(tabs, activeTabId, content);
@@ -368,6 +359,39 @@ function ExplorerSidebar({ style }: SidebarProps) {
     }
   }, [readBrowserFolder, readFolder, workspaceFolders]);
 
+  // 从资源管理器中移除一个已打开的工作区根文件夹，并更新持久化的根目录列表。
+  // 不会删除磁盘内容，只关闭该文件夹在工作区中的展示。
+  const removeWorkspaceFolder = useCallback((folderPath: string) => {
+    setWorkspaceFolders(previous => previous.filter((folder) => folder.path !== folderPath));
+    setExpandedNodes(previous => {
+      const next = new Set(previous);
+      next.delete(folderPath);
+      return next;
+    });
+    setLoadedFolders(previous => {
+      const next = new Set(previous);
+      next.delete(folderPath);
+      return next;
+    });
+    knownTreeSizeRef.current.delete(folderPath);
+    if (!folderPath.startsWith('web://')) {
+      const roots = readStoredStringArray(WORKSPACE_ROOTS_KEY);
+      if (roots.includes(folderPath)) writeStoredStringArray(WORKSPACE_ROOTS_KEY, roots.filter(root => root !== folderPath));
+    }
+    // 标记为最近关闭的根路径，防止 currentFile 自动添加 effect 把该路径下
+    // 的子目录重新加为独立根（用户关了文件夹，不应再自动弹出来）。
+    const removed = new Set(recentlyRemovedRootsRef.current);
+    removed.add(folderPath);
+    recentlyRemovedRootsRef.current = removed;
+    // 30 秒后清除标记，避免长期占用内存。
+    setTimeout(() => {
+      const current = new Set(recentlyRemovedRootsRef.current);
+      current.delete(folderPath);
+      recentlyRemovedRootsRef.current = current;
+    }, 30000);
+    setContextMenu(null);
+  }, []);
+
   // ── 历史记录管理 ──────────────────────────────────────────
   const HISTORY_KEY = 'zeditor.explorer-history';
   const loadHistory = useCallback(() => {
@@ -406,7 +430,16 @@ function ExplorerSidebar({ style }: SidebarProps) {
   useEffect(() => {
     if (!currentFile || currentFile.startsWith('web://')) return;
     const parent = currentFile.replace(/[\\/][^\\/]+$/, '');
-    if (parent && !workspaceFolders.some((folder) => folder.path === parent)) {
+    if (!parent) return;
+    // 用户刚关闭的工作区根目录（或其子目录）不应因当前文件被自动重新添加。
+    const removed = recentlyRemovedRootsRef.current;
+    const wasJustRemoved = Array.from(removed).some(root =>
+      parent === root
+      || parent.startsWith(root + '/')
+      || parent.startsWith(root + '\\'),
+    );
+    if (wasJustRemoved) return;
+    if (!workspaceFolders.some((folder) => folder.path === parent)) {
       queueMicrotask(() => {
         void addWorkspaceFolder(parent);
       });
@@ -488,15 +521,17 @@ function ExplorerSidebar({ style }: SidebarProps) {
       const normalized = (tree || []).map(normalizeNode);
       if (normalized.length === 0) return;
       setWorkspaceFolders(previous => {
-        // 如果 folderPath 直接匹配某个工作区根路径，直接替换整棵树
+        // 如果 folderPath 直接匹配某个工作区根路径，整体替换顶层树，但保留
+        // 已懒加载的子目录内容（read_folder 对目录恒返回空 children）。
         const rootMatch = previous.find(f => f.path === folderPath);
         if (rootMatch) {
-          return previous.map(f => f.path === folderPath ? { ...f, tree: normalized } : f);
+          return previous.map(f => f.path === folderPath ? { ...f, tree: mergeLoadedChildren(f.tree, normalized) } : f);
         }
-        // 否则作为子目录刷新，找到包含该路径的工作区根，替换其子孙节点
+        // 否则作为子目录刷新，找到包含该路径的工作区根，替换其子孙节点，同样
+        // 保留该子目录下已加载的更深处目录内容。
         return previous.map(folder =>
           folder.path === folderPath || folderPath.startsWith(folder.path + '/') || folderPath.startsWith(folder.path + '\\')
-            ? { ...folder, tree: replaceNodeChildren(folder.tree, folderPath, normalized) }
+            ? { ...folder, tree: replaceNodeChildrenMerged(folder.tree, folderPath, normalized) }
             : folder
         );
       });
@@ -529,7 +564,7 @@ function ExplorerSidebar({ style }: SidebarProps) {
         if (normalized.length === 0 && (knownTreeSizeRef.current.get(folderPath) ?? 0) > 0) continue;
         if (normalized.length > 0) knownTreeSizeRef.current.set(folderPath, normalized.length);
         setWorkspaceFolders(previous => previous.map(f => f.path === folderPath
-          ? { ...f, tree: normalized }
+          ? { ...f, tree: mergeLoadedChildren(f.tree, normalized) }
           : f
         ));
       }
@@ -739,11 +774,12 @@ function ExplorerSidebar({ style }: SidebarProps) {
   const renderNodes = (nodes: FileNode[], depth = 0) => nodes.map(node => {
     const expanded = expandedNodes.has(node.path);
     const active = currentFile === node.path;
+    const indent = 16 + depth * 20;
     return (
       <div key={node.path} role="treeitem" aria-expanded={node.isDirectory ? expanded : undefined}>
         <button
           className={`explorer-row ${node.isDirectory ? 'folder-row' : 'file-row'} ${active ? 'active' : ''}`}
-          style={{ paddingLeft: `${8 + depth * 14}px` }}
+          style={{ paddingLeft: `${indent}px` }}
           onClick={() => node.isDirectory ? void toggleFolder(node) : void openTreeFile(node)}
           onContextMenu={event => {
             event.preventDefault();
@@ -763,7 +799,7 @@ function ExplorerSidebar({ style }: SidebarProps) {
         {node.isDirectory && expanded && (
           <div role="group" className="explorer-children">
             {node.children?.length ? renderNodes(node.children, depth + 1) : (
-              <div className="explorer-empty-folder" style={{ paddingLeft: `${38 + depth * 14}px` }}>空文件夹</div>
+              <div className="explorer-empty-folder" style={{ paddingLeft: `${46 + depth * 20}px` }}>空文件夹</div>
             )}
           </div>
         )}
@@ -828,11 +864,27 @@ function ExplorerSidebar({ style }: SidebarProps) {
                   <button
                     className="explorer-section-heading workspace-heading"
                     onClick={() => toggleExpanded(folder.path)}
+                    onContextMenu={event => {
+                      event.preventDefault();
+                      setContextMenu({
+                        x: event.clientX,
+                        y: event.clientY,
+                        node: { name: folder.name, path: folder.path, isDirectory: true },
+                        targetType: 'root',
+                      });
+                    }}
                     title={folder.path}
                   >
                     <Chevron expanded={expanded} />
                     <FolderIcon open={expanded} />
                     <span className="explorer-name">{folder.name}</span>
+                    <span
+                      className="explorer-close workspace-close"
+                      role="button"
+                      aria-label="关闭文件夹"
+                      title="关闭文件夹"
+                      onClick={event => { event.stopPropagation(); removeWorkspaceFolder(folder.path); }}
+                    >×</span>
                   </button>
                   {expanded && <div role="group" className="explorer-list">{renderNodes(folder.tree)}</div>}
                 </div>
@@ -925,7 +977,7 @@ function ExplorerSidebar({ style }: SidebarProps) {
           <section className="explorer-section timeline-section">
             <button className="explorer-section-heading" onClick={() => setTimelineExpanded(expanded => !expanded)}>
               <Chevron expanded={timelineExpanded} />
-              <span>时间线</span>
+              <span className="timeline-section-label">时间线</span>
               {activeTab && <span className="timeline-file-name">{activeTab.title}</span>}
               {activeTimeline.length > 0 && <span className="explorer-count">{activeTimeline.length}</span>}
             </button>
@@ -1086,6 +1138,11 @@ function ExplorerSidebar({ style }: SidebarProps) {
           <button className="context-menu-item" onClick={() => { revealInFileManager(contextMenu.node.path); }}>
             在资源管理器中打开
           </button>
+          {contextMenu.targetType === 'root' && (
+            <button className="context-menu-item danger" onClick={() => { removeWorkspaceFolder(contextMenu.node.path); }}>
+              关闭文件夹
+            </button>
+          )}
 
           <div className="context-menu-divider" />
 

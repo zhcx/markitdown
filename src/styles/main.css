@@ -7128,6 +7128,27 @@ textarea:focus-visible {
 }
 .vscode-explorer .open-editor-row .explorer-close:hover { background: var(--bg-hover); }
 
+/* 工作区根文件夹标题行上的关闭按钮：悬停时显示，与打开编辑器标签页的关闭按钮风格一致。 */
+.workspace-heading {
+  position: relative;
+}
+.workspace-heading .workspace-close {
+  margin-left: auto;
+  padding: 0 2px;
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 18px;
+  line-height: 18px;
+}
+.workspace-heading:not(:hover) .workspace-close { visibility: hidden; }
+.workspace-close:hover { background: var(--bg-hover); color: var(--text-primary); }
+
 .outline-section { margin-top: 7px; }
 .outline-explorer-list { padding: 1px 0 5px; }
 .outline-explorer-row {
@@ -7157,7 +7178,12 @@ textarea:focus-visible {
 }
 
 .timeline-section { margin-top: 7px; }
+.timeline-section-label {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
 .timeline-file-name {
+  flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   color: var(--text-muted);
@@ -7167,6 +7193,7 @@ textarea:focus-visible {
   white-space: nowrap;
   text-transform: none;
 }
+.timeline-section .explorer-count { flex: 0 0 auto; }
 .timeline-explorer-list {
   position: relative;
   padding: 2px 0 7px;
