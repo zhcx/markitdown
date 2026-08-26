@@ -389,65 +389,59 @@ function App() {
     return () => { unlisten.then(fn => fn()); };
   }, [openFile]);
 
-  const handleSplitMouseDown = useCallback((e: React.MouseEvent) => {
+  // Pointer Events with capture keep the drag attached to the divider even when
+  // the pointer leaves the window, which makes resizing feel continuous instead
+  // of dropping input at the webview edge.
+  const beginPanelDrag = useCallback((e: React.PointerEvent, flag: React.MutableRefObject<boolean>, ref: React.RefObject<HTMLDivElement | null>) => {
     e.preventDefault();
-    isDragging.current = true;
+    flag.current = true;
+    const handle = ref.current;
+    handle?.setPointerCapture?.(e.pointerId);
     document.body.style.cursor = 'col-resize';
     document.body.style.userSelect = 'none';
-    dragBounds.current = dividerRef.current?.parentElement?.getBoundingClientRect() || null;
-    layoutWidth.current = (dividerRef.current?.closest('.app-body') as HTMLElement | null)?.clientWidth ?? null;
+    // Block scroll chaining while a split is being resized so wheel/touchpad
+    // gestures cannot fight the drag.
+    document.documentElement.style.overscrollBehavior = 'none';
+    dragBounds.current = handle?.parentElement?.getBoundingClientRect() || null;
+    layoutWidth.current = (handle?.closest('.app-body') as HTMLElement | null)?.clientWidth ?? null;
     document.documentElement.classList.add('panel-resizing');
   }, []);
 
-  const handleSplitMouseMove = useCallback((e: MouseEvent) => {
+  const handleSplitPointerDown = useCallback((e: React.PointerEvent) => {
+    beginPanelDrag(e, isDragging, dividerRef);
+  }, [beginPanelDrag]);
+
+  const handleSplitPointerMove = useCallback((e: PointerEvent) => {
     if (!isDragging.current) return;
 
     scheduleDragFrame('split', e.clientX);
   }, [scheduleDragFrame]);
 
-  const handleSidebarMouseDown = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    isDraggingSidebar.current = true;
-    document.body.style.cursor = 'col-resize';
-    document.body.style.userSelect = 'none';
-    dragBounds.current = sidebarDividerRef.current?.parentElement?.getBoundingClientRect() || null;
-    layoutWidth.current = (sidebarDividerRef.current?.closest('.app-body') as HTMLElement | null)?.clientWidth ?? null;
-    document.documentElement.classList.add('panel-resizing');
-  }, []);
+  const handleSidebarPointerDown = useCallback((e: React.PointerEvent) => {
+    beginPanelDrag(e, isDraggingSidebar, sidebarDividerRef);
+  }, [beginPanelDrag]);
 
-  const handleSidebarMouseMove = useCallback((e: MouseEvent) => {
+  const handleSidebarPointerMove = useCallback((e: PointerEvent) => {
     if (!isDraggingSidebar.current) return;
 
     scheduleDragFrame('sidebar', e.clientX);
   }, [scheduleDragFrame]);
 
-  const handleProofreadMouseDown = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    isDraggingProofread.current = true;
-    document.body.style.cursor = 'col-resize';
-    document.body.style.userSelect = 'none';
-    dragBounds.current = proofreadDividerRef.current?.parentElement?.getBoundingClientRect() || null;
-    layoutWidth.current = (proofreadDividerRef.current?.closest('.app-body') as HTMLElement | null)?.clientWidth ?? null;
-    document.documentElement.classList.add('panel-resizing');
-  }, []);
+  const handleProofreadPointerDown = useCallback((e: React.PointerEvent) => {
+    beginPanelDrag(e, isDraggingProofread, proofreadDividerRef);
+  }, [beginPanelDrag]);
 
-  const handleProofreadMouseMove = useCallback((e: MouseEvent) => {
+  const handleProofreadPointerMove = useCallback((e: PointerEvent) => {
     if (!isDraggingProofread.current) return;
 
     scheduleDragFrame('proofread', e.clientX);
   }, [scheduleDragFrame]);
 
-  const handleChatbotMouseDown = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    isDraggingChatbot.current = true;
-    document.body.style.cursor = 'col-resize';
-    document.body.style.userSelect = 'none';
-    dragBounds.current = chatbotDividerRef.current?.parentElement?.getBoundingClientRect() || null;
-    layoutWidth.current = (chatbotDividerRef.current?.closest('.app-body') as HTMLElement | null)?.clientWidth ?? null;
-    document.documentElement.classList.add('panel-resizing');
-  }, []);
+  const handleChatbotPointerDown = useCallback((e: React.PointerEvent) => {
+    beginPanelDrag(e, isDraggingChatbot, chatbotDividerRef);
+  }, [beginPanelDrag]);
 
-  const handleChatbotMouseMove = useCallback((e: MouseEvent) => {
+  const handleChatbotPointerMove = useCallback((e: PointerEvent) => {
     if (!isDraggingChatbot.current) return;
 
     scheduleDragFrame('chatbot', e.clientX);
@@ -507,7 +501,7 @@ function App() {
     void useAppStore.getState().saveSettings(nextSettings);
   }, []);
 
-  const handleMouseUp = useCallback(() => {
+  const handlePointerUp = useCallback((_e: PointerEvent) => {
     if (isDragging.current) {
       isDragging.current = false;
       setSplitRatio(dragValues.current.splitRatio);
@@ -536,23 +530,26 @@ function App() {
     pendingDrag.current = null;
     dragBounds.current = null;
     layoutWidth.current = null;
+    document.documentElement.style.overscrollBehavior = '';
     document.documentElement.classList.remove('panel-resizing');
   }, [setChatbotPanelWidth, setProofreadPanelWidth, setSidebarWidth, setSplitRatio]);
 
   useEffect(() => {
-    document.addEventListener('mousemove', handleSplitMouseMove);
-    document.addEventListener('mousemove', handleSidebarMouseMove);
-    document.addEventListener('mousemove', handleProofreadMouseMove);
-    document.addEventListener('mousemove', handleChatbotMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
+    document.addEventListener('pointermove', handleSplitPointerMove);
+    document.addEventListener('pointermove', handleSidebarPointerMove);
+    document.addEventListener('pointermove', handleProofreadPointerMove);
+    document.addEventListener('pointermove', handleChatbotPointerMove);
+    document.addEventListener('pointerup', handlePointerUp);
+    document.addEventListener('pointercancel', handlePointerUp);
     return () => {
-      document.removeEventListener('mousemove', handleSplitMouseMove);
-      document.removeEventListener('mousemove', handleSidebarMouseMove);
-      document.removeEventListener('mousemove', handleProofreadMouseMove);
-      document.removeEventListener('mousemove', handleChatbotMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
+      document.removeEventListener('pointermove', handleSplitPointerMove);
+      document.removeEventListener('pointermove', handleSidebarPointerMove);
+      document.removeEventListener('pointermove', handleProofreadPointerMove);
+      document.removeEventListener('pointermove', handleChatbotPointerMove);
+      document.removeEventListener('pointerup', handlePointerUp);
+      document.removeEventListener('pointercancel', handlePointerUp);
     };
-  }, [handleSplitMouseMove, handleSidebarMouseMove, handleProofreadMouseMove, handleChatbotMouseMove, handleMouseUp]);
+  }, [handleSplitPointerMove, handleSidebarPointerMove, handleProofreadPointerMove, handleChatbotPointerMove, handlePointerUp]);
 
   const handlePreviewScrollContainerReady = useCallback((element: HTMLDivElement | null) => {
     setPreviewScrollElement(element);
@@ -797,7 +794,7 @@ function App() {
             <div
               ref={sidebarDividerRef}
               className="sidebar-divider resizable"
-              onMouseDown={handleSidebarMouseDown}
+              onPointerDown={handleSidebarPointerDown}
             />
           </>
           )}
@@ -823,7 +820,7 @@ function App() {
               <div
                 ref={dividerRef}
                 className="divider resizable"
-                onMouseDown={handleSplitMouseDown}
+                onPointerDown={handleSplitPointerDown}
               />
               <section className="document-pane preview-workspace-pane" style={{ flex: 1 - splitRatio }}>
                 <div className="document-pane-tabs">
@@ -844,7 +841,7 @@ function App() {
                       <div
                         ref={proofreadDividerRef}
                         className="proofread-divider resizable"
-                        onMouseDown={handleProofreadMouseDown}
+                        onPointerDown={handleProofreadPointerDown}
                       />
                       <div className="proofread-side-panel" style={{ width: proofreadPanelWidth }}>
                         <div className="proofread-side-header">
@@ -969,7 +966,7 @@ function App() {
             <div
               ref={chatbotDividerRef}
               className={`chatbot-divider resizable ${immersivePolicy.active ? 'immersive-chatbot-divider' : ''}`}
-              onMouseDown={handleChatbotMouseDown}
+              onPointerDown={handleChatbotPointerDown}
             />
             <div className={`chatbot-side-panel ${immersivePolicy.active ? 'immersive-chatbot-panel' : ''}`} style={{ width: chatbotPanelWidth }}>
               <AIChatbotPanel />

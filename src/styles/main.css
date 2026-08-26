@@ -399,6 +399,16 @@ html.panel-resizing .chatbot-side-panel {
   contain: layout paint;
 }
 
+/* Keep the active divider clearly visible for the whole drag, even when the
+   pointer leaves the 4px hover zone while the panel is being resized. */
+html.panel-resizing .divider.resizable::after,
+html.panel-resizing .sidebar-divider.resizable::after,
+html.panel-resizing .proofread-divider::after,
+html.panel-resizing .chatbot-divider::after {
+  width: 2px;
+  background: var(--accent-color);
+}
+
 .main-content {
   display: flex;
   flex: 1 1 auto;
@@ -1297,6 +1307,20 @@ html.panel-resizing .chatbot-side-panel {
 .chatbot-divider {
   background: transparent;
   position: relative;
+}
+
+/* Widen the invisible grab target so dividers are easy to catch without
+   making the visible separator line thicker. The overlay sits above the
+   neighbouring panes while dragging, matching typical splitter behaviour. */
+.divider.resizable::before,
+.sidebar-divider.resizable::before,
+.proofread-divider::before,
+.chatbot-divider::before {
+  content: "";
+  position: absolute;
+  inset: 0 -4px;
+  z-index: 1;
+  cursor: col-resize;
 }
 
 .divider.resizable::after,
@@ -4931,6 +4955,13 @@ textarea {
   height: 100%;
   min-height: 0;
   overflow: auto;
+  /* Keep the scroll chain contained inside the card: wheel/touchpad
+     overscroll must not bleed into the surrounding layout. */
+  overscroll-behavior-y: contain;
+  /* Reserve a little breathing room when heading anchors jump into view. */
+  scroll-padding-top: 16px;
+  /* Avoid horizontal content jitter as the scrollbar appears/disappears. */
+  scrollbar-gutter: stable;
   border: 1px solid var(--border-soft);
   border-radius: 12px;
   background: var(--bg-document);

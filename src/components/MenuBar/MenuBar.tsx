@@ -153,7 +153,7 @@ graph TD
     about: {
       title: '关于 Zeditor',
       body: `
-**Zeditor v0.3.8**
+**Zeditor v0.4.2**
 
 一款现代化的 Markdown 编辑器
 
@@ -170,6 +170,11 @@ graph TD
 - 支持 OpenAI、DeepSeek、Anthropic、自定义 OpenAI 兼容服务
 - HTML / PDF / Word 导出
 - GitHub Release 自动检查更新
+
+**近期更新（v0.4.x）**
+- **v0.4.0**：品牌焕新，全新蓝色渐变 Z 图标与 GitHub 横幅；打磨云同步面板（WebDAV / S3）状态显示、滑动开关与历史版本打开
+- **v0.4.1**：优化资源管理器，目录层级缩进更清晰、时间线标题单行显示、一级目录可关闭、刷新保留展开内容
+- **v0.4.2**：优化分栏拖拽与编辑/预览滚动浏览体验；预览框链接改为系统浏览器打开
 
 **技术栈**
 Tauri 2.0 + React 18 + TypeScript + Monaco Editor + markdown-it

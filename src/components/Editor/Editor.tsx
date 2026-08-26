@@ -399,7 +399,10 @@ export function Editor({ className, style, onActiveLineChange, onActiveLineRevea
       scrollBeyondLastLine: false,
       stickyScroll: { enabled: false },
       ...EDITOR_OVERFLOW_OPTIONS,
-      smoothScrolling: false,
+      // Smooth reveal animation for line/position jumps. Scroll sync still
+      // drives the editor with ScrollType.Immediate, so the follow scrolling
+      // between editor and preview stays exact.
+      smoothScrolling: true,
       padding: { top: 24, bottom: 40 },
       quickSuggestions: false,
       suggestOnTriggerCharacters: false,

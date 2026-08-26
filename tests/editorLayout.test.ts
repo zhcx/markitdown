@@ -44,10 +44,11 @@ test('editor does not cover scrolled content with Monaco sticky headings', async
   assert.match(source, /stickyScroll:\s*\{\s*enabled:\s*false\s*\}/);
 });
 
-test('editor uses immediate scrolling so split-view synchronization stays responsive', async () => {
+test('editor reveals line jumps smoothly while split-view sync stays immediate', async () => {
   const source = await readFile(new URL('../src/components/Editor/Editor.tsx', import.meta.url), 'utf8');
 
-  assert.match(source, /smoothScrolling:\s*false/);
+  assert.match(source, /smoothScrolling:\s*true/);
+  assert.match(source, /editor\.setScrollTop\(top, monaco\.editor\.ScrollType\.Immediate\)/);
 });
 
 test('suppresses ambiguous Unicode warnings for multilingual documents', async () => {

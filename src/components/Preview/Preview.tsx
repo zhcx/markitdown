@@ -8,6 +8,7 @@ import { useAppStore } from '../../stores/appStore';
 import { sanitizeRenderedHtml } from '../../utils/safeHtml';
 import { findActiveSourceElement } from '../../utils/activeSourceLine';
 import { addHeadingAnchors, findLocalHeadingTarget } from '../../utils/headingAnchors';
+import { open } from '@tauri-apps/plugin-shell';
 
 interface PreviewProps {
   className?: string;
@@ -294,6 +295,28 @@ export function Preview({ className, style, onScrollContainerReady, onContentRen
         destination.scrollIntoView({ block: 'start' });
         const destinationLine = Number(destination.dataset.sourceLine);
         if (Number.isFinite(destinationLine) && destinationLine > 0) onSourceLineClick?.(destinationLine);
+        return;
+      }
+    }
+
+    // External links must open in the system browser. Letting the webview
+    // follow them would navigate the whole application away from the document.
+    const externalLink = clickedElement?.closest<HTMLAnchorElement>('a[href]');
+    if (externalLink) {
+      const rawHref = externalLink.getAttribute('href') || '';
+      if (rawHref && !rawHref.startsWith('#')) {
+        event.preventDefault();
+        let url: string;
+        try {
+          url = new URL(rawHref, window.location.href).href;
+        } catch {
+          url = rawHref;
+        }
+        if ('__TAURI_INTERNALS__' in window) {
+          void open(url).catch(() => window.open(url, '_blank', 'noopener,noreferrer'));
+        } else {
+          window.open(url, '_blank', 'noopener,noreferrer');
+        }
         return;
       }
     }

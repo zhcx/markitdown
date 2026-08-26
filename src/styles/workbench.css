@@ -1645,6 +1645,12 @@ body {
   background: transparent !important;
 }
 
+/* Keep the editor's scroll chain contained so overscrolling at the end of a
+   long document never nudges the surrounding workspace. */
+.monaco-editor .monaco-scrollable-element.editor-scrollable {
+  overscroll-behavior: contain;
+}
+
 .monaco-editor .decorationsOverviewRuler {
   display: none !important;
 }
