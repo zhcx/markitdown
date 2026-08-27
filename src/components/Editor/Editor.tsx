@@ -1,17 +1,23 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type * as monaco from 'monaco-editor/esm/vs/editor/editor.api.js';
+import 'monaco-editor/esm/nls.messages.zh-cn.js';
+import * as monaco from 'monaco-editor/esm/vs/editor/editor.api.js';
+import 'monaco-editor/esm/vs/basic-languages/markdown/markdown.contribution';
 import MarkdownIt from 'markdown-it';
+import EditorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker';
 import { invoke } from '@tauri-apps/api/core';
 import { useAppStore, type Settings } from '../../stores/appStore';
 import { useAIStore, type ProofreadResult } from '../../stores/aiStore';
 import type { EditorController, EditorDispatchSpec, EditorLine } from '../../types/editor';
-import { EDITOR_INPUT_OPTIONS, EDITOR_OVERFLOW_OPTIONS, EDITOR_UNICODE_HIGHLIGHT_OPTIONS } from '../../utils/editorLayout';
-import { filterSlashCommands, findSlashCommandTrigger, type SlashCommand, type SlashCommandAiAction } from '../../utils/slashCommands';
+import { EDITOR_OVERFLOW_OPTIONS, EDITOR_UNICODE_HIGHLIGHT_OPTIONS } from '../../utils/editorLayout';
+import { filterSlashCommands, findSlashCommandTrigger, type SlashCommand } from '../../utils/slashCommands';
 import { SlashCommandMenu, type SlashMenuAnchor } from './SlashCommandMenu';
-import { getMonacoApi, loadMonaco, type MonacoModule } from './monacoLoader';
 import { ImageOptionsModal, Toolbar } from '../Toolbar/Toolbar';
 import { normalizeLanguage, t } from '../../i18n';
 import { sanitizeRenderedHtml } from '../../utils/safeHtml';
+
+(self as typeof self & { MonacoEnvironment: { getWorker: () => Worker } }).MonacoEnvironment = {
+  getWorker: () => new EditorWorker(),
+};
 
 interface EditorProps {
   className?: string;
@@ -47,14 +53,6 @@ interface SelectionToolbarState {
   top: number;
   width: number;
   placement: 'above' | 'below';
-}
-
-/** 「/ 问答」「/ 写作」的补充说明输入弹层状态。 */
-interface SlashAiPromptState {
-  action: SlashCommandAiAction;
-  insertAt: number;
-  left: number;
-  top: number;
 }
 
 type ContextMenuIconName = 'sparkles' | 'translate' | 'copy' | 'copyAs' | 'paste' | 'text' | 'pdf' | 'document' | 'code' | 'image' | 'folder' | 'undo' | 'redo' | 'select';
@@ -103,7 +101,7 @@ function toLine(model: monaco.editor.ITextModel, lineNumber: number): EditorLine
   };
 }
 
-function createController(monacoApi: MonacoModule, editor: monaco.editor.IStandaloneCodeEditor, model: monaco.editor.ITextModel, root: HTMLElement): EditorController {
+function createController(editor: monaco.editor.IStandaloneCodeEditor, model: monaco.editor.ITextModel, root: HTMLElement): EditorController {
   const getSelection = () => {
     const selection = editor.getSelection();
     if (!selection) return { from: 0, to: 0, empty: true };
@@ -115,14 +113,14 @@ function createController(monacoApi: MonacoModule, editor: monaco.editor.IStanda
   const setSelection = (from: number, to = from) => {
     const start = offsetToPosition(model, from);
     const end = offsetToPosition(model, to);
-    editor.setSelection(new monacoApi.Selection(start.lineNumber, start.column, end.lineNumber, end.column));
+    editor.setSelection(new monaco.Selection(start.lineNumber, start.column, end.lineNumber, end.column));
   };
 
   const applyDispatch = (spec: EditorDispatchSpec) => {
     const change = spec?.changes;
     if (change && typeof change.from === 'number') {
       const text = change.insert ?? '';
-      editor.executeEdits('zeditor', [{ range: monacoApi.Range.fromPositions(offsetToPosition(model, change.from), offsetToPosition(model, change.to ?? change.from)), text, forceMoveMarkers: true }]);
+      editor.executeEdits('zeditor', [{ range: monaco.Range.fromPositions(offsetToPosition(model, change.from), offsetToPosition(model, change.to ?? change.from)), text, forceMoveMarkers: true }]);
     }
     const selected = spec?.selection?.main || spec?.selection;
     const anchor = selected?.anchor ?? selected?.from;
@@ -139,7 +137,7 @@ function createController(monacoApi: MonacoModule, editor: monaco.editor.IStanda
     getTopForLineNumber: (lineNumber: number) => editor.getTopForLineNumber(
       Math.max(1, Math.min(lineNumber, model.getLineCount())),
     ),
-    setScrollTop: (top: number) => editor.setScrollTop(top, monacoApi.editor.ScrollType.Immediate),
+    setScrollTop: (top: number) => editor.setScrollTop(top, monaco.editor.ScrollType.Immediate),
     onScroll: (listener: () => void) => {
       const disposable = editor.onDidScrollChange((event) => {
         if (event.scrollTopChanged || event.scrollHeightChanged) listener();
@@ -148,9 +146,9 @@ function createController(monacoApi: MonacoModule, editor: monaco.editor.IStanda
     },
     getValue: () => model.getValue(),
     getSelection,
-    getText: (from, to) => model.getValueInRange(monacoApi.Range.fromPositions(offsetToPosition(model, from), offsetToPosition(model, to))),
+    getText: (from, to) => model.getValueInRange(monaco.Range.fromPositions(offsetToPosition(model, from), offsetToPosition(model, to))),
     replaceRange: (from, to, text, selection) => {
-      editor.executeEdits('zeditor', [{ range: monacoApi.Range.fromPositions(offsetToPosition(model, from), offsetToPosition(model, to)), text, forceMoveMarkers: true }]);
+      editor.executeEdits('zeditor', [{ range: monaco.Range.fromPositions(offsetToPosition(model, from), offsetToPosition(model, to)), text, forceMoveMarkers: true }]);
       if (selection) setSelection(selection.from, selection.to);
     },
     setSelection,
@@ -199,94 +197,6 @@ async function fileAsDataUrl(file: File) {
   });
 }
 
-// 执行「/ 菜单」里的动作型 AI 命令。trigger 文本已由调用方移除，
-// insertAt 即原斜杠位置；AI 未启用时各 store 动作自身会安全返回。
-// 问答/写作需要调用方先通过输入弹层补充 instruction。
-async function runSlashAiAction(
-  action: SlashCommandAiAction,
-  controller: EditorController,
-  insertAt: number,
-  instruction?: string,
-) {
-  const aiStore = useAIStore.getState();
-  const selection = controller.getSelection();
-  const inserted = (text: string) => {
-    if (!text) return;
-    controller.replaceRange(insertAt, insertAt, text, {
-      from: insertAt + text.length,
-      to: insertAt + text.length,
-    });
-  };
-  // 无选区时的默认来源：光标前一小段文字，控制请求体积。
-  const contextualSource = () => {
-    const from = Math.max(0, selection.to - AUTO_COMPANION_CONTEXT_LIMIT * 3);
-    return controller.getText(from, selection.to);
-  };
-  const actionSource = () =>
-    selection.empty ? contextualSource() : controller.getText(selection.from, selection.to);
-
-  switch (action) {
-    case 'continue': {
-      const before = contextualSource();
-      if (!before.trim()) return;
-      const continuation = await aiStore.continueWriting(before);
-      inserted(continuation ? `\n\n${continuation}` : '');
-      break;
-    }
-    case 'polish': {
-      // 润色的对象必须是明确的选区，避免静默改写整篇文档。
-      if (selection.empty) {
-        aiStore.setStatus('error', '请先选中要润色的内容');
-        return;
-      }
-      const source = controller.getText(selection.from, selection.to);
-      const polished = await aiStore.rewriteSelection(source);
-      if (polished && polished !== source) {
-        controller.replaceRange(selection.from, selection.to, polished, {
-          from: selection.from,
-          to: selection.from + polished.length,
-        });
-      }
-      break;
-    }
-    case 'translate': {
-      const source = actionSource();
-      if (!source.trim()) return;
-      const result = await aiStore.translateText(source);
-      const separatorIndex = result.indexOf('|||');
-      if (separatorIndex < 0) return;
-      const translated = result.slice(separatorIndex + 3).trim();
-      inserted(translated ? `\n\n> ${source.trim()}\n\n**译文**：${translated}` : '');
-      break;
-    }
-    case 'summarize': {
-      const source = actionSource();
-      if (!source.trim()) return;
-      const summary = await aiStore.summarizeText(source);
-      inserted(summary ? `\n\n## 要点总结\n\n${summary.trim()}` : '');
-      break;
-    }
-    case 'ask': {
-      const question = instruction?.trim();
-      if (!question) return;
-      const answer = await aiStore.chatForEditor(question, actionSource());
-      inserted(answer ? `\n\n**问**：${question}\n\n**答**：${answer}` : '');
-      break;
-    }
-    case 'write': {
-      const requirement = instruction?.trim();
-      if (!requirement) return;
-      const drafted = await aiStore.chatForEditor(
-        `请以 Markdown 格式完成以下写作要求，直接输出正文，不要解释：\n${requirement}`,
-        actionSource(),
-      );
-      inserted(drafted ? `\n\n${drafted}` : '');
-      break;
-    }
-  }
-  controller.focus();
-}
-
 export function Editor({ className, style, onActiveLineChange, onActiveLineReveal }: EditorProps) {
   const editorRef = useRef<HTMLDivElement>(null);
   const monacoRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
@@ -300,12 +210,10 @@ export function Editor({ className, style, onActiveLineChange, onActiveLineRevea
   const slashSelectedIndexRef = useRef(0);
   const [slashMenu, setSlashMenu] = useState<SlashMenuState | null>(null);
   const [slashSelectedIndex, setSlashSelectedIndex] = useState(0);
-  const [slashAiPrompt, setSlashAiPrompt] = useState<SlashAiPromptState | null>(null);
   const [contextMenu, setContextMenu] = useState<EditorContextMenuState | null>(null);
   const [copyAsOpen, setCopyAsOpen] = useState(false);
   const [showContextImageModal, setShowContextImageModal] = useState(false);
   const [selectionToolbar, setSelectionToolbar] = useState<SelectionToolbarState | null>(null);
-  const [monacoReady, setMonacoReady] = useState(false);
   const { content, currentFile, setContent, settings, setEditorView } = useAppStore();
   const { proofreadResults, rewriteSelection, translateText, setTranslationVisible, setStatus } = useAIStore();
   const initialContentRef = useRef(content);
@@ -450,65 +358,28 @@ export function Editor({ className, style, onActiveLineChange, onActiveLineRevea
     setSlashSelectedIndex(index);
   }, []);
 
-  // 动作型命令的统一入口：移除 /触发词后，普通动作立即执行，
-  // 问答/写作先弹出补充说明输入框（锚定在原光标位置）。
-  const launchSlashAiCommand = useCallback((command: SlashCommand, menu: { from: number; to: number }) => {
-    const controller = controllerRef.current;
-    if (!controller || !command.ai) return;
-    controller.replaceRange(menu.from, menu.to, '', { from: menu.from, to: menu.from });
-
-    if (command.needsPrompt) {
-      const coords = controller.coordsAtPos(menu.from);
-      setSlashAiPrompt({
-        action: command.ai,
-        insertAt: menu.from,
-        left: Math.max(12, Math.min(coords?.left ?? 200, window.innerWidth - 400)),
-        top: Math.min((coords?.bottom ?? 240) + 8, window.innerHeight - 160),
-      });
-      return;
-    }
-    void runSlashAiAction(command.ai, controller, menu.from);
-  }, []);
-
   const applySlashCommand = useCallback((command: SlashCommand) => {
     const menu = slashMenuRef.current;
     const controller = controllerRef.current;
     if (!menu || !controller) return;
 
+    const { text, selectionStart = text.length, selectionEnd = selectionStart } = command.insertion;
     slashMenuRef.current = null;
     setSlashMenu(null);
-
-    if (command.ai) {
-      launchSlashAiCommand(command, menu);
-      return;
-    }
-
-    const { text, selectionStart = text.length, selectionEnd = selectionStart } = command.insertion;
     controller.replaceRange(menu.from, menu.to, text, {
       from: menu.from + selectionStart,
       to: menu.from + selectionEnd,
     });
     controller.focus();
-  }, [launchSlashAiCommand]);
-
-  // Monaco 内核按需加载：应用外壳先完成首帧渲染，内核就绪后再初始化编辑器，
-  // 避免启动关键路径被 ~3.5 MB 的编辑器代码阻塞。
-  useEffect(() => {
-    let cancelled = false;
-    void loadMonaco().then(() => {
-      if (!cancelled) setMonacoReady(true);
-    });
-    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
     const root = editorRef.current;
-    if (!monacoReady || !root || monacoRef.current) return;
-    const monacoApi = getMonacoApi();
+    if (!root || monacoRef.current) return;
 
     const isDark = (document.documentElement.dataset.theme || '').endsWith('-dark');
-    const model = monacoApi.editor.createModel(initialContentRef.current, 'markdown');
-    const editor = monacoApi.editor.create(root, {
+    const model = monaco.editor.createModel(initialContentRef.current, 'markdown');
+    const editor = monaco.editor.create(root, {
       model,
       theme: isDark ? 'vs-dark' : 'vs',
       automaticLayout: true,
@@ -528,28 +399,15 @@ export function Editor({ className, style, onActiveLineChange, onActiveLineRevea
       scrollBeyondLastLine: false,
       stickyScroll: { enabled: false },
       ...EDITOR_OVERFLOW_OPTIONS,
-      ...EDITOR_INPUT_OPTIONS,
-      // 关闭平滑滚动：开启时 Monaco 会把输入过程中的光标自动定位
-      // （光标到底/换行后的 reveal）做成多帧滚动动画，正在输入的那一行
-      // 会随动画“上跳一行”，干扰连续输入。分栏同步走 ScrollType.Immediate
-      // 不受影响，此处为即时滚动以保证输入稳定。
       smoothScrolling: false,
       padding: { top: 24, bottom: 40 },
       quickSuggestions: false,
       suggestOnTriggerCharacters: false,
-      // 显式关闭无障碍支持：Monaco 会把光标所在行镜像到隐藏辅助容器，
-      // 该容器一旦定位偏差就会出现“整行文字浮现在顶部”的视觉错乱；
-      // 关闭后镜像始终为空，且省去每次按键的无障碍同步开销。
-      accessibilitySupport: 'off',
+      accessibilitySupport: 'auto',
       contextmenu: false,
-      // 关闭光标平滑移动动画：该动画会让输入时文字在光标前进方向上出现
-      // 拖影/瞬移到文档顶部空白处的渲染错位（文字“跳第一行”）；
-      // 光标闪烁保持平滑便于定位，移动本身改为瞬移保证所见即所输。
-      cursorBlinking: 'smooth',
-      cursorSmoothCaretAnimation: 'off',
       unicodeHighlight: EDITOR_UNICODE_HIGHLIGHT_OPTIONS,
     });
-    const controller = createController(monacoApi, editor, model, root);
+    const controller = createController(editor, model, root);
     monacoRef.current = editor;
     modelRef.current = model;
     controllerRef.current = controller;
@@ -742,24 +600,20 @@ export function Editor({ className, style, onActiveLineChange, onActiveLineRevea
         event.preventDefault();
         event.stopPropagation();
         const command = commands[Math.min(slashSelectedIndexRef.current, commands.length - 1)];
+        const { text, selectionStart = text.length, selectionEnd = selectionStart } = command.insertion;
         slashMenuRef.current = null;
         setSlashMenu(null);
-        if (command.ai) {
-          launchSlashAiCommand(command, menu);
-        } else {
-          const { text, selectionStart = text.length, selectionEnd = selectionStart } = command.insertion;
-          controller.replaceRange(menu.from, menu.to, text, {
-            from: menu.from + selectionStart,
-            to: menu.from + selectionEnd,
-          });
-        }
+        controller.replaceRange(menu.from, menu.to, text, {
+          from: menu.from + selectionStart,
+          to: menu.from + selectionEnd,
+        });
         controller.focus();
       }
     });
 
     const handleTheme = (event: Event) => {
       const theme = (event as CustomEvent<string>).detail;
-      monacoApi.editor.setTheme(theme.endsWith('-dark') ? 'vs-dark' : 'vs');
+      monaco.editor.setTheme(theme.endsWith('-dark') ? 'vs-dark' : 'vs');
     };
     window.addEventListener('zeditor-theme-change', handleTheme);
 
@@ -825,7 +679,7 @@ export function Editor({ className, style, onActiveLineChange, onActiveLineRevea
       slashMenuRef.current = null;
       setEditorView(null);
     };
-  }, [launchSlashAiCommand, monacoReady, onActiveLineChange, onActiveLineReveal, setContent, setEditorView]);
+  }, [onActiveLineChange, onActiveLineReveal, setContent, setEditorView]);
 
   useEffect(() => {
     const model = modelRef.current;
@@ -838,7 +692,11 @@ export function Editor({ className, style, onActiveLineChange, onActiveLineRevea
     monacoRef.current?.updateOptions({
       fontSize: settings.appearance.font_size,
       lineHeight: Math.round(settings.appearance.font_size * settings.appearance.line_height),
-      fontFamily: settings.appearance.font_family,
+      // 与创建时一致，使用主题的 --font-content（YaHei 全角中文链路），
+      // 而非 settings.appearance.font_family：用户可能选了中文等宽字体
+      // （如 Maple Mono CN），Monaco 折行测量对这类字体用半角字宽换算
+      // 全角折行点，导致行文字溢出编辑框。预览仍用 settings 字体保留个性化。
+      fontFamily: 'var(--font-content)',
     });
   }, [settings.appearance.font_family, settings.appearance.font_size, settings.appearance.line_height]);
 
@@ -859,11 +717,10 @@ export function Editor({ className, style, onActiveLineChange, onActiveLineRevea
     const editor = monacoRef.current;
     const model = modelRef.current;
     if (!editor || !model) return;
-    const monacoApi = getMonacoApi();
     const decorations: monaco.editor.IModelDeltaDecoration[] = proofreadResults
       .filter((result: ProofreadResult) => result.from >= 0 && result.to > result.from && result.to <= model.getValueLength())
       .map((result: ProofreadResult) => ({
-        range: monacoApi.Range.fromPositions(offsetToPosition(model, result.from), offsetToPosition(model, result.to)),
+        range: monaco.Range.fromPositions(offsetToPosition(model, result.from), offsetToPosition(model, result.to)),
         options: { inlineClassName: 'monaco-proofread-error', hoverMessage: { value: result.explanation || result.suggestion } },
       }));
     decorationIdsRef.current = editor.deltaDecorations(decorationIdsRef.current, decorations);
@@ -872,7 +729,6 @@ export function Editor({ className, style, onActiveLineChange, onActiveLineRevea
   return (
     <div className={`editor-container monaco-editor-container ${className || ''}`} style={style}>
       <div className="editor-document-card monaco-document-card">
-        {!monacoReady && <div className="editor-loading-placeholder">正在加载编辑器…</div>}
         <div ref={editorRef} className="editor-content monaco-host" />
       </div>
       {selectionToolbar && !settings.editor.pin_toolbar && (
@@ -894,23 +750,6 @@ export function Editor({ className, style, onActiveLineChange, onActiveLineRevea
           onSelect={applySlashCommand}
           onSelectedIndexChange={selectSlashIndex}
           onClose={closeSlashMenu}
-        />
-      )}
-      {slashAiPrompt && (
-        <SlashAiPromptBox
-          anchor={{ left: slashAiPrompt.left, top: slashAiPrompt.top }}
-          isQuestion={slashAiPrompt.action === 'ask'}
-          onCancel={() => setSlashAiPrompt(null)}
-          onSubmit={(text) => {
-            const spec = slashAiPrompt;
-            const controller = controllerRef.current;
-            setSlashAiPrompt(null);
-            if (!spec || !controller || !text.trim()) {
-              controller?.focus();
-              return;
-            }
-            void runSlashAiAction(spec.action, controller, spec.insertAt, text);
-          }}
         />
       )}
       {contextMenu && (
@@ -975,61 +814,6 @@ export function Editor({ className, style, onActiveLineChange, onActiveLineRevea
         </div>
       )}
       {showContextImageModal && <ImageOptionsModal onClose={() => setShowContextImageModal(false)} onInsert={insertContextImage} />}
-    </div>
-  );
-}
-
-/** 「/ 问答」「/ 写作」的补充说明输入框，锚定在原 / 触发位置附近。 */
-function SlashAiPromptBox({
-  anchor,
-  isQuestion,
-  onSubmit,
-  onCancel,
-}: {
-  anchor: { left: number; top: number };
-  isQuestion: boolean;
-  onSubmit: (text: string) => void;
-  onCancel: () => void;
-}) {
-  const [value, setValue] = useState('');
-  const boxRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    boxRef.current?.querySelector('textarea')?.focus();
-  }, []);
-
-  const submit = () => {
-    if (!value.trim()) return;
-    onSubmit(value);
-  };
-
-  return (
-    <div ref={boxRef} className="slash-ai-prompt" style={{ left: anchor.left, top: anchor.top }}>
-      <textarea
-        rows={3}
-        value={value}
-        placeholder={isQuestion
-          ? '输入你的问题…（Enter 发送 · Shift+Enter 换行 · Esc 取消）'
-          : '描述写作要求，如“写一段产品发布公告”…（Enter 发送 · Shift+Enter 换行 · Esc 取消）'}
-        onChange={(event) => setValue(event.target.value)}
-        onKeyDown={(event) => {
-          // 拦截冒泡：Monaco 与全局快捷键不应响应弹层中的按键。
-          event.stopPropagation();
-          if (event.key === 'Escape') {
-            event.preventDefault();
-            onCancel();
-          } else if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
-            event.preventDefault();
-            submit();
-          }
-        }}
-      />
-      <div className="slash-ai-prompt-actions">
-        <button type="button" onClick={onCancel}>取消</button>
-        <button type="button" className="primary" disabled={!value.trim()} onClick={submit}>
-          {isQuestion ? '提问' : '生成'}
-        </button>
-      </div>
     </div>
   );
 }

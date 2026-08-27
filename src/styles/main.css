@@ -3973,31 +3973,17 @@ textarea {
   background: var(--bg-document) !important;
 }
 
-/* 输入承载层兜底：Monaco 的隐藏输入层（传统 textarea、IME textarea、
-   EditContext 辅助 div）内部持有光标所在行的完整文本。IME 组合期间
-   （.ime-input 态）Monaco 会显式把该层切换为前景色可见，整行文字便
-   叠加绘制在编辑器顶部空白处，组合结束才消失。
-   此处双保险：color/caret 透明（Monaco 原生隐藏方式，保留元素几何，
-   确保输入法候选窗仍锚定在光标处）+ opacity 归零 + 禁用指针事件，
-   覆盖所有输入路径与组合状态，并隐藏其内部文本选区高亮。 */
+/* 输入承载层兜底：Monaco 的隐藏输入层内部持有光标所在行的完整文本。
+   v0.4.0 没有显式兜底也正常，因为 EditContext 路径默认隐藏。
+   此处仅保留最小兜底（color 透明），不破坏 Monaco 对元素几何/可见性
+   的原生管理——避免 opacity:0 / pointer-events:none 等强干预
+   干扰系统输入法对组合窗锚点坐标的探测。 */
 .monaco-host textarea.inputarea,
 .monaco-host textarea.inputarea.ime-input,
 .monaco-host .ime-text-area,
 .monaco-host .native-edit-context {
   color: transparent !important;
   caret-color: transparent !important;
-  background: transparent !important;
-  border: 0 !important;
-  outline: none !important;
-  box-shadow: none !important;
-  text-shadow: none !important;
-  opacity: 0 !important;
-  pointer-events: none !important;
-}
-.monaco-host textarea.inputarea::selection,
-.monaco-host .native-edit-context::selection {
-  color: transparent !important;
-  background: transparent !important;
 }
 
 /* Keep the focused line easy to locate without restoring Monaco's dark border.

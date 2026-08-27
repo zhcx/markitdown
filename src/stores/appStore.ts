@@ -44,6 +44,14 @@ export interface Settings {
     /** Keep the command bar visible above the editor instead of selection-only. */
     pin_toolbar?: boolean;
     favorite_emojis: string[];
+    /**
+     * Monaco 输入引擎路径（以 v0.4.0 行为为基准）：
+     * - 'editContext'（默认）：原生 EditContext（v0.4.0 的输入路径，
+     *   WebView2 上系统输入法组合窗锚定正常）。
+     * - 'textarea'：传统 textarea 输入层，作为兼容备选。
+     * 两条路径的输入承载层均有 main.css 可见性兜底。
+     */
+    input_engine?: 'textarea' | 'editContext';
   };
   image_hosting: {
     active_service: string;
@@ -294,6 +302,7 @@ const defaultSettings: Settings = {
     auto_complete: true,
     pin_toolbar: false,
     favorite_emojis: ['😀', '👍', '❤️', '🎉', '✅', '⚠️', '💡', '🚀'],
+    input_engine: 'editContext',
   },
   image_hosting: {
     active_service: 'local',

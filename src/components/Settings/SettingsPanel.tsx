@@ -469,6 +469,24 @@ export function SettingsPanel() {
                   }
                 />
               </div>
+              <div className="setting-item">
+                <label>
+                  输入法引擎
+                  <small>默认与 v0.4.0 一致的原生 EditContext 路径；仅当输入法组合异常时再尝试切换为传统输入层</small>
+                </label>
+                <select
+                  value={localSettings.editor.input_engine || 'editContext'}
+                  onChange={(e) =>
+                    setLocalSettings({
+                      ...localSettings,
+                      editor: { ...localSettings.editor, input_engine: e.target.value as 'textarea' | 'editContext' },
+                    })
+                  }
+                >
+                  <option value="editContext">原生 EditContext（默认，与 v0.4.0 一致）</option>
+                  <option value="textarea">传统输入层（兼容备选）</option>
+                </select>
+              </div>
               <SettingToggle
                 label="启用拼写检查"
                 description="在编辑时标记可能存在的拼写问题"
