@@ -17,8 +17,8 @@ use std::{
     path::{Path, PathBuf},
     process::Stdio,
     sync::{
-        atomic::{AtomicU64, Ordering},
-        Arc,
+        atomic::{AtomicBool, AtomicU64, Ordering},
+        Arc, OnceLock,
     },
     time::Duration,
 };
@@ -94,57 +94,50 @@ impl SessionRuntime {
 pub struct AgentSupervisor {
     storage_root: PathBuf,
     sessions: Mutex<HashMap<String, Arc<SessionRuntime>>>,
+    /// 会话目录只允许恢复扫描一次；串行化保证并发命令不会读到半满的表。
+    load_guard: Mutex<()>,
+    loaded: AtomicBool,
 }
 
 impl AgentSupervisor {
     pub fn new(storage_root: PathBuf) -> Self {
+        // 启动关键路径只创建目录。会话文件的扫描与解析开销随历史增长，
+        // 改为首次访问时（打开 Agent 面板）在阻塞线程池中执行，避免阻塞
+        // Tauri 主事件循环和窗口首帧。
         let _ = fs::create_dir_all(storage_root.join("worktrees"));
         let _ = fs::create_dir_all(storage_root.join("permissions"));
-        let mut sessions = HashMap::new();
-        if let Ok(entries) = fs::read_dir(storage_root.join("sessions")) {
-            for entry in entries.flatten() {
-                let path = entry.path().join("session.json");
-                let Ok(data) = fs::read_to_string(path) else {
-                    continue;
-                };
-                let Ok(mut session) = serde_json::from_str::<AgentSession>(&data) else {
-                    continue;
-                };
-                if matches!(
-                    session.status,
-                    AgentSessionStatus::Running | AgentSessionStatus::WaitingApproval
-                ) {
-                    session.status = AgentSessionStatus::Interrupted;
-                }
-                if session.read_only
-                    && session.worktree_path.as_deref() == Some(&session.workspace_root)
-                {
-                    session.read_only = false;
-                    session.direct_write = true;
-                }
-                // Approval bypass is deliberately never restored across app restarts.
-                session.approval_mode = AgentApprovalMode::Tiered;
-                let permission_dir = storage_root.join("permissions").join(&session.id);
-                let runtime = Arc::new(SessionRuntime::new(session.clone(), permission_dir));
-                if let Ok(events) = load_events(&storage_root, &session.id) {
-                    runtime.sequence.store(
-                        events.last().map(|item| item.sequence).unwrap_or(0),
-                        Ordering::Relaxed,
-                    );
-                    if let Ok(mut guard) = runtime.events.try_lock() {
-                        *guard = events;
-                    }
-                }
-                sessions.insert(session.id.clone(), runtime);
-            }
-        }
         Self {
             storage_root,
-            sessions: Mutex::new(sessions),
+            sessions: Mutex::new(HashMap::new()),
+            load_guard: Mutex::new(()),
+            loaded: AtomicBool::new(false),
         }
     }
 
+    async fn ensure_loaded(&self) {
+        if self.loaded.load(Ordering::Acquire) {
+            return;
+        }
+        let _guard = self.load_guard.lock().await;
+        if self.loaded.load(Ordering::Acquire) {
+            return;
+        }
+        let storage_root = self.storage_root.clone();
+        let restored = tokio::task::spawn_blocking(move || restore_sessions(&storage_root))
+            .await
+            .unwrap_or_default();
+        {
+            let mut sessions = self.sessions.lock().await;
+            for runtime in restored {
+                let id = runtime.session.lock().await.id.clone();
+                sessions.insert(id, runtime);
+            }
+        }
+        self.loaded.store(true, Ordering::Release);
+    }
+
     async fn runtime(&self, session_id: &str) -> Result<Arc<SessionRuntime>, String> {
+        self.ensure_loaded().await;
         self.sessions
             .lock()
             .await
@@ -165,17 +158,63 @@ async fn persist_runtime(storage_root: &Path, runtime: &SessionRuntime) -> Resul
     let events = runtime.events.lock().await.clone();
     let dir = storage_root.join("sessions").join(&session.id);
     fs::create_dir_all(&dir).map_err(|error| error.to_string())?;
-    fs::write(
-        dir.join("session.json"),
+    let payload = (
         serde_json::to_vec_pretty(&persisted_session).map_err(|error| error.to_string())?,
-    )
-    .map_err(|error| error.to_string())?;
-    fs::write(
-        dir.join("events.json"),
         serde_json::to_vec(&events).map_err(|error| error.to_string())?,
-    )
-    .map_err(|error| error.to_string())?;
-    Ok(())
+    );
+    // 文件写入交给阻塞线程池，避免大事件文件占用 tokio worker。
+    tokio::task::spawn_blocking(move || -> Result<(), String> {
+        fs::write(dir.join("session.json"), &payload.0).map_err(|error| error.to_string())?;
+        fs::write(dir.join("events.json"), &payload.1).map_err(|error| error.to_string())?;
+        Ok(())
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+/// 从磁盘恢复全部持久化会话。只在 Supervisor 首次被访问时调用一次，
+/// 且运行在阻塞线程池中——启动阶段绝不执行这里的任何 I/O。
+fn restore_sessions(storage_root: &Path) -> Vec<Arc<SessionRuntime>> {
+    let mut restored = Vec::new();
+    let Ok(entries) = fs::read_dir(storage_root.join("sessions")) else {
+        return restored;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path().join("session.json");
+        let Ok(data) = fs::read_to_string(path) else {
+            continue;
+        };
+        let Ok(mut session) = serde_json::from_str::<AgentSession>(&data) else {
+            continue;
+        };
+        if matches!(
+            session.status,
+            AgentSessionStatus::Running | AgentSessionStatus::WaitingApproval
+        ) {
+            session.status = AgentSessionStatus::Interrupted;
+        }
+        if session.read_only
+            && session.worktree_path.as_deref() == Some(&session.workspace_root)
+        {
+            session.read_only = false;
+            session.direct_write = true;
+        }
+        // Approval bypass is deliberately never restored across app restarts.
+        session.approval_mode = AgentApprovalMode::Tiered;
+        let permission_dir = storage_root.join("permissions").join(&session.id);
+        let runtime = Arc::new(SessionRuntime::new(session.clone(), permission_dir));
+        if let Ok(events) = load_events(storage_root, &session.id) {
+            runtime.sequence.store(
+                events.last().map(|item| item.sequence).unwrap_or(0),
+                Ordering::Relaxed,
+            );
+            if let Ok(mut guard) = runtime.events.try_lock() {
+                *guard = events;
+            }
+        }
+        restored.push(runtime);
+    }
+    restored
 }
 
 fn load_events(storage_root: &Path, session_id: &str) -> Result<Vec<AgentEvent>, String> {
@@ -192,6 +231,18 @@ fn load_events(storage_root: &Path, session_id: &str) -> Result<Vec<AgentEvent>,
 
 fn now() -> String {
     chrono::Utc::now().to_rfc3339()
+}
+
+/// 从首条提问生成会话标题：压平空白后按字符截断（中文按字计），
+/// 超出部分以省略号结尾。前端在标题为空时自行回退到 backend+时间。
+fn derive_session_title(prompt: &str) -> String {
+    const MAX_TITLE_CHARS: usize = 24;
+    let flattened = prompt.split_whitespace().collect::<Vec<_>>().join(" ");
+    let mut truncated: String = flattened.chars().take(MAX_TITLE_CHARS).collect();
+    if flattened.chars().count() > MAX_TITLE_CHARS {
+        truncated.push('…');
+    }
+    truncated
 }
 
 fn validate_context_paths(root: &Path, paths: &[String]) -> Result<Vec<PathBuf>, String> {
@@ -254,6 +305,37 @@ fn visible_agent_stderr(backend: AgentBackendId, line: &str) -> Option<String> {
 
 fn discover_executable(name: &str) -> Option<PathBuf> {
     process::discover_executable(name)
+}
+
+// 版本探测与能力探测各要启动一个子进程（node 类 CLI 冷启动约 0.5–3 s），
+// 此前每条消息都重复执行，是「Agent 反应慢」的主要固定开销。CLI 二进制
+// 只在升级时变化，因此以 (路径, mtime 秒) 为键缓存通过结果。
+static PROBE_CACHE: OnceLock<std::sync::Mutex<HashMap<(PathBuf, u64), ()>>> = OnceLock::new();
+
+fn file_mtime_secs(path: &Path) -> u64 {
+    fs::metadata(path)
+        .and_then(|meta| meta.modified())
+        .ok()
+        .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|duration| duration.as_secs())
+        .unwrap_or(0)
+}
+
+fn ensure_backend_probed(executable: &Path, backend: AgentBackendId) -> Result<(), String> {
+    let cache = PROBE_CACHE.get_or_init(|| std::sync::Mutex::new(HashMap::new()));
+    let key = (executable.to_path_buf(), file_mtime_secs(executable));
+    if let Ok(guard) = cache.lock() {
+        if guard.contains_key(&key) {
+            return Ok(());
+        }
+    }
+    executable_version(executable)
+        .map_err(|error| format!("{} 不可用：{error}", backend.label()))?;
+    probe_capabilities(executable, backend)?;
+    if let Ok(mut guard) = cache.lock() {
+        guard.insert(key, ());
+    }
+    Ok(())
 }
 
 fn executable_version(path: &Path) -> Result<String, String> {
@@ -363,6 +445,7 @@ pub async fn agent_list_models(
 pub async fn agent_list_sessions(
     supervisor: State<'_, AgentSupervisor>,
 ) -> Result<Vec<AgentSession>, String> {
+    supervisor.ensure_loaded().await;
     let runtimes: Vec<_> = supervisor.sessions.lock().await.values().cloned().collect();
     let mut sessions = Vec::with_capacity(runtimes.len());
     for runtime in runtimes {
@@ -413,11 +496,18 @@ pub async fn agent_start_turn(
         .or_else(|| discover_executable(request.backend.executable_name()))
         .ok_or_else(|| format!("未找到 {}", request.backend.label()))?;
     let executable = process::resolve_executable(executable)?;
-    executable_version(&executable)
-        .map_err(|error| format!("{} 不可用：{error}", request.backend.label()))?;
-    probe_capabilities(&executable, request.backend)?;
+    // 子进程探测放入阻塞线程池并按 mtime 缓存（见 ensure_backend_probed），
+    // 首条消息探测一次，后续消息零开销。
+    let probe_backend = request.backend;
+    let probe_executable = executable.clone();
+    tokio::task::spawn_blocking(move || {
+        ensure_backend_probed(&probe_executable, probe_backend)
+    })
+    .await
+    .map_err(|error| format!("{} 探测失败：{error}", request.backend.label()))??;
 
     // One running turn per workspace, regardless of backend.
+    supervisor.ensure_loaded().await;
     let existing: Vec<_> = supervisor.sessions.lock().await.values().cloned().collect();
     for runtime in existing {
         let item = runtime.session.lock().await;
@@ -459,6 +549,7 @@ pub async fn agent_start_turn(
             worktree_path: Some(worktree.to_string_lossy().into_owned()),
             backend_session_id: None,
             status: AgentSessionStatus::Idle,
+            title: None,
             approval_mode: request.approval_mode,
             created_at: timestamp.clone(),
             updated_at: timestamp,
@@ -483,6 +574,10 @@ pub async fn agent_start_turn(
         }
         if session.workspace_root != root.to_string_lossy() {
             return Err("恢复会话时不能切换工作区".into());
+        }
+        // 会话标题取首条提问自动生成；已有标题的会话不再改名。
+        if session.title.as_deref().map(str::trim).unwrap_or("").is_empty() {
+            session.title = Some(derive_session_title(&request.prompt));
         }
         session.approval_mode = request.approval_mode;
         session.status = AgentSessionStatus::Running;
@@ -1637,6 +1732,17 @@ mod tests {
     }
 
     #[test]
+    fn session_titles_flatten_whitespace_and_truncate_by_characters() {
+        assert_eq!(derive_session_title("  修复   登录\n页面的换行  "), "修复 登录 页面的换行");
+        let long = derive_session_title("a".repeat(60).as_str());
+        assert_eq!(long.chars().count(), 25); // 24 字符 + 省略号
+        assert!(long.ends_with('…'));
+        // 中文按字符计数而非字节
+        let chinese = derive_session_title(&"汉".repeat(30));
+        assert_eq!(chinese.chars().count(), 25);
+    }
+
+    #[test]
     fn hard_boundaries_block_push_and_external_cwd() {
         let session = AgentSession {
             id: "s".into(),
@@ -1645,6 +1751,7 @@ mod tests {
             worktree_path: Some(std::env::temp_dir().to_string_lossy().into_owned()),
             backend_session_id: None,
             status: AgentSessionStatus::Idle,
+            title: None,
             approval_mode: AgentApprovalMode::AllowAllSession,
             created_at: now(),
             updated_at: now(),
@@ -1802,6 +1909,7 @@ mod tests {
             worktree_path: None,
             backend_session_id: None,
             status: AgentSessionStatus::Completed,
+            title: None,
             approval_mode: AgentApprovalMode::AllowAllSession,
             created_at: now(),
             updated_at: now(),

@@ -54,22 +54,36 @@ export function UiLanguageBridge() {
     const root = document.getElementById('root');
     if (!root) return;
 
-    let applying = false;
-    const apply = (node: Node) => {
-      if (applying) return;
-      applying = true;
-      observer.disconnect();
-      localizeTree(node, language);
+    // React 首次挂载会连续产生大量 DOM 变更。逐条同步处理时，每条变更都要
+    // 走一遍断开/重连观察器 + 子树遍历；这里改为微任务批量处理：同一轮变更
+    // 汇总到待处理集合，每个子树只遍历一次（localizeTree 依赖 WeakMap 记录
+    // 原文，重复访问同一节点是幂等的）。
+    const pendingRoots = new Set<Node>();
+    let scheduled = false;
+    const observe = () => {
       observer.observe(root, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: [...LOCALIZED_ATTRIBUTES] });
-      applying = false;
+    };
+    const flush = () => {
+      scheduled = false;
+      observer.disconnect();
+      for (const node of pendingRoots) localizeTree(node, language);
+      pendingRoots.clear();
+      observe();
+    };
+    const schedule = (node: Node) => {
+      pendingRoots.add(node);
+      if (scheduled) return;
+      scheduled = true;
+      queueMicrotask(flush);
     };
     const observer = new MutationObserver((mutations) => {
       for (const mutation of mutations) {
-        if (mutation.type === 'childList') mutation.addedNodes.forEach(apply);
-        else apply(mutation.target);
+        if (mutation.type === 'childList') mutation.addedNodes.forEach(schedule);
+        else schedule(mutation.target);
       }
     });
-    apply(root);
+    localizeTree(root, language);
+    observe();
     return () => observer.disconnect();
   }, [language]);
 

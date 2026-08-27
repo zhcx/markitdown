@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { SlashCommand } from '../../utils/slashCommands';
 
 export interface SlashMenuAnchor {
@@ -79,27 +79,31 @@ export function SlashCommandMenu({
       </div>
       <div className="slash-command-list">
         {commands.length > 0 ? commands.map((command, index) => (
-          <button
-            type="button"
-            id={`slash-command-${command.id}`}
-            key={command.id}
-            role="option"
-            aria-selected={index === selectedIndex}
-            data-command-index={index}
-            className={`slash-command-item${index === selectedIndex ? ' selected' : ''}`}
-            onMouseMove={() => onSelectedIndexChange(index)}
-            onMouseDown={(event) => {
-              event.preventDefault();
-              onSelect(command);
-            }}
-          >
+          <Fragment key={command.id}>
+            {command.dividerBefore && index > 0 && (
+              <div className="slash-command-divider" role="separator" />
+            )}
+            <button
+              type="button"
+              id={`slash-command-${command.id}`}
+              role="option"
+              aria-selected={index === selectedIndex}
+              data-command-index={index}
+              className={`slash-command-item${index === selectedIndex ? ' selected' : ''}`}
+              onMouseMove={() => onSelectedIndexChange(index)}
+              onMouseDown={(event) => {
+                event.preventDefault();
+                onSelect(command);
+              }}
+            >
             <span className="slash-command-icon" aria-hidden="true">{command.icon}</span>
             <span className="slash-command-copy">
               <strong>{command.title}</strong>
               <small>{command.description}</small>
             </span>
             <span className="slash-command-shortcut">{command.shortcut}</span>
-          </button>
+            </button>
+          </Fragment>
         )) : (
           <div className="slash-command-empty">没有匹配的命令</div>
         )}

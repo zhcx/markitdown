@@ -145,6 +145,15 @@ body {
   box-shadow: none !important;
 }
 
+/* The native EditContext keeps a compatibility textarea at the editor's top
+   left. Global form-control colors have higher specificity than Monaco's own
+   rule, so force this helper back to fully transparent or IME preedit text is
+   duplicated in the blank space above the active line. */
+.app .monaco-editor .ime-text-area {
+  color: transparent !important;
+  caret-color: transparent !important;
+}
+
 /* Keep Monaco's native find/replace behavior while making the widget part of
    the active Zeditor workbench theme. */
 .app .monaco-editor .find-widget {

@@ -30,6 +30,7 @@ async fn run_ai_action_safely(
             "translate" => client::translate(&content, context.as_deref(), &settings).await,
             "summarize" => client::summarize(&content, &settings).await,
             "outline" => client::outline(&content, &settings).await,
+            "filename" => client::filename(&content, &settings).await,
             "chat" => {
                 client::chat(
                     &content,

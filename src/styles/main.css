@@ -3927,8 +3927,38 @@ textarea {
 
 /* Monaco editing surface and focused writing mode */
 .monaco-editor-container .monaco-document-card {
+  position: relative;
   padding: 0;
   overflow: hidden;
+}
+
+/* Monaco 内核按需加载时编辑器区域的轻量占位 */
+.editor-loading-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  background: var(--bg-document);
+  transition: opacity 200ms ease;
+}
+
+.editor-loading-placeholder::before {
+  content: '';
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid color-mix(in srgb, var(--text-secondary) 30%, transparent);
+  border-top-color: var(--accent-color);
+  animation: editor-loading-spin 0.8s linear infinite;
+}
+
+@keyframes editor-loading-spin {
+  to { transform: rotate(360deg); }
 }
 
 .monaco-host {
@@ -3941,6 +3971,33 @@ textarea {
 .monaco-host .monaco-editor-background,
 .monaco-host .margin {
   background: var(--bg-document) !important;
+}
+
+/* 输入承载层兜底：Monaco 的隐藏输入层（传统 textarea、IME textarea、
+   EditContext 辅助 div）内部持有光标所在行的完整文本。IME 组合期间
+   （.ime-input 态）Monaco 会显式把该层切换为前景色可见，整行文字便
+   叠加绘制在编辑器顶部空白处，组合结束才消失。
+   此处双保险：color/caret 透明（Monaco 原生隐藏方式，保留元素几何，
+   确保输入法候选窗仍锚定在光标处）+ opacity 归零 + 禁用指针事件，
+   覆盖所有输入路径与组合状态，并隐藏其内部文本选区高亮。 */
+.monaco-host textarea.inputarea,
+.monaco-host textarea.inputarea.ime-input,
+.monaco-host .ime-text-area,
+.monaco-host .native-edit-context {
+  color: transparent !important;
+  caret-color: transparent !important;
+  background: transparent !important;
+  border: 0 !important;
+  outline: none !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+.monaco-host textarea.inputarea::selection,
+.monaco-host .native-edit-context::selection {
+  color: transparent !important;
+  background: transparent !important;
 }
 
 /* Keep the focused line easy to locate without restoring Monaco's dark border.
@@ -3957,21 +4014,47 @@ textarea {
   background: transparent !important;
 }
 
+/* 确保输入光标在任何主题下都清晰可辨：2px 宽 + 强调色，
+   避免深色背景下默认 1px 细线难以辨认。 */
+.monaco-host .cursors-layer .cursor {
+  width: 2px !important;
+  background: var(--accent-color) !important;
+  opacity: 1 !important;
+}
+
+/* 当前段落指示：悬浮于左侧留白中的圆角竖条，与文字保持呼吸间距，
+   不再使用覆盖文字的背景高亮。 */
 .preview-document .is-active-source-block {
-  border-radius: 4px;
-  background: color-mix(in srgb, var(--accent-color) 10%, transparent) !important;
-  box-shadow: -4px 0 0 color-mix(in srgb, var(--accent-color) 42%, transparent);
-  transition: background-color 120ms ease, box-shadow 120ms ease;
+  position: relative;
+}
+
+.preview-document .is-active-source-block::before {
+  content: '';
+  position: absolute;
+  left: -14px;
+  top: 3px;
+  bottom: 3px;
+  width: 3px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent-color) 78%, transparent);
+}
+
+/* 行内锚点（紧排列表项）不适用悬浮竖条，回退为贴边细条。 */
+.preview-document span.is-active-source-block {
+  box-shadow: -3px 0 0 color-mix(in srgb, var(--accent-color) 55%, transparent);
+}
+
+.preview-document span.is-active-source-block::before {
+  content: none;
 }
 
 .preview-document .preview-list-item-content {
-  border-radius: 4px;
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;
 }
 
 .preview-document table.is-active-source-block :is(th, td) {
-  background: color-mix(in srgb, var(--accent-color) 10%, transparent) !important;
+  background: transparent !important;
 }
 
 .monaco-proofread-error {
@@ -9428,6 +9511,79 @@ html[data-theme] .preview-container,
 @keyframes slash-command-enter {
   from { opacity: 0; transform: translateY(-3px) scale(.99); }
   to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.slash-command-divider {
+  flex: 0 0 auto;
+  height: 1px;
+  margin: 5px 10px;
+  background: color-mix(in srgb, var(--border-color) 70%, transparent);
+}
+
+/* 「/ 问答」「/ 写作」的补充说明输入框，与 slash 菜单同族外观 */
+.slash-ai-prompt {
+  position: fixed;
+  z-index: 10030;
+  box-sizing: border-box;
+  width: min(380px, calc(100vw - 24px));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid color-mix(in srgb, var(--border-color) 82%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--bg-elevated) 96%, transparent);
+  color: var(--text-primary);
+  box-shadow: 0 16px 44px rgba(22, 24, 27, .18), 0 2px 8px rgba(22, 24, 27, .08);
+  backdrop-filter: blur(16px);
+  animation: slash-command-enter 120ms ease-out;
+}
+
+.slash-ai-prompt textarea {
+  box-sizing: border-box;
+  width: 100%;
+  resize: none;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  color: inherit;
+  background: var(--bg-secondary);
+  outline: none;
+}
+
+.slash-ai-prompt textarea:focus {
+  border-color: color-mix(in srgb, var(--accent-color) 45%, transparent);
+}
+
+.slash-ai-prompt-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.slash-ai-prompt-actions button {
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 4px 12px;
+  font-size: 12px;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+
+.slash-ai-prompt-actions button.primary {
+  color: #fff;
+  border-color: transparent;
+  background: var(--accent-color);
+}
+
+.slash-ai-prompt-actions button:disabled {
+  opacity: .5;
+  cursor: default;
 }
 
 .slash-command-header,

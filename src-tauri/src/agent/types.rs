@@ -112,6 +112,9 @@ pub struct AgentSession {
     pub worktree_path: Option<String>,
     pub backend_session_id: Option<String>,
     pub status: AgentSessionStatus,
+    /// 会话显示名：默认从首条提问自动生成；旧会话文件缺失时为 None。
+    #[serde(default)]
+    pub title: Option<String>,
     #[serde(default)]
     pub approval_mode: AgentApprovalMode,
     pub created_at: String,

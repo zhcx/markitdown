@@ -4,6 +4,15 @@ export interface SlashCommandInsertion {
   selectionEnd?: number;
 }
 
+/** 动作型命令触发的 AI 操作；缺失时为纯文本插入命令。 */
+export type SlashCommandAiAction =
+  | 'continue'
+  | 'polish'
+  | 'translate'
+  | 'summarize'
+  | 'ask'
+  | 'write';
+
 export interface SlashCommand {
   id: string;
   title: string;
@@ -12,6 +21,11 @@ export interface SlashCommand {
   icon: string;
   keywords: string;
   insertion: SlashCommandInsertion;
+  ai?: SlashCommandAiAction;
+  /** 需要用户补充说明（问题 / 写作要求）的动作型命令。 */
+  needsPrompt?: boolean;
+  /** 在该项之前渲染一条分组分隔线。 */
+  dividerBefore?: boolean;
 }
 
 export interface SlashCommandTrigger {
@@ -27,6 +41,8 @@ const insertion = (
 ): SlashCommandInsertion => ({ text, selectionStart, selectionEnd });
 
 export const SLASH_COMMANDS: SlashCommand[] = [
+  // 仅 AI 问答置于菜单顶部，其余 AI 动作分组放到底部。
+  { id: 'ai-ask', title: 'AI 问答', description: '向 AI 提问并插入回答', shortcut: '/ask', icon: '问', keywords: 'ai ask question 问答 提问 查询 搜索 智能', insertion: insertion(''), ai: 'ask', needsPrompt: true },
   { id: 'heading-1', title: '一级标题', description: '大标题', shortcut: '/h1', icon: 'H1', keywords: 'h1 heading title 标题 大标题', insertion: insertion('# ') },
   { id: 'heading-2', title: '二级标题', description: '章节标题', shortcut: '/h2', icon: 'H2', keywords: 'h2 heading title 标题 章节', insertion: insertion('## ') },
   { id: 'heading-3', title: '三级标题', description: '小节标题', shortcut: '/h3', icon: 'H3', keywords: 'h3 heading title 标题 小节', insertion: insertion('### ') },
@@ -54,6 +70,12 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   { id: 'details', title: '折叠内容', description: '插入可展开区域', shortcut: '/details', icon: '▸', keywords: 'details collapse 折叠 展开', insertion: insertion('<details>\n<summary>展开查看</summary>\n\n内容\n\n</details>', 19, 23) },
   { id: 'comment', title: '注释', description: '插入不显示的注释', shortcut: '/comment', icon: '※', keywords: 'comment 注释 备注', insertion: insertion('<!-- 注释 -->', 5, 7) },
   { id: 'mermaid', title: '流程图', description: '插入 Mermaid 流程图', shortcut: '/mermaid', icon: '◇', keywords: 'mermaid diagram flowchart 流程图 图表', insertion: insertion('```mermaid\nflowchart LR\n  A[开始] --> B[结束]\n```', 28, 30) },
+  // —— 底部分组：其余 AI 动作 ——
+  { id: 'ai-continue', title: 'AI 续写', description: '根据上文继续写作', shortcut: '/ai', icon: '续', keywords: 'ai continue write 写作 续写 接着写 智能', insertion: insertion(''), ai: 'continue', dividerBefore: true },
+  { id: 'ai-write', title: 'AI 写作', description: '按你的要求生成内容', shortcut: '/write', icon: '写', keywords: 'ai write draft 写作 生成 起草 文章 智能', insertion: insertion(''), ai: 'write', needsPrompt: true },
+  { id: 'ai-polish', title: 'AI 润色', description: '润色选中的文字', shortcut: '/polish', icon: '润', keywords: 'ai polish improve 润色 改写 智能', insertion: insertion(''), ai: 'polish' },
+  { id: 'ai-translate', title: 'AI 翻译', description: '翻译选中或上文内容', shortcut: '/translate', icon: '译', keywords: 'ai translate 翻译 中英 智能', insertion: insertion(''), ai: 'translate' },
+  { id: 'ai-summarize', title: 'AI 总结', description: '总结为要点清单', shortcut: '/summarize', icon: '结', keywords: 'ai summarize summary 总结 摘要 要点 智能', insertion: insertion(''), ai: 'summarize' },
 ];
 
 /** Detects a slash command only when `/query` is the first token on a line. */

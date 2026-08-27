@@ -1,17 +1,20 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, lazy, Suspense } from 'react';
 import { useAppStore } from '../../stores/appStore';
 import { open as openDialog, save } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { open } from '@tauri-apps/plugin-shell';
 import MarkdownIt from 'markdown-it';
-import hljs from 'highlight.js';
-import { PdfExportDialog } from '../Export/PdfExportDialog';
-import { ImageExportDialog } from '../Export/ImageExportDialog';
-import { WeChatExportDialog } from '../Export/WeChatExportDialog';
+import hljs from '../../utils/highlight';
 import { applyExportTemplate, loadExportTemplate } from '../Export/exportTemplates';
-import { MarkdownSyntaxGuide } from '../Help/MarkdownSyntaxGuide';
 import { sanitizeRenderedHtml } from '../../utils/safeHtml';
+import { resolveSaveBaseName } from '../../utils/saveName';
+
+// 导出对话框与语法手册只在对应菜单项打开时才需要，按需加载以缩小入口 chunk。
+const PdfExportDialog = lazy(() => import('../Export/PdfExportDialog').then(m => ({ default: m.PdfExportDialog })));
+const ImageExportDialog = lazy(() => import('../Export/ImageExportDialog').then(m => ({ default: m.ImageExportDialog })));
+const WeChatExportDialog = lazy(() => import('../Export/WeChatExportDialog').then(m => ({ default: m.WeChatExportDialog })));
+const MarkdownSyntaxGuide = lazy(() => import('../Help/MarkdownSyntaxGuide').then(m => ({ default: m.MarkdownSyntaxGuide })));
 import {
   CONVERTIBLE_DOCUMENT_EXTENSIONS,
   OPENABLE_FILE_EXTENSIONS,
@@ -153,7 +156,7 @@ graph TD
     about: {
       title: '关于 Zeditor',
       body: `
-**Zeditor v0.4.2**
+**Zeditor v0.4.4**
 
 一款现代化的 Markdown 编辑器
 
@@ -175,6 +178,8 @@ graph TD
 - **v0.4.0**：品牌焕新，全新蓝色渐变 Z 图标与 GitHub 横幅；打磨云同步面板（WebDAV / S3）状态显示、滑动开关与历史版本打开
 - **v0.4.1**：优化资源管理器，目录层级缩进更清晰、时间线标题单行显示、一级目录可关闭、刷新保留展开内容
 - **v0.4.2**：优化分栏拖拽与编辑/预览滚动浏览体验；预览框链接改为系统浏览器打开
+- **v0.4.3**：修复编辑时文字/行高亮偶发错位到顶部的问题（切换 Monaco 输入路径并隐藏输入载体层）
+- **v0.4.4**：修复中文输入法组合期间整行文字闪现到顶部的问题（输入载体层隐藏全面加固）
 
 **技术栈**
 Tauri 2.0 + React 18 + TypeScript + Monaco Editor + markdown-it
@@ -351,7 +356,9 @@ https://github.com/zhcx/zeditor
               </div>
             )
           ) : type === 'syntax' ? (
-            <MarkdownSyntaxGuide />
+            <Suspense fallback={null}>
+              <MarkdownSyntaxGuide />
+            </Suspense>
           ) : (
             <div
               className="help-content"
@@ -522,9 +529,17 @@ export function MenuBar() {
 
   const handleSaveAs = async () => {
     try {
+      // 尚无文件路径的未命名文档先请求 AI 文件名建议（未启用 AI 时立即回退）。
+      let suggestedBaseName: string | null = null;
+      if (!currentFile) {
+        const activeTab = getActiveTab();
+        if (activeTab) {
+          suggestedBaseName = await resolveSaveBaseName(activeTab.title, activeTab.content);
+        }
+      }
       const selected = await save({
         filters: [{ name: 'Markdown', extensions: ['md'] }],
-        defaultPath: currentFile || 'untitled.md',
+        defaultPath: currentFile || `${suggestedBaseName || 'untitled'}.md`,
       });
       if (selected) {
         await saveFile(selected as string);
@@ -813,14 +828,24 @@ export function MenuBar() {
       )}
       {downloadError && helpModal === 'update' && <div className="update-toast-error" role="alert">{downloadError}</div>}
       {pdfExportOpen && (
-        <PdfExportDialog
-          content={content}
-          filePath={getActiveTab()?.path || null}
-          onClose={() => setPdfExportOpen(false)}
-        />
+        <Suspense fallback={null}>
+          <PdfExportDialog
+            content={content}
+            filePath={getActiveTab()?.path || null}
+            onClose={() => setPdfExportOpen(false)}
+          />
+        </Suspense>
       )}
-      {imageExportOpen && <ImageExportDialog content={content} onClose={() => setImageExportOpen(false)} />}
-        {weChatExportOpen && <WeChatExportDialog content={content} title={getActiveTab()?.title?.replace(/\.md$/i, '') || 'Zeditor 文章'} onClose={() => setWeChatExportOpen(false)} />}
+      {imageExportOpen && (
+        <Suspense fallback={null}>
+          <ImageExportDialog content={content} onClose={() => setImageExportOpen(false)} />
+        </Suspense>
+      )}
+      {weChatExportOpen && (
+        <Suspense fallback={null}>
+          <WeChatExportDialog content={content} title={getActiveTab()?.title?.replace(/\.md$/i, '') || 'Zeditor 文章'} onClose={() => setWeChatExportOpen(false)} />
+        </Suspense>
+      )}
     </>
   );
 }

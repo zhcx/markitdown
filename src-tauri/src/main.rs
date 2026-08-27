@@ -89,7 +89,27 @@ fn take_pending_open_files(state: State<'_, PendingOpenFiles>) -> Vec<String> {
 // Replace any remaining unwrap/expect in hot paths with proper error propagation.
 // clippy::unwrap_used is not enabled globally; this is a targeted hardening.
 
+// 启动耗时写入 %TEMP%\zeditor_crash.log（与 panic 日志同一通道）。
+// GUI 子系统下 stderr 不可见，落盘是唯一的诊断出口；每次启动仅写一行。
+fn log_startup(message: &str) {
+    use std::io::Write;
+    let line = format!(
+        "[startup] {} {}\n",
+        chrono::Local::now().format("%Y-%m-%d %H:%M:%S%.3f"),
+        message
+    );
+    eprint!("{line}");
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(std::env::temp_dir().join("zeditor_crash.log"))
+    {
+        let _ = file.write_all(line.as_bytes());
+    }
+}
+
 fn main() {
+    let boot_start = std::time::Instant::now();
     // 使用 args_os：args() 在遇到非 UTF-8 参数（如路径含非法字节的
     // 文件拖入）时会直接 panic；与上方 initial_open_files 保持一致。
     let args: Vec<String> = std::env::args_os()
@@ -230,7 +250,8 @@ fn main() {
             pdf::converter::export_pdf_direct,
         ])
         .manage(pending_open_files)
-        .setup(|_app| {
+        // Instant 为 Copy；move 闭包直接携带启动时刻以满足 'static 约束。
+        .setup(move |_app| {
             let agent_storage = _app.path().app_data_dir()?.join("agent-runtime");
             _app.manage(agent::AgentSupervisor::new(agent_storage));
             _app.manage(converter::ConverterManager::default());
@@ -245,6 +266,17 @@ fn main() {
                 s3_queue_path,
                 Arc::new(TauriWebDavEventSink(_app.handle().clone())),
             ));
+            log_startup(&format!(
+                "native setup finished in {} ms",
+                boot_start.elapsed().as_millis()
+            ));
+            // 立即显示窗口：背景色与主题初始色一致，WebView 随后加载的
+            // 是内联样式的品牌启动页，因此用户在双击图标约 1 秒内看到的
+            // 就是「已打开」的窗口，而不是长时间空白或延迟出现。
+            if let Some(window) = _app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
             Ok(())
         })
         .run(tauri::generate_context!())

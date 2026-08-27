@@ -1068,6 +1068,25 @@ pub async fn outline(content: &str, settings: &AISettings) -> Result<AIResponse,
     })
 }
 
+/// 为「另存为/保存」对话框生成文件名建议。只取开头片段即可概括主题，
+/// 避免把大文档整体送进模型。
+pub async fn filename(content: &str, settings: &AISettings) -> Result<AIResponse, String> {
+    const PREVIEW_CHARS: usize = 600;
+    let trimmed = content.trim_start();
+    let preview = match trimmed.char_indices().nth(PREVIEW_CHARS) {
+        Some((index, _)) => &trimmed[..index],
+        None => trimmed,
+    };
+    let prompt = get_prompt(PromptAction::Filename, preview, None, settings);
+    let result = call_api(prompt, settings, Some(64), Some(0.3)).await?;
+
+    Ok(AIResponse {
+        success: true,
+        data: serde_json::json!({ "filename": result }),
+        message: None,
+    })
+}
+
 // These parameters mirror the provider-neutral chat contract used by the
 // Tauri boundary; grouping them would only move the same fields into a DTO.
 #[allow(clippy::too_many_arguments)]

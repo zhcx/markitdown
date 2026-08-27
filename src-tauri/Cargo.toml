@@ -1,6 +1,6 @@
 [package]
 name = "zeditor"
-version = "0.4.2"
+version = "0.4.4"
 description = "A modern Markdown editor with Notion-style UI"
 authors = ["you"]
 edition = "2021"
@@ -9,7 +9,8 @@ edition = "2021"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["devtools"] }
+# 不再强制启用 devtools：release 启动更轻量；debug 构建默认自带 devtools。
+tauri = { version = "2", features = [] }
 tauri-plugin-shell = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"

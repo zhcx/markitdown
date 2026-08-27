@@ -294,6 +294,9 @@ interface AIState {
   translateText: (text: string, targetLang?: string) => Promise<string>;
   summarizeText: (content: string) => Promise<string>;
   generateOutline: (content: string) => Promise<string>;
+  continueWriting: (beforeText: string) => Promise<string>;
+  chatForEditor: (userMessage: string, source?: string) => Promise<string>;
+  suggestFilename: (content: string) => Promise<string | null>;
 
   // UI控制
   setProofreadPanelVisible: (visible: boolean) => void;
@@ -731,6 +734,115 @@ export const useAIStore = create<AIState>((set, get) => ({
       console.error('大纲错误:', error);
       set({ status: 'error', statusMessage: formatError(error) });
       return '';
+    }
+  },
+
+  // 根据光标前文续写正文。返回空字符串表示未生成（未启用 AI、
+  // 缺少密钥或请求失败——失败状态已写入 statusMessage）。
+  continueWriting: async (beforeText) => {
+    const settings = useAppStore.getState().settings;
+
+    if (!settings.ai.enabled || !settings.ai.api_key) {
+      return '';
+    }
+
+    set({ status: 'loading', statusMessage: '正在续写...' });
+
+    try {
+      const requestData = {
+        action: 'chat',
+        content: `请根据下面的 Markdown 内容自然地继续写作。
+
+要求：
+1. 直接输出续写的正文，不要重复已有内容，不要解释，不要任何前言后语。
+2. 延续原文的语气、人称与 Markdown 格式习惯。
+3. 输出 100 字左右即可停下。
+
+已有内容（结尾处为最新）：
+${beforeText.slice(-2000)}`,
+        settings: settings.ai,
+      };
+      const response = await invokeWithTimeout<{
+        success: boolean;
+        data: { response?: string };
+        message?: string;
+      }>('ai_request', requestData, 60000);
+
+      set({ status: 'idle', statusMessage: '' });
+
+      const text = response.success ? response.data?.response?.trim() : '';
+      return text || '';
+    } catch (error) {
+      console.error('续写错误:', error);
+      set({ status: 'error', statusMessage: formatError(error) });
+      return '';
+    }
+  },
+
+  // 编辑器内的通用单轮问答/写作：返回模型正文，失败或未启用时返回空串。
+  chatForEditor: async (userMessage, source) => {
+    const settings = useAppStore.getState().settings;
+
+    if (!settings.ai.enabled || !settings.ai.api_key) {
+      return '';
+    }
+
+    set({ status: 'loading', statusMessage: 'AI 正在生成...' });
+
+    try {
+      const contextBlock = source?.trim()
+        ? `\n\n<当前文档相关内容>\n${source.trim().slice(-2000)}\n</当前文档相关内容>`
+        : '';
+      const response = await invokeWithTimeout<{
+        success: boolean;
+        data: { response?: string };
+        message?: string;
+      }>('ai_request', {
+        action: 'chat',
+        content: `${userMessage}${contextBlock}`,
+        settings: settings.ai,
+      }, 60000);
+
+      set({ status: 'idle', statusMessage: '' });
+      return response.success ? response.data?.response?.trim() || '' : '';
+    } catch (error) {
+      console.error('编辑器 AI 调用错误:', error);
+      set({ status: 'error', statusMessage: formatError(error) });
+      return '';
+    }
+  },
+
+  // 为「保存/另存为」对话框建议文件名。未启用 AI 或请求失败时返回 null，
+  // 调用方据此回退到默认文件名；短超时避免拖慢保存对话框的弹出。
+  suggestFilename: async (content) => {
+    const settings = useAppStore.getState().settings;
+
+    if (!settings.ai.enabled || !settings.ai.api_key || !content.trim()) {
+      return null;
+    }
+
+    try {
+      const response = await invokeWithTimeout<{
+        success: boolean;
+        data: { filename?: string };
+        message?: string;
+      }>('ai_request', {
+        action: 'filename',
+        content,
+        settings: settings.ai,
+      }, 8000);
+
+      if (!response.success) return null;
+      const cleaned = (response.data?.filename || '')
+        .replace(/[\\/:*?"<>|.]/g, '')
+        .replace(/[\s`'"“”‘’、，。！？：；（）\[\]{}#*_~>-]/g, '')
+        .replace(/^(未命名|Untitled)$/i, '')
+        .trim()
+        .slice(0, 40);
+      return cleaned || null;
+    } catch {
+      // 文件名建议是锦上添花的功能，任何失败都静默回退。
+      return null;
     }
   },
 

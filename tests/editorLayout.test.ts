@@ -44,11 +44,29 @@ test('editor does not cover scrolled content with Monaco sticky headings', async
   assert.match(source, /stickyScroll:\s*\{\s*enabled:\s*false\s*\}/);
 });
 
-test('editor reveals line jumps smoothly while split-view sync stays immediate', async () => {
+test('editor scrolls instantly while split-view sync stays immediate', async () => {
+  const source = await readFile(new URL('../src/components/Editor/Editor.tsx', import.meta.url), 'utf8');
+  // Monaco 现在按需加载，控制器里的 API 别名是 monacoApi（见 monacoLoader.ts）。
+  // 平滑滚动会产生多帧过渡，被用户感知为「输入时文字跳动」，故必须关闭。
+  assert.match(source, /smoothScrolling:\s*false/);
+  assert.match(source, /editor\.setScrollTop\(top, monacoApi\.editor\.ScrollType\.Immediate\)/);
+});
+
+test('uses the native EditContext backend when WebView2 supports it', async () => {
+  const { EDITOR_INPUT_OPTIONS } = await import('../src/utils/editorLayout.ts');
   const source = await readFile(new URL('../src/components/Editor/Editor.tsx', import.meta.url), 'utf8');
 
-  assert.match(source, /smoothScrolling:\s*true/);
-  assert.match(source, /editor\.setScrollTop\(top, monaco\.editor\.ScrollType\.Immediate\)/);
+  assert.equal(EDITOR_INPUT_OPTIONS?.editContext, true);
+  assert.match(source, /\.\.\.EDITOR_INPUT_OPTIONS/);
+});
+
+test('keeps Monaco native IME fallback text invisible to global form styles', async () => {
+  const css = await readFile(new URL('../src/styles/workbench.css', import.meta.url), 'utf8');
+
+  assert.match(
+    css,
+    /\.app \.monaco-editor \.ime-text-area\s*\{[^}]*color:\s*transparent\s*!important;[^}]*caret-color:\s*transparent\s*!important;/s,
+  );
 });
 
 test('suppresses ambiguous Unicode warnings for multilingual documents', async () => {
