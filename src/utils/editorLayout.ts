@@ -4,6 +4,12 @@
  */
 export const EDITOR_OVERFLOW_OPTIONS = {
   scrollBeyondLastColumn: 0,
+  // Monaco 0.55+ 默认启用 EditContext API（Chromium 121+）。该路径把光标/选区
+  // 边界通过 EditContext.updateSelectionBounds/ControlBounds 交给浏览器，再由
+  // WebView2 转给 TSF；在 Edge 151 的 WebView2 里存在 IME 组合窗锚点漂移/跳到
+  // 首行的问题。强制使用传统的隐藏 textarea 路径，Monaco 自行定位输入承载层，
+  // 输入法候选窗跟随更可靠。
+  editContext: false,
   scrollbar: {
     vertical: 'auto',
     useShadows: false,

@@ -400,7 +400,9 @@ export function Editor({ className, style, onActiveLineChange, onActiveLineRevea
       stickyScroll: { enabled: false },
       ...EDITOR_OVERFLOW_OPTIONS,
       smoothScrolling: false,
-      padding: { top: 24, bottom: 40 },
+      // 上下内边距改由 .monaco-document-card 的 CSS padding 提供，避免 Monaco
+      // 内部 paddingTop 在输入承载层定位时产生首行上方错位的 race。
+      padding: { top: 0, bottom: 0 },
       quickSuggestions: false,
       suggestOnTriggerCharacters: false,
       accessibilitySupport: 'auto',
