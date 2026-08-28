@@ -3928,7 +3928,7 @@ textarea {
 /* Monaco editing surface and focused writing mode */
 .monaco-editor-container .monaco-document-card {
   position: relative;
-  padding: 24px 16px 40px 0;
+  padding: 24px 20px 40px 0;
   overflow: hidden;
 }
 
@@ -3991,7 +3991,7 @@ textarea {
   right: auto !important;
   width: var(--monaco-visible-text-width, calc(100% - 22px)) !important;
   border: 0 !important;
-  background: color-mix(in srgb, var(--accent-color) 10%, transparent) !important;
+  background: color-mix(in srgb, var(--accent-color) 5%, transparent) !important;
 }
 
 .monaco-host .margin-view-overlays .current-line {
