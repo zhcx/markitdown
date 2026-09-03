@@ -95,10 +95,9 @@ _renderAtTopLeft() {
 - 附带 `pointer-events: none`，鼠标在顶部区域的点击无缝穿透到编辑器第 1 行。
 - 即使未来任何引擎把任何未预期的文本画在 `top: 0`，视觉上也绝对不可见。
 
-### 防护 3：字形尺寸清零与视口裁剪（`main.css`）
-针对输入承载层（`.inputarea`, `.ime-input`, `.ime-text-area`, `.native-edit-context`）：
-- 强制添加 `font-size: 0px !important; line-height: 0px !important; letter-spacing: -9999px !important; clip: rect(0, 0, 0, 0) !important;`。
-- 即使 WebView2/TSF 原生试图在 textarea 内部渲染字符，字形尺寸为 0 且被绝对裁剪，无法渲染出任何像素。
+### 防护 3：严格保留输入层几何与尺寸（`main.css` + `Editor.tsx`）
+- **关键教训（`q2.png` 排查结论）**：Windows TSF 输入法框架必须依赖真实 textarea 的字符尺寸与边界来定位候选词窗口。若设置 `font-size: 0` 或 `clip: rect`，会导致 TSF 字符边界归零，候选框瞬间脱钩漂移至屏幕左上角 `(0, 0)` 且文字无法上屏；若通过 JS 在组合期间改动 `style.top`，同样会破坏 TSF 坐标同步协议。
+- **最终策略**：严格保留输入层的原生尺寸、行高与边界，不进行任何动态 JS 坐标钳位；文字/光标/背景全部设置为 `transparent !important`，依靠顶部 `height: 24px` 的实体背景遮罩（`.monaco-editor::before`）提供视觉覆盖，既彻底消除顶部闪现，又保证输入法候选词浮窗正常贴近光标且打字流畅。
 
 ### 防护 4：Monaco 原生覆盖层兜底（`main.css`）
 - 强制 `.monaco-host .textAreaCover { background: var(--bg-document) !important; }`，确保 Monaco 内部原生的 cover div 同样具备实体底色。
@@ -108,12 +107,12 @@ _renderAtTopLeft() {
 ## 4. 验证与构建产物
 
 1. **自动化测试**：
-   - 运行 `npm test`：**139/139 全部通过**（包含专门新增的顶部遮罩、输入层尺寸清零与动态钳位逻辑测试）。
+   - 运行 `npm test`：**139/139 全部通过**。
    - 运行 `npm run lint`：**0 错误，0 警告**。
 2. **Git 提交**：
-   - 提交哈希：`c47f9ad`
+   - 最新提交哈希：`fff04cc`
    - 分支：`fix/editor-top-blink-v0.4.4`（已推送到 `origin`）
-3. **最新全量打包产物**（构建时间：2026-09-03 16:31）：
+3. **最新全量打包产物**（构建时间：2026-09-03 18:03）：
    - **NSIS 安装包**（推荐）：
      `D:\Documents\code\zeditor\src-tauri\target\release\bundle\nsis\Zeditor_0.4.3_x64-setup.exe` (6.74 MB)
    - **MSI 安装包**：
