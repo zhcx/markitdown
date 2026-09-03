@@ -107,24 +107,23 @@ test('input-carrier fallback hides IME composition text while keeping element ge
   assert.ok(rule.includes('.ime-input'), 'input-area fallback should cover the .ime-input composition state');
   assert.match(rule, /color:\s*transparent\s*!important;/);
   assert.match(rule, /caret-color:\s*transparent\s*!important;/);
-  assert.match(rule, /font-size:\s*0px\s*!important;/);
-  assert.match(rule, /clip:\s*rect\(0,\s*0,\s*0,\s*0\)\s*!important;/);
-  // 兜底保留元素几何（不使用 opacity:0 / pointer-events:none），
-  // 避免干扰系统输入法对组合窗锚点坐标的探测。
+  assert.match(rule, /background:\s*transparent\s*!important;/);
+  assert.match(rule, /text-shadow:\s*none\s*!important;/);
+  // 兜底必须严格保留元素几何与可见性（绝不修改 font-size、clip、opacity:0 或 pointer-events:none），
+  // 避免干扰系统输入法对组合窗锚点坐标与字形边界的探测。
   assert.doesNotMatch(rule, /opacity:\s*0\s*!important/);
   assert.doesNotMatch(rule, /pointer-events:\s*none\s*!important/);
+  assert.doesNotMatch(rule, /font-size:\s*0/);
+  assert.doesNotMatch(rule, /clip:\s*rect/);
 });
 
-test('editor has top padding mask and coordinate clamping against top blink', async () => {
+test('editor has top padding mask against top blink', async () => {
   const css = await readFile(new URL('../src/styles/main.css', import.meta.url), 'utf8');
-  const editorSource = await readFile(new URL('../src/components/Editor/Editor.tsx', import.meta.url), 'utf8');
 
-  // 顶部 24px 留白区域由 .monaco-editor::before 遮罩防护
+  // 顶部 24px 留白区域由 .monaco-editor::before 遮罩防护，
+  // 确保当 Monaco 隐藏输入层在折行时回退至 (top: 0, left: 0) 时，
+  // 视觉上被完全遮蔽于留白区，且 pointer-events: none 不影响对第 1 行正文的点击交互。
   assert.match(css, /\.monaco-editor::before\s*\{[^}]*height:\s*24px/);
   assert.match(css, /\.monaco-editor::before\s*\{[^}]*z-index:\s*20/);
-
-  // Editor.tsx 包含输入层动态坐标钳位逻辑
-  assert.match(editorSource, /clampInputArea/);
-  assert.match(editorSource, /editor\.getScrolledVisiblePosition/);
-  assert.match(editorSource, /currentTop\s*<\s*24/);
+  assert.match(css, /\.monaco-editor::before\s*\{[^}]*pointer-events:\s*none/);
 });

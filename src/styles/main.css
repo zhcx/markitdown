@@ -3998,28 +3998,23 @@ textarea {
    内部持有光标所在行的完整文本。Monaco 的 textAreaEditContext.css 会在
    IME 组合期把 .inputarea.ime-input 显式切换为前景色可见（z-index 提到
    10），WebView2 合成路径下整行文字便叠画到编辑器顶部空白区，组合结束
-   才消失。此处把文字/光标/背景/文本阴影/边框强制透明，并把字体尺寸/行高
-   彻底清零并裁剪；保留元素几何与可见性（不使用 opacity:0 / pointer-events:none），
-   避免干扰系统输入法对组合窗锚点坐标的探测。 */
+   才消失。此处把文字/光标/背景/文本阴影/边框强制透明；严格保留元素几何
+   与可见性（绝不修改 font-size、line-height、clip 或 opacity:0），避免
+   干扰系统输入法对组合窗锚点坐标与字形边界的探测。 */
 .monaco-host textarea.inputarea,
 .monaco-host textarea.inputarea.ime-input,
 .monaco-host .ime-text-area,
 .monaco-host .native-edit-context,
 .monaco-host.is-composing textarea.inputarea,
 .monaco-host.is-composing textarea.inputarea.ime-input {
-  font-size: 0px !important;
-  line-height: 0px !important;
-  letter-spacing: -9999px !important;
   color: transparent !important;
   caret-color: transparent !important;
   background: transparent !important;
-  border: none !important;
   border-color: transparent !important;
   box-shadow: none !important;
   outline: none !important;
   text-shadow: none !important;
   opacity: 0.01 !important;
-  clip: rect(0, 0, 0, 0) !important;
 }
 .monaco-host textarea.inputarea::selection,
 .monaco-host .native-edit-context::selection {

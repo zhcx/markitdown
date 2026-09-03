@@ -460,38 +460,6 @@ export function Editor({ className, style, onActiveLineChange, onActiveLineRevea
       root.classList.remove('is-composing');
     });
 
-    // 监听与校正输入承载层（textarea.inputarea）坐标：
-    // Monaco 的 textAreaEditContext 在折行长文本（wordWrap: 'on'）下，
-    // 当输入法组合发生时由于起始与结束视图行不一致（TODO: what if view positions are not on the same line），
-    // 会回退到 _renderAtTopLeft() 将 textarea 强行置于 (top: 0, left: 0)。
-    // 配合 top: 24px 的内边距，textarea 会悬浮在第 1 行上方的空白区；
-    // WebView2 下 Windows TSF 输入法会直接在该位置合成绘制文字，造成“顶部空白位置闪现文字”。
-    // 此处监听输入承载层的位置变更与组合事件，一旦发现被置于顶部空白区（top < 24px），
-    // 立即通过 editor.getScrolledVisiblePosition 获取当前光标的真实屏幕像素坐标并钳位校正。
-    const inputArea = root.querySelector('textarea.inputarea') as HTMLTextAreaElement | null;
-    let inputAreaObserver: MutationObserver | null = null;
-    const clampInputArea = () => {
-      if (!inputArea) return;
-      const currentTop = parseFloat(inputArea.style.top || '0');
-      if (currentTop < 24) {
-        const position = editor.getPosition();
-        if (position) {
-          const visible = editor.getScrolledVisiblePosition(position);
-          if (visible && visible.top >= 24) {
-            inputArea.style.top = `${visible.top}px`;
-            inputArea.style.left = `${visible.left}px`;
-          }
-        }
-      }
-    };
-
-    if (inputArea) {
-      inputAreaObserver = new MutationObserver(clampInputArea);
-      inputAreaObserver.observe(inputArea, { attributes: true, attributeFilter: ['style', 'class'] });
-      root.addEventListener('compositionstart', clampInputArea, true);
-      root.addEventListener('compositionupdate', clampInputArea, true);
-    }
-
     const clearCompanionTimer = () => {
       if (autoCompanionTimerRef.current !== null) window.clearTimeout(autoCompanionTimerRef.current);
       autoCompanionTimerRef.current = null;
@@ -719,9 +687,6 @@ export function Editor({ className, style, onActiveLineChange, onActiveLineRevea
       layoutDisposable.dispose();
       compStartDisposable.dispose();
       compEndDisposable.dispose();
-      inputAreaObserver?.disconnect();
-      root.removeEventListener('compositionstart', clampInputArea, true);
-      root.removeEventListener('compositionupdate', clampInputArea, true);
       selectionToolbarResizeObserver.disconnect();
       editor.dispose();
       model.dispose();
