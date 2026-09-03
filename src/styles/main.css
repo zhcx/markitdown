@@ -3973,13 +3973,33 @@ textarea {
   background: var(--bg-document) !important;
 }
 
+/* 顶部留白保护遮罩：Monaco 内部配置了 padding: { top: 24 }，
+   第 1 行及行号均从 top: 24px 起算，0~24px 区域为内部留白。
+   在折行长文本触发输入法组合时，Monaco 的 textAreaEditContext 因无法跨视图行定位
+   而执行 _renderAtTopLeft()，把隐藏输入层放置在 top: 0 的留白区；WebView2 下 Windows
+   TSF 会在留白区直接绘制组合文本与高亮，造成顶部闪烁。
+   此处在 .monaco-editor 顶部留白区放置相同背景色的保护遮罩（z-index: 20），
+   辅以 pointer-events: none 保证点击正常穿透到第 1 行；任何漂移到 top: 0 的
+   输入承载层及其原生文字在视觉上被彻底遮蔽。 */
+.monaco-editor::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 24px;
+  background: var(--bg-document);
+  z-index: 20;
+  pointer-events: none;
+}
+
 /* 输入承载层兜底：Monaco 的隐藏输入层（传统 textarea、IME 组合期
    .ime-input、EditContext 模拟层 .native-edit-context / .ime-text-area）
    内部持有光标所在行的完整文本。Monaco 的 textAreaEditContext.css 会在
    IME 组合期把 .inputarea.ime-input 显式切换为前景色可见（z-index 提到
    10），WebView2 合成路径下整行文字便叠画到编辑器顶部空白区，组合结束
-   才消失。此处把文字/光标/背景/文本阴影/边框强制透明，覆盖所有输入路径与
-   组合状态；保留元素几何与可见性（不使用 opacity:0 / pointer-events:none），
+   才消失。此处把文字/光标/背景/文本阴影/边框强制透明，并把字体尺寸/行高
+   彻底清零并裁剪；保留元素几何与可见性（不使用 opacity:0 / pointer-events:none），
    避免干扰系统输入法对组合窗锚点坐标的探测。 */
 .monaco-host textarea.inputarea,
 .monaco-host textarea.inputarea.ime-input,
@@ -3987,19 +4007,28 @@ textarea {
 .monaco-host .native-edit-context,
 .monaco-host.is-composing textarea.inputarea,
 .monaco-host.is-composing textarea.inputarea.ime-input {
+  font-size: 0px !important;
+  line-height: 0px !important;
+  letter-spacing: -9999px !important;
   color: transparent !important;
   caret-color: transparent !important;
   background: transparent !important;
+  border: none !important;
   border-color: transparent !important;
   box-shadow: none !important;
   outline: none !important;
   text-shadow: none !important;
   opacity: 0.01 !important;
+  clip: rect(0, 0, 0, 0) !important;
 }
 .monaco-host textarea.inputarea::selection,
 .monaco-host .native-edit-context::selection {
   color: transparent !important;
   background: transparent !important;
+}
+
+.monaco-host .textAreaCover {
+  background: var(--bg-document) !important;
 }
 
 /* Keep the focused line easy to locate without restoring Monaco's dark border.
