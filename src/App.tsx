@@ -35,6 +35,7 @@ import { resolveSaveBaseName } from './utils/saveName';
 import { findActiveSourceElement } from './utils/activeSourceLine';
 import './styles/main.css';
 import './styles/workbench.css';
+import { contentFontStack } from './utils/appearanceSettings';
 
 interface DragDropPayload {
   paths: string[];
@@ -272,7 +273,7 @@ function App() {
 
     const fallbackTimer = window.setTimeout(hideBootSplash, 1500);
     let removeTimer = 0;
-    let frame = requestAnimationFrame(() => requestAnimationFrame(() => {
+    const frame = requestAnimationFrame(() => requestAnimationFrame(() => {
       window.clearTimeout(fallbackTimer);
       hideBootSplash();
       removeTimer = window.setTimeout(removeBootSplash, 300);
@@ -361,14 +362,9 @@ function App() {
   }, [setSidebarVisible]);
 
   useEffect(() => {
-    const toFontStack = (fontFamily?: string) => {
-      const family = fontFamily?.replace(/[;{}]/g, '').trim() || 'Microsoft YaHei';
-      return `${family}, "Microsoft YaHei", sans-serif`;
-    };
-
     const root = document.documentElement;
-    root.style.setProperty('--font-sans', toFontStack(settings.appearance.ui_font_family));
-    root.style.setProperty('--font-content', toFontStack(settings.appearance.font_family));
+    root.style.setProperty('--font-sans', contentFontStack(settings.appearance.ui_font_family));
+    root.style.setProperty('--font-content', contentFontStack(settings.appearance.font_family));
     root.style.setProperty('--font-content-size', `${settings.appearance.font_size}px`);
     root.style.setProperty('--font-content-line-height', String(settings.appearance.line_height));
   }, [
@@ -532,7 +528,7 @@ function App() {
     void useAppStore.getState().saveSettings(nextSettings);
   }, []);
 
-  const handlePointerUp = useCallback((_e: PointerEvent) => {
+  const handlePointerUp = useCallback(() => {
     if (isDragging.current) {
       isDragging.current = false;
       setSplitRatio(dragValues.current.splitRatio);

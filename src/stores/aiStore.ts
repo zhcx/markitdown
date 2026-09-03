@@ -835,7 +835,7 @@ ${beforeText.slice(-2000)}`,
       if (!response.success) return null;
       const cleaned = (response.data?.filename || '')
         .replace(/[\\/:*?"<>|.]/g, '')
-        .replace(/[\s`'"“”‘’、，。！？：；（）\[\]{}#*_~>-]/g, '')
+        .replace(/[\s`'"“”‘’、，。！？：；（）[\]{}#*_~>-]/g, '')
         .replace(/^(未命名|Untitled)$/i, '')
         .trim()
         .slice(0, 40);

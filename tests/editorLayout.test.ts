@@ -66,3 +66,51 @@ test('continues highlighting suspicious invisible Unicode characters', async () 
 
   assert.equal(EDITOR_UNICODE_HIGHLIGHT_OPTIONS?.invisibleCharacters, true);
 });
+test('contentFontStack returns a concrete font stack instead of a CSS variable reference', async () => {
+  const { contentFontStack } = await import('../src/utils/appearanceSettings.ts');
+
+  // Monaco 的折行测量缓存以 fontFamily 字符串为键。传 'var(--font-content)'
+  // 这类 CSS 变量时字符串不随字体变化，更换字体后不会触发重新测量，导致
+  // 渲染字体与测量宽度不一致、行文字溢出编辑框；这里必须返回真实字体名。
+  assert.equal(contentFontStack('Maple Mono CN'), 'Maple Mono CN, "Microsoft YaHei", sans-serif');
+  assert.equal(contentFontStack(''), 'Microsoft YaHei, "Microsoft YaHei", sans-serif');
+  assert.equal(contentFontStack(undefined), 'Microsoft YaHei, "Microsoft YaHei", sans-serif');
+});
+
+test('editor feeds Monaco a concrete font stack so wrap measurement re-runs on font change', async () => {
+  const source = await readFile(new URL('../src/components/Editor/Editor.tsx', import.meta.url), 'utf8');
+
+  assert.doesNotMatch(source, /fontFamily:\s*'var\(--font-content\)'/);
+  assert.match(source, /fontFamily:\s*contentFontStack\(/);
+});
+
+test('editor defaults to the traditional textarea input path to avoid IME top-blink', async () => {
+  const editorSource = await readFile(new URL('../src/components/Editor/Editor.tsx', import.meta.url), 'utf8');
+  const storeSource = await readFile(new URL('../src/stores/appStore.ts', import.meta.url), 'utf8');
+
+  // WebView2 下原生 EditContext 会把 IME 组合文本绘制到编辑器顶部空白区；
+  // 输入引擎由设置控制，默认 'textarea'（传统输入层）配合 main.css 兜底。
+  assert.match(
+    editorSource,
+    /editContext:\s*useAppStore\.getState\(\)\.settings\.editor\.input_engine\s*===\s*'editContext'/,
+  );
+  assert.match(storeSource, /input_engine:\s*'textarea'/);
+  assert.match(editorSource, /accessibilitySupport:\s*'off'/);
+});
+
+test('input-carrier fallback hides IME composition text while keeping element geometry', async () => {
+  const css = await readFile(new URL('../src/styles/main.css', import.meta.url), 'utf8');
+
+  // 输入承载层兜底是多选择器列表（textarea / textarea.ime-input /
+  // .ime-text-area / .native-edit-context），取第一条规则块验证属性。
+  const rule = css.match(/\.monaco-host\s+textarea\.inputarea[\s\S]*?\{[^}]*\}/)?.[0] ?? '';
+  assert.ok(rule.includes('.ime-input'), 'input-area fallback should cover the .ime-input composition state');
+  assert.match(rule, /color:\s*transparent\s*!important;/);
+  assert.match(rule, /caret-color:\s*transparent\s*!important;/);
+  assert.match(rule, /background:\s*transparent\s*!important;/);
+  assert.match(rule, /text-shadow:\s*none\s*!important;/);
+  // 兜底保留元素几何（不使用 opacity:0 / pointer-events:none），
+  // 避免干扰系统输入法对组合窗锚点坐标的探测。
+  assert.doesNotMatch(rule, /opacity:\s*0\s*!important/);
+  assert.doesNotMatch(rule, /pointer-events:\s*none\s*!important/);
+});

@@ -3928,7 +3928,7 @@ textarea {
 /* Monaco editing surface and focused writing mode */
 .monaco-editor-container .monaco-document-card {
   position: relative;
-  padding: 24px 20px 40px 0;
+  padding: 0;
   overflow: hidden;
 }
 
@@ -3973,16 +3973,33 @@ textarea {
   background: var(--bg-document) !important;
 }
 
-/* 输入承载层兜底：强制 textarea 路径后，隐藏输入层在普通状态下保持透明；
-   进入 IME 组合期时 Monaco 会添加 .ime-input 并赋予前景色，用于在光标处
-   显示组合文本，此时不应再覆盖 color，否则用户看不到自己正在输入的内容。
-   .ime-text-area / .native-edit-context 在 editContext:false 后不会生成，保留
-   兜底以防未来选项变更。 */
-.monaco-host textarea.inputarea:not(.ime-input),
+/* 输入承载层兜底：Monaco 的隐藏输入层（传统 textarea、IME 组合期
+   .ime-input、EditContext 模拟层 .native-edit-context / .ime-text-area）
+   内部持有光标所在行的完整文本。Monaco 的 textAreaEditContext.css 会在
+   IME 组合期把 .inputarea.ime-input 显式切换为前景色可见（z-index 提到
+   10），WebView2 合成路径下整行文字便叠画到编辑器顶部空白区，组合结束
+   才消失。此处把文字/光标/背景/文本阴影/边框强制透明，覆盖所有输入路径与
+   组合状态；保留元素几何与可见性（不使用 opacity:0 / pointer-events:none），
+   避免干扰系统输入法对组合窗锚点坐标的探测。 */
+.monaco-host textarea.inputarea,
+.monaco-host textarea.inputarea.ime-input,
 .monaco-host .ime-text-area,
-.monaco-host .native-edit-context {
+.monaco-host .native-edit-context,
+.monaco-host.is-composing textarea.inputarea,
+.monaco-host.is-composing textarea.inputarea.ime-input {
   color: transparent !important;
   caret-color: transparent !important;
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  outline: none !important;
+  text-shadow: none !important;
+  opacity: 0.01 !important;
+}
+.monaco-host textarea.inputarea::selection,
+.monaco-host .native-edit-context::selection {
+  color: transparent !important;
+  background: transparent !important;
 }
 
 /* Keep the focused line easy to locate without restoring Monaco's dark border.

@@ -45,11 +45,13 @@ export interface Settings {
     pin_toolbar?: boolean;
     favorite_emojis: string[];
     /**
-     * Monaco 输入引擎路径（以 v0.4.0 行为为基准）：
-     * - 'editContext'（默认）：原生 EditContext（v0.4.0 的输入路径，
-     *   WebView2 上系统输入法组合窗锚定正常）。
-     * - 'textarea'：传统 textarea 输入层，作为兼容备选。
-     * 两条路径的输入承载层均有 main.css 可见性兜底。
+     * Monaco 输入引擎路径：
+     * - 'textarea'（默认）：传统 textarea 输入层。WebView2 下原生
+     *   EditContext 会把 IME 组合文本绘制到编辑器顶部空白区（文字跳顶），
+     *   传统输入层配合 main.css 输入承载层兜底稳定、无此问题。
+     * - 'editContext'：原生 EditContext，作为兼容备选。
+     * 为已保存旧设置兜底：默认值必须与 defaultSettings 的 'textarea'
+     * 保持一致，避免升级到 0.4.4 时把历史 'editContext' 偏好保留下来。
      */
     input_engine?: 'textarea' | 'editContext';
   };
@@ -302,7 +304,7 @@ const defaultSettings: Settings = {
     auto_complete: true,
     pin_toolbar: false,
     favorite_emojis: ['😀', '👍', '❤️', '🎉', '✅', '⚠️', '💡', '🚀'],
-    input_engine: 'editContext',
+    input_engine: 'textarea',
   },
   image_hosting: {
     active_service: 'local',

@@ -9,6 +9,7 @@ import { useAppStore, type Settings } from '../../stores/appStore';
 import { useAIStore, type ProofreadResult } from '../../stores/aiStore';
 import type { EditorController, EditorDispatchSpec, EditorLine } from '../../types/editor';
 import { EDITOR_OVERFLOW_OPTIONS, EDITOR_UNICODE_HIGHLIGHT_OPTIONS } from '../../utils/editorLayout';
+import { contentFontStack } from '../../utils/appearanceSettings';
 import { filterSlashCommands, findSlashCommandTrigger, type SlashCommand } from '../../utils/slashCommands';
 import { SlashCommandMenu, type SlashMenuAnchor } from './SlashCommandMenu';
 import { ImageOptionsModal, Toolbar } from '../Toolbar/Toolbar';
@@ -383,7 +384,10 @@ export function Editor({ className, style, onActiveLineChange, onActiveLineRevea
       model,
       theme: isDark ? 'vs-dark' : 'vs',
       automaticLayout: true,
-      fontFamily: 'var(--font-content)',
+      // 传真实字体栈而非 'var(--font-content)'：Monaco 的折行测量缓存以
+      // fontFamily 字符串为键，CSS 变量字符串不随字体变化，更换字体后会
+      // 命中旧测量缓存导致行文字宽度错乱、溢出编辑框。
+      fontFamily: contentFontStack(useAppStore.getState().settings.appearance.font_family),
       fontSize: useAppStore.getState().settings.appearance.font_size,
       lineHeight: Math.round(useAppStore.getState().settings.appearance.font_size * useAppStore.getState().settings.appearance.line_height),
       lineNumbers: 'on',
@@ -400,12 +404,15 @@ export function Editor({ className, style, onActiveLineChange, onActiveLineRevea
       stickyScroll: { enabled: false },
       ...EDITOR_OVERFLOW_OPTIONS,
       smoothScrolling: false,
-      // 上下内边距改由 .monaco-document-card 的 CSS padding 提供，避免 Monaco
-      // 内部 paddingTop 在输入承载层定位时产生首行上方错位的 race。
-      padding: { top: 0, bottom: 0 },
+      padding: { top: 24, bottom: 40 },
       quickSuggestions: false,
       suggestOnTriggerCharacters: false,
-      accessibilitySupport: 'auto',
+      accessibilitySupport: 'off',
+      // 输入引擎由「设置 → 编辑器 → 输入法引擎」控制。默认 'textarea'
+      // （传统输入层）：WebView2 下原生 EditContext 会把 IME 组合文本
+      // 绘制到编辑器顶部空白区（文字跳顶），传统输入层配合 main.css 兜底
+      // 稳定；该设置可在设置面板中切换回 editContext。
+      editContext: useAppStore.getState().settings.editor.input_engine === 'editContext',
       contextmenu: false,
       unicodeHighlight: EDITOR_UNICODE_HIGHLIGHT_OPTIONS,
     });
@@ -446,6 +453,12 @@ export function Editor({ className, style, onActiveLineChange, onActiveLineRevea
     };
     syncEditorViewport();
     const layoutDisposable = editor.onDidLayoutChange(syncEditorViewport);
+    const compStartDisposable = editor.onDidCompositionStart(() => {
+      root.classList.add('is-composing');
+    });
+    const compEndDisposable = editor.onDidCompositionEnd(() => {
+      root.classList.remove('is-composing');
+    });
 
     const clearCompanionTimer = () => {
       if (autoCompanionTimerRef.current !== null) window.clearTimeout(autoCompanionTimerRef.current);
@@ -672,6 +685,8 @@ export function Editor({ className, style, onActiveLineChange, onActiveLineRevea
       scrollDisposable.dispose();
       slashKeyDisposable.dispose();
       layoutDisposable.dispose();
+      compStartDisposable.dispose();
+      compEndDisposable.dispose();
       selectionToolbarResizeObserver.disconnect();
       editor.dispose();
       model.dispose();
@@ -694,26 +709,28 @@ export function Editor({ className, style, onActiveLineChange, onActiveLineRevea
     monacoRef.current?.updateOptions({
       fontSize: settings.appearance.font_size,
       lineHeight: Math.round(settings.appearance.font_size * settings.appearance.line_height),
-      // 与创建时一致，使用主题的 --font-content（YaHei 全角中文链路），
-      // 而非 settings.appearance.font_family：用户可能选了中文等宽字体
-      // （如 Maple Mono CN），Monaco 折行测量对这类字体用半角字宽换算
-      // 全角折行点，导致行文字溢出编辑框。预览仍用 settings 字体保留个性化。
-      fontFamily: 'var(--font-content)',
+      // 与创建时一致，传真实字体栈：字体名变化会让 Monaco 的测量缓存
+      // 失效并重新测量，渲染与折行宽度保持一致，不再溢出编辑框。
+      fontFamily: contentFontStack(settings.appearance.font_family),
     });
   }, [settings.appearance.font_family, settings.appearance.font_size, settings.appearance.line_height]);
 
   useEffect(() => {
     const handleFontSizePreview = (event: Event) => {
-      const fontSize = Number((event as CustomEvent<number>).detail);
+      const detail = (event as CustomEvent<{ fontSize?: number; fontFamily?: string }>).detail;
+      const fontSize = Number(detail?.fontSize);
       if (!Number.isFinite(fontSize) || fontSize <= 0) return;
       monacoRef.current?.updateOptions({
         fontSize,
         lineHeight: Math.round(fontSize * settings.appearance.line_height),
+        // 拖动字号预览与更换字体共用此事件；带上当前字体的真实字体栈，
+        // 让 Monaco 重新测量折行宽度，避免字号预览时按旧字体折行溢出。
+        fontFamily: detail?.fontFamily || contentFontStack(settings.appearance.font_family),
       });
     };
     window.addEventListener('zeditor-content-font-size-preview', handleFontSizePreview);
     return () => window.removeEventListener('zeditor-content-font-size-preview', handleFontSizePreview);
-  }, [settings.appearance.line_height]);
+  }, [settings.appearance.font_family, settings.appearance.line_height]);
 
   useEffect(() => {
     const editor = monacoRef.current;
