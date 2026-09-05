@@ -44,6 +44,12 @@ export interface Settings {
     /** Keep the command bar visible above the editor instead of selection-only. */
     pin_toolbar?: boolean;
     favorite_emojis: string[];
+    /**
+     * Monaco 输入引擎路径：
+     * - 'editContext'（默认）：由 Monaco 直接维护组合范围与字符边界。
+     * - 'textarea'：供不支持 EditContext 的旧版 WebView 兼容回退。
+     */
+    input_engine?: 'textarea' | 'editContext';
   };
   image_hosting: {
     active_service: string;
@@ -294,6 +300,7 @@ const defaultSettings: Settings = {
     auto_complete: true,
     pin_toolbar: false,
     favorite_emojis: ['😀', '👍', '❤️', '🎉', '✅', '⚠️', '💡', '🚀'],
+    input_engine: 'editContext',
   },
   image_hosting: {
     active_service: 'local',

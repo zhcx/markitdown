@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { save } from '@tauri-apps/plugin-dialog';
 import { useAppStore } from '../../stores/appStore';
+import { resolveSaveBaseName } from '../../utils/saveName';
 import { UnsavedChangesDialog } from '../UnsavedChangesDialog/UnsavedChangesDialog';
 import type { UnsavedChangesAction } from '../../utils/windowCloseGuard';
 
@@ -29,10 +30,13 @@ export function TabsBar() {
     }
 
     if (action === 'save') {
+      // 未命名文档且启用 AI 时，先请求文件名建议再打开保存对话框；
+      // AI 未启用时 resolveSaveBaseName 立即返回默认值。
+      const baseName = tab.path ? '' : await resolveSaveBaseName(tab.title, tab.content);
       const path = tab.path ?? await save({
         title: `保存“${tab.title}”`,
         filters: [{ name: 'Markdown', extensions: ['md', 'markdown', 'txt'] }],
-        defaultPath: tab.title === '未命名' ? '未命名.md' : tab.title,
+        defaultPath: `${baseName || tab.title.replace(/\.md$/i, '')}.md`,
       });
       if (typeof path !== 'string') {
         setPendingCloseTabId(null);

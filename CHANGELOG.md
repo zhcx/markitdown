@@ -1,5 +1,21 @@
 # 更新日志
 
+## v0.4.3（2026-09-06）
+
+完整发布说明、平台安装包对照与安装提示见 [`docs/releases/v0.4.3.md`](docs/releases/v0.4.3.md)。
+
+### 编辑器与输入法
+
+- 修复 WebView2 生产包 CSP 拦截 Monaco 动态行样式，导致编辑期间已输入文字消失的问题。
+- 修复首行上方字符闪现和折行行高归零，移除会遮盖 Monaco 原生布局的应用层遮罩。
+- 原生 EditContext 默认启用，textarea 作为兼容回退；输入法引擎设置在 Rust 与前端之间完整保存并即时生效。
+- 增加真实 WebView2 行几何、CSP 和组合输入回归验证，覆盖折行、取消、上屏、撤销、退格、中英混输和换段。
+
+### 发布与质量
+
+- 版本源统一为 0.4.3。
+- GitHub Actions 质量门禁继续执行前端测试、Lint、生产构建、npm audit、Rust fmt、Clippy 和 Rust 测试，并发布 Windows、macOS、Linux 安装包。
+
 ## v0.4.1（2026-08-26）
 
 完整说明见 [`docs/releases/v0.4.1.md`](docs/releases/v0.4.1.md)。

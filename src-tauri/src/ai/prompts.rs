@@ -9,6 +9,7 @@ pub enum PromptAction {
     Summarize,
     Outline,
     Chat,
+    Filename,
 }
 
 fn get_style_prompt(settings: &AISettings) -> String {
@@ -115,5 +116,19 @@ pub fn get_prompt(
                 style
             )
         }
+        PromptAction::Filename => format!(
+            r#"你是一个文件命名助手。为下面的文档内容拟一个文件名。
+
+规则：
+- 只输出文件名本身：不要引号、不要句号、不要扩展名、不要任何解释
+- 中文文档用中文命名，英文文档用英文命名
+- 不超过 12 个字（词），概括文档主题
+- 不能包含 \ / : * ? " < > | 等字符
+- 无法概括时输出「未命名」
+
+文档内容：
+{}"#,
+            content
+        ),
     }
 }

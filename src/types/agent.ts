@@ -69,6 +69,8 @@ export interface AgentSession {
   worktree_path?: string;
   backend_session_id?: string;
   status: AgentSessionStatus;
+  /** 会话显示名：由首条提问自动生成；旧会话可能缺失。 */
+  title?: string | null;
   approval_mode: AgentApprovalMode;
   created_at: string;
   updated_at: string;

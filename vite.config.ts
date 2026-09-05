@@ -235,19 +235,12 @@ export default defineConfig({
     },
   ],
   build: {
-    // Monaco is the primary offline editor and is intentionally isolated in
-    // one cacheable chunk. Keep the warning useful for anything larger.
+    // Monaco is loaded lazily via src/components/Editor/monacoLoader.ts and
+    // lands in its own async chunk automatically. Do NOT add a manualChunks
+    // rule forcing it into a named chunk here: forcing groups alongside
+    // dynamic imports makes the bundler hoist Vite's preload helper into the
+    // Monaco chunk, which drags all ~3.7 MB back into the startup path.
+    // Keep the warning useful for anything larger.
     chunkSizeWarningLimit: 4000,
-    rollupOptions: {
-      output: {
-        manualChunks(id) {
-          const normalized = id.replace(/\\/g, '/');
-          if (normalized.includes('/node_modules/monaco-editor/')) return 'monaco-editor';
-          if (/\/node_modules\/(react|react-dom|scheduler)\//.test(normalized)) return 'react-vendor';
-          if (/\/node_modules\/(markdown-it|linkify-it|mdurl|uc\.micro|highlight\.js|katex|dompurify)\//.test(normalized)) return 'markdown-rendering';
-          return undefined;
-        },
-      },
-    },
   },
 })

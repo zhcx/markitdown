@@ -203,8 +203,14 @@ export function AgentPanel({ onRuntimeChange }: AgentPanelProps) {
   const modelLabel = selectedModel?.display_name || effectiveModel || (modelsLoading === backend ? '读取模型…' : 'CLI 默认模型');
   const normalizedWorkspaceRoot = normalizeWorkspacePath(workspaceRoot);
   const workspaceSessions = sessions.filter((session) => normalizeWorkspacePath(session.workspace_root) === normalizedWorkspaceRoot);
+  // 会话标题由后端从首条提问自动生成；旧会话无标题时回退到 backend+时间。
+  const formatSessionLabel = (session: { title?: string | null; updated_at: string }) => {
+    const title = session.title?.trim();
+    if (title) return title.length > 18 ? `${title.slice(0, 18)}…` : title;
+    return `${new Date(session.updated_at).toLocaleString()}`;
+  };
   const sessionLabel = activeSession
-    ? `${BACKEND_LABELS[activeSession.backend]} · ${new Date(activeSession.updated_at).toLocaleString()}`
+    ? formatSessionLabel(activeSession)
     : '新会话';
 
   if (!settings.agent.enabled) {
@@ -263,7 +269,7 @@ export function AgentPanel({ onRuntimeChange }: AgentPanelProps) {
               { value: '', label: '新会话', description: '开始独立的 Agent 对话' },
               ...workspaceSessions.map((session) => ({
                 value: session.id,
-                label: `${BACKEND_LABELS[session.backend]} · ${new Date(session.updated_at).toLocaleString()}`,
+                label: formatSessionLabel(session),
                 description: session.status === 'running' ? '正在运行' : session.status === 'completed' ? '已完成' : '可继续',
               })),
             ]}

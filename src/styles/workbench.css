@@ -104,42 +104,41 @@ body {
   font-family: var(--ui-font-sans);
 }
 
-.app :is(button, input, select, textarea) {
+.app :is(button, input, select, textarea):not(.inputarea):not(.ime-text-area) {
   transition:
     color var(--ui-duration-fast) var(--ui-easing-standard),
     background-color var(--ui-duration-fast) var(--ui-easing-standard),
     border-color var(--ui-duration-fast) var(--ui-easing-standard);
 }
 
-.app :is(button, input, select, textarea, [role="tab"]):focus-visible {
+.app :is(button, input, select, textarea, [role="tab"]):not(.inputarea):not(.ime-text-area):focus-visible {
   outline: 1px solid var(--ui-border-focus);
   outline-offset: -1px;
 }
 
-.app :is(button, input, select, textarea):disabled {
+.app :is(button, input, select, textarea):not(.inputarea):not(.ime-text-area):disabled {
   color: var(--ui-text-disabled);
   cursor: not-allowed;
   opacity: .72;
 }
 
-.app :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), select, textarea) {
+.app :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), select, textarea):not(.inputarea):not(.ime-text-area) {
   border-color: var(--ui-border-default);
   background: var(--ui-bg-input);
   color: var(--ui-text-primary);
 }
 
-.app :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), select, textarea):hover:not(:disabled) {
+.app :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), select, textarea):not(.inputarea):not(.ime-text-area):hover:not(:disabled) {
   border-color: var(--ui-border-strong);
 }
 
-.app :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), select, textarea):focus {
+.app :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), select, textarea):not(.inputarea):not(.ime-text-area):focus {
   border-color: var(--ui-border-focus);
   box-shadow: 0 0 0 1px var(--ui-border-focus);
 }
 
-/* Monaco owns its internal text input. Keep global form-control styling from
-   painting a second surface behind the editor's hidden IME textarea. */
-.app .monaco-editor :is(input, textarea) {
+/* 查找等编辑器内控件沿用工作台外观；输入法载体使用 Monaco 原生样式。 */
+.app .monaco-editor :is(input, textarea):not(.inputarea):not(.ime-text-area) {
   border: 0 !important;
   background: transparent !important;
   box-shadow: none !important;

@@ -1,7 +1,7 @@
 import { useCallback, useDeferredValue, useEffect, useRef, useState } from 'react';
 import MarkdownIt from 'markdown-it';
 import taskLists from 'markdown-it-task-lists';
-import hljs from 'highlight.js';
+import hljs from '../../utils/highlight';
 import katex from 'katex';
 import 'katex/dist/katex.min.css';
 import { useAppStore } from '../../stores/appStore';

@@ -9,6 +9,7 @@ import { useAppStore, type Settings } from '../../stores/appStore';
 import { useAIStore, type ProofreadResult } from '../../stores/aiStore';
 import type { EditorController, EditorDispatchSpec, EditorLine } from '../../types/editor';
 import { EDITOR_OVERFLOW_OPTIONS, EDITOR_UNICODE_HIGHLIGHT_OPTIONS } from '../../utils/editorLayout';
+import { contentFontStack } from '../../utils/appearanceSettings';
 import { filterSlashCommands, findSlashCommandTrigger, type SlashCommand } from '../../utils/slashCommands';
 import { SlashCommandMenu, type SlashMenuAnchor } from './SlashCommandMenu';
 import { ImageOptionsModal, Toolbar } from '../Toolbar/Toolbar';
@@ -383,7 +384,10 @@ export function Editor({ className, style, onActiveLineChange, onActiveLineRevea
       model,
       theme: isDark ? 'vs-dark' : 'vs',
       automaticLayout: true,
-      fontFamily: 'var(--font-content)',
+      // 传真实字体栈而非 'var(--font-content)'：Monaco 的折行测量缓存以
+      // fontFamily 字符串为键，CSS 变量字符串不随字体变化，更换字体后会
+      // 命中旧测量缓存导致行文字宽度错乱、溢出编辑框。
+      fontFamily: contentFontStack(useAppStore.getState().settings.appearance.font_family),
       fontSize: useAppStore.getState().settings.appearance.font_size,
       lineHeight: Math.round(useAppStore.getState().settings.appearance.font_size * useAppStore.getState().settings.appearance.line_height),
       lineNumbers: 'on',
@@ -399,14 +403,14 @@ export function Editor({ className, style, onActiveLineChange, onActiveLineRevea
       scrollBeyondLastLine: false,
       stickyScroll: { enabled: false },
       ...EDITOR_OVERFLOW_OPTIONS,
-      // Smooth reveal animation for line/position jumps. Scroll sync still
-      // drives the editor with ScrollType.Immediate, so the follow scrolling
-      // between editor and preview stays exact.
-      smoothScrolling: true,
+      smoothScrolling: false,
       padding: { top: 24, bottom: 40 },
       quickSuggestions: false,
       suggestOnTriggerCharacters: false,
-      accessibilitySupport: 'auto',
+      accessibilitySupport: 'off',
+      // 默认使用原生 EditContext，让 Monaco 直接维护组合范围与字符边界；
+      // 传统 textarea 仅作为旧版 WebView 的兼容回退。
+      editContext: useAppStore.getState().settings.editor.input_engine === 'editContext',
       contextmenu: false,
       unicodeHighlight: EDITOR_UNICODE_HIGHLIGHT_OPTIONS,
     });
@@ -691,26 +695,39 @@ export function Editor({ className, style, onActiveLineChange, onActiveLineRevea
     editor.executeEdits('external-update', [{ range: model.getFullModelRange(), text: content, forceMoveMarkers: true }]);
   }, [content]);
 
+  // 桌面设置会异步加载；保存输入引擎后同步更新现有实例，避免界面选择与实际引擎不一致。
+  useEffect(() => {
+    monacoRef.current?.updateOptions({
+      editContext: settings.editor.input_engine !== 'textarea',
+    });
+  }, [settings.editor.input_engine]);
+
   useEffect(() => {
     monacoRef.current?.updateOptions({
       fontSize: settings.appearance.font_size,
       lineHeight: Math.round(settings.appearance.font_size * settings.appearance.line_height),
-      fontFamily: settings.appearance.font_family,
+      // 与创建时一致，传真实字体栈：字体名变化会让 Monaco 的测量缓存
+      // 失效并重新测量，渲染与折行宽度保持一致，不再溢出编辑框。
+      fontFamily: contentFontStack(settings.appearance.font_family),
     });
   }, [settings.appearance.font_family, settings.appearance.font_size, settings.appearance.line_height]);
 
   useEffect(() => {
     const handleFontSizePreview = (event: Event) => {
-      const fontSize = Number((event as CustomEvent<number>).detail);
+      const detail = (event as CustomEvent<{ fontSize?: number; fontFamily?: string }>).detail;
+      const fontSize = Number(detail?.fontSize);
       if (!Number.isFinite(fontSize) || fontSize <= 0) return;
       monacoRef.current?.updateOptions({
         fontSize,
         lineHeight: Math.round(fontSize * settings.appearance.line_height),
+        // 拖动字号预览与更换字体共用此事件；带上当前字体的真实字体栈，
+        // 让 Monaco 重新测量折行宽度，避免字号预览时按旧字体折行溢出。
+        fontFamily: detail?.fontFamily || contentFontStack(settings.appearance.font_family),
       });
     };
     window.addEventListener('zeditor-content-font-size-preview', handleFontSizePreview);
     return () => window.removeEventListener('zeditor-content-font-size-preview', handleFontSizePreview);
-  }, [settings.appearance.line_height]);
+  }, [settings.appearance.font_family, settings.appearance.line_height]);
 
   useEffect(() => {
     const editor = monacoRef.current;

@@ -8,6 +8,7 @@ import {
   FONT_SIZE_MAX,
   FONT_SIZE_MIN,
   FONT_SIZE_RANGE_THUMB,
+  contentFontStack,
   getRangeMarkerGeometry,
 } from '../../utils/appearanceSettings';
 import { LANGUAGE_OPTIONS, normalizeLanguage } from '../../i18n';
@@ -152,7 +153,13 @@ export function SettingsPanel() {
 
   const previewContentFontSize = (fontSize: number) => {
     document.documentElement.style.setProperty('--font-content-size', `${fontSize}px`);
-    window.dispatchEvent(new CustomEvent('zeditor-content-font-size-preview', { detail: fontSize }));
+    // 同时广播 fontFamily 变更：预览与 AI 面板是普通 DOM（沿用 --font-content
+    // 变量，随设置实时更新），但 Monaco 的折行测量以 fontFamily 字符串为缓存
+    // 键，必须用真实字体名重新测量，否则换字体后行文字会按旧字体宽度折行、
+    // 溢出编辑框。拖动字号预览与更换字体共用此事件。
+    window.dispatchEvent(new CustomEvent('zeditor-content-font-size-preview', {
+      detail: { fontSize, fontFamily: contentFontStack(localSettings.appearance.font_family) },
+    }));
   };
 
   const handleCancel = () => {
@@ -468,6 +475,24 @@ export function SettingsPanel() {
                     })
                   }
                 />
+              </div>
+              <div className="setting-item">
+                <label>
+                  输入法引擎
+                  <small>默认使用原生 EditContext；旧版 WebView 输入异常时可回退到传统输入层</small>
+                </label>
+                <select
+                  value={localSettings.editor.input_engine || 'editContext'}
+                  onChange={(e) =>
+                    setLocalSettings({
+                      ...localSettings,
+                      editor: { ...localSettings.editor, input_engine: e.target.value as 'textarea' | 'editContext' },
+                    })
+                  }
+                >
+                  <option value="editContext">原生 EditContext（默认）</option>
+                  <option value="textarea">传统输入层（兼容）</option>
+                </select>
               </div>
               <SettingToggle
                 label="启用拼写检查"

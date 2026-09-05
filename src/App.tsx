@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback, useState } from 'react';
+import { useEffect, useRef, useCallback, useState, lazy, Suspense } from 'react';
 import { useAppStore } from './stores/appStore';
 import { useAIStore } from './stores/aiStore';
 import { useWebDavStore } from './stores/webdavStore';
@@ -7,30 +7,35 @@ import { TabsBar } from './components/TabsBar/TabsBar';
 import { Toolbar } from './components/Toolbar/Toolbar';
 import { Editor } from './components/Editor/Editor';
 import { Preview } from './components/Preview/Preview';
-import { SettingsPanel } from './components/Settings/SettingsPanel';
 import { StatusBar } from './components/StatusBar/StatusBar';
 import { Sidebar } from './components/Sidebar/Sidebar';
-import { AICompanionPopup } from './components/AI/AICompanionPopup';
-import { AITranslationPopup } from './components/AI/AITranslationPopup';
-import { AIDiffConfirmDialog } from './components/AI/AIDiffConfirmDialog';
-import { AIChatbotPanel } from './components/Chatbot/AIChatbotPanel';
-import { ImmersiveOutline } from './components/Immersive/ImmersiveOutline';
 import { TitleBar } from './components/TitleBar/TitleBar';
 import { ActivityBar } from './components/ActivityBar/ActivityBar';
-import { UnsavedChangesDialog } from './components/UnsavedChangesDialog/UnsavedChangesDialog';
-import { ConverterDialog } from './components/ConverterDialog/ConverterDialog';
 import { UiLanguageBridge } from './i18n/UiLanguageBridge';
+
+// 条件渲染的重型面板按需加载：设置面板、AI 对话、导出与确认对话框等都
+// 不在首帧出现，懒加载可以显著缩小启动关键路径的入口 chunk。
+const SettingsPanel = lazy(() => import('./components/Settings/SettingsPanel').then(m => ({ default: m.SettingsPanel })));
+const AICompanionPopup = lazy(() => import('./components/AI/AICompanionPopup').then(m => ({ default: m.AICompanionPopup })));
+const AITranslationPopup = lazy(() => import('./components/AI/AITranslationPopup').then(m => ({ default: m.AITranslationPopup })));
+const AIDiffConfirmDialog = lazy(() => import('./components/AI/AIDiffConfirmDialog').then(m => ({ default: m.AIDiffConfirmDialog })));
+const AIChatbotPanel = lazy(() => import('./components/Chatbot/AIChatbotPanel').then(m => ({ default: m.AIChatbotPanel })));
+const ImmersiveOutline = lazy(() => import('./components/Immersive/ImmersiveOutline').then(m => ({ default: m.ImmersiveOutline })));
+const UnsavedChangesDialog = lazy(() => import('./components/UnsavedChangesDialog/UnsavedChangesDialog').then(m => ({ default: m.UnsavedChangesDialog })));
+const ConverterDialog = lazy(() => import('./components/ConverterDialog/ConverterDialog').then(m => ({ default: m.ConverterDialog })));
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { message, save as chooseSaveFile } from '@tauri-apps/plugin-dialog';
-import { createElementScrollViewport, getAlignedScrollTop, getSyncedScrollTop, type ObservableScrollViewport, type ScrollAnchor, type ScrollRange } from './utils/scrollSync';
+import { createElementScrollViewport, getSyncedScrollTop, type ObservableScrollViewport, type ScrollAnchor, type ScrollRange } from './utils/scrollSync';
 import { getImmersiveWorkspacePolicy } from './utils/immersiveWorkspace';
 import { guardWindowClose, type CloseGuardTab, type UnsavedChangesAction } from './utils/windowCloseGuard';
+import { resolveSaveBaseName } from './utils/saveName';
 import { findActiveSourceElement } from './utils/activeSourceLine';
 import './styles/main.css';
 import './styles/workbench.css';
+import { contentFontStack } from './utils/appearanceSettings';
 
 interface DragDropPayload {
   paths: string[];
@@ -86,7 +91,8 @@ function App() {
     openFile
   } = useAppStore();
   const editorView = useAppStore(state => state.editorView);
-  const { proofreadResults, setProofreadPanelVisible, translationPosition, translationOriginal, translationResult, setTranslationVisible, chatbotVisible, setChatbotVisible } = useAIStore();
+  const converterDialog = useAppStore(state => state.converterDialog);
+  const { proofreadResults, setProofreadPanelVisible, translationPosition, translationOriginal, translationResult, setTranslationVisible, chatbotVisible, setChatbotVisible, companionVisible, pendingEdit } = useAIStore();
 
   const dividerRef = useRef<HTMLDivElement>(null);
   const sidebarDividerRef = useRef<HTMLDivElement>(null);
@@ -144,9 +150,12 @@ function App() {
       const result = await guardWindowClose(useAppStore.getState().tabs, {
         promptAction: promptUnsavedChanges,
         chooseSavePath: async tab => {
+          // 与 TabsBar/另存为保持一致：未命名文档先尝试 AI 文件名建议。
+          const fullTab = useAppStore.getState().tabs.find(item => item.id === tab.id);
+          const baseName = await resolveSaveBaseName(tab.title, fullTab?.content || '');
           const selected = await chooseSaveFile({
             title: `保存“${tab.title}”`,
-            defaultPath: tab.title === '未命名' ? '未命名.md' : tab.title,
+            defaultPath: `${baseName}.md`,
             filters: [{ name: 'Markdown', extensions: ['md', 'markdown', 'txt'] }],
           });
           return typeof selected === 'string' ? selected : null;
@@ -253,6 +262,29 @@ function App() {
     });
   }, [loadSettings]);
 
+  // 应用就绪后淡出内置启动页。原生窗口由 Rust 侧在 setup 中立即显示
+  // （背景色与主题一致），这里不再负责 show，避免把窗口可见性绑定到
+  // 前端加载进度；1.5s 超时兜底防止极端情况下启动页滞留。
+  useEffect(() => {
+    const hideBootSplash = () => {
+      document.getElementById('boot-splash')?.classList.add('boot-splash-hide');
+    };
+    const removeBootSplash = () => document.getElementById('boot-splash')?.remove();
+
+    const fallbackTimer = window.setTimeout(hideBootSplash, 1500);
+    let removeTimer = 0;
+    const frame = requestAnimationFrame(() => requestAnimationFrame(() => {
+      window.clearTimeout(fallbackTimer);
+      hideBootSplash();
+      removeTimer = window.setTimeout(removeBootSplash, 300);
+    }));
+    return () => {
+      cancelAnimationFrame(frame);
+      window.clearTimeout(fallbackTimer);
+      window.clearTimeout(removeTimer);
+    };
+  }, []);
+
   const currentFile = useAppStore(state => state.currentFile);
   useEffect(() => {
     useWebDavStore.getState().setCurrentDocument(currentFile);
@@ -330,14 +362,9 @@ function App() {
   }, [setSidebarVisible]);
 
   useEffect(() => {
-    const toFontStack = (fontFamily?: string) => {
-      const family = fontFamily?.replace(/[;{}]/g, '').trim() || 'Microsoft YaHei';
-      return `${family}, "Microsoft YaHei", sans-serif`;
-    };
-
     const root = document.documentElement;
-    root.style.setProperty('--font-sans', toFontStack(settings.appearance.ui_font_family));
-    root.style.setProperty('--font-content', toFontStack(settings.appearance.font_family));
+    root.style.setProperty('--font-sans', contentFontStack(settings.appearance.ui_font_family));
+    root.style.setProperty('--font-content', contentFontStack(settings.appearance.font_family));
     root.style.setProperty('--font-content-size', `${settings.appearance.font_size}px`);
     root.style.setProperty('--font-content-line-height', String(settings.appearance.line_height));
   }, [
@@ -501,7 +528,7 @@ function App() {
     void useAppStore.getState().saveSettings(nextSettings);
   }, []);
 
-  const handlePointerUp = useCallback((_e: PointerEvent) => {
+  const handlePointerUp = useCallback(() => {
     if (isDragging.current) {
       isDragging.current = false;
       setSplitRatio(dragValues.current.splitRatio);
@@ -628,57 +655,52 @@ function App() {
         scrollSyncFrame.current = null;
       }
     };
+    // 跳转定位采用「目标块吸附到窗格上部固定锚点」的模型：双向行为一致、
+    // 目标永远落在可预期的位置，替代原先的镜像对齐公式——长短段混排时
+    // 两侧互相回算容易产生越顶/抖动，且目标常被压在窗格最顶端。
+    const REVEAL_TOP_OFFSET = 88;
+    const revealViewportTo = (
+      viewport: ObservableScrollViewport,
+      desiredTop: number,
+      maxTop: number,
+    ) => {
+      const nextTop = Math.max(0, Math.min(desiredTop - REVEAL_TOP_OFFSET, maxTop));
+      if (Math.abs(viewport.getScrollTop() - nextTop) < 0.5) return;
+      markProgrammaticWrite(viewport);
+      viewport.setScrollTop(nextTop);
+    };
     const alignEditorLineWithPreview = (lineNumber: number, direction: 'editor-to-preview' | 'preview-to-editor') => {
       const target = findActiveSourceElement(previewScrollElement, lineNumber);
       if (!target) return;
 
-      const editorBounds = editorView.scrollDOM.getBoundingClientRect();
-      const previewBounds = previewScrollElement.getBoundingClientRect();
-      const targetBounds = target.getBoundingClientRect();
-      const editorLineTop = editorView.getTopForLineNumber(lineNumber);
       stopPendingScrollSync();
 
       if (direction === 'editor-to-preview') {
-        const editorLineScreenTop = editorBounds.top + editorLineTop - editorViewport.getScrollTop();
-        const targetContentTop = previewViewport.getScrollTop() + targetBounds.top - previewBounds.top;
-        const previewMaxScroll = Math.max(0, previewViewport.getScrollHeight() - previewViewport.getClientHeight());
-        const nextTop = getAlignedScrollTop(previewBounds.top, targetContentTop, editorLineScreenTop, previewMaxScroll);
-        if (Math.abs(previewViewport.getScrollTop() - nextTop) >= 0.5) {
-          programmaticScrollTargets.set(previewViewport, nextTop);
-          previewViewport.setScrollTop(nextTop);
-        }
-
-        const previewTargetScreenTop = previewBounds.top + targetContentTop - nextTop;
-        const editorMaxScroll = Math.max(0, editorViewport.getScrollHeight() - editorViewport.getClientHeight());
-        const fallbackEditorTop = getAlignedScrollTop(editorBounds.top, editorLineTop, previewTargetScreenTop, editorMaxScroll);
-        if (Math.abs(editorViewport.getScrollTop() - fallbackEditorTop) >= 0.5) {
-          programmaticScrollTargets.set(editorViewport, fallbackEditorTop);
-          editorViewport.setScrollTop(fallbackEditorTop);
-        }
+        const previewMax = Math.max(0, previewViewport.getScrollHeight() - previewViewport.getClientHeight());
+        // 目标块在预览文档坐标系中的绝对 top（含已滚动距离）。
+        const blockDocumentTop = target.getBoundingClientRect().top
+          - previewScrollElement.getBoundingClientRect().top
+          + previewViewport.getScrollTop();
+        revealViewportTo(previewViewport, blockDocumentTop, previewMax);
         return;
       }
 
-      const previewTargetScreenTop = targetBounds.top;
-      const editorMaxScroll = Math.max(0, editorViewport.getScrollHeight() - editorViewport.getClientHeight());
-      const nextTop = getAlignedScrollTop(editorBounds.top, editorLineTop, previewTargetScreenTop, editorMaxScroll);
-      if (Math.abs(editorViewport.getScrollTop() - nextTop) >= 0.5) {
-        programmaticScrollTargets.set(editorViewport, nextTop);
-        editorViewport.setScrollTop(nextTop);
-      }
-
-      const editorLineScreenTop = editorBounds.top + editorLineTop - nextTop;
-      const targetContentTop = previewViewport.getScrollTop() + targetBounds.top - previewBounds.top;
-      const previewMaxScroll = Math.max(0, previewViewport.getScrollHeight() - previewViewport.getClientHeight());
-      const fallbackPreviewTop = getAlignedScrollTop(previewBounds.top, targetContentTop, editorLineScreenTop, previewMaxScroll);
-      if (Math.abs(previewViewport.getScrollTop() - fallbackPreviewTop) >= 0.5) {
-        programmaticScrollTargets.set(previewViewport, fallbackPreviewTop);
-        previewViewport.setScrollTop(fallbackPreviewTop);
-      }
+      const editorMax = Math.max(0, editorViewport.getScrollHeight() - editorViewport.getClientHeight());
+      revealViewportTo(editorViewport, editorView.getTopForLineNumber(lineNumber), editorMax);
     };
     const revealPreviewLine = (lineNumber: number) => alignEditorLineWithPreview(lineNumber, 'editor-to-preview');
     const revealEditorLine = (lineNumber: number) => alignEditorLineWithPreview(lineNumber, 'preview-to-editor');
     revealPreviewLineRef.current = revealPreviewLine;
     revealEditorLineRef.current = revealEditorLine;
+
+    // 程序化滚动的回声抑制窗口：由本模块发起的滚动（同步对齐、段落跳转）
+    // 在窗口期内触发的事件一律忽略。此前按「实际落点与期望值之差」判断，
+    // 一旦被边界钳制或平滑动画改变落点，就会把自己的写入当作用户滚动
+    // 反向同步回来——锚点是段落粒度，编辑器因此肉眼可见地整行跳动。
+    const PROGRAMMATIC_SUPPRESS_MS = 260;
+    const markProgrammaticWrite = (viewport: ObservableScrollViewport) => {
+      programmaticScrollTargets.set(viewport, performance.now() + PROGRAMMATIC_SUPPRESS_MS);
+    };
 
     const syncScroll = (
       source: ObservableScrollViewport,
@@ -686,10 +708,10 @@ function App() {
       anchors: ScrollAnchor[],
       range: ScrollRange,
     ) => {
-      const ignoredTop = programmaticScrollTargets.get(source);
-      if (ignoredTop !== undefined) {
+      const suppressUntil = programmaticScrollTargets.get(source);
+      if (suppressUntil !== undefined) {
+        if (performance.now() < suppressUntil) return;
         programmaticScrollTargets.delete(source);
-        if (Math.abs(source.getScrollTop() - ignoredTop) < 0.5) return;
       }
 
       pendingScrollSync.current = { source, target, anchors, range };
@@ -708,7 +730,7 @@ function App() {
         // while preserving the feel of one-to-one scrolling for long documents.
         if (Math.abs(latestTarget.getScrollTop() - nextTop) < 0.5) return;
 
-        programmaticScrollTargets.set(latestTarget, nextTop);
+        markProgrammaticWrite(latestTarget);
         latestTarget.setScrollTop(nextTop);
       });
     };
@@ -899,12 +921,14 @@ function App() {
               aria-label={mode === 'zen' ? '沉浸写作' : '沉浸阅读'}
             >
               {immersivePolicy.showOutline && (
-                <ImmersiveOutline
-                  mode={mode}
-                  collapsed={immersiveOutlineCollapsed}
-                  previewScrollElement={immersivePreviewScrollElement}
-                  onToggle={() => setImmersiveOutlineCollapsed((collapsed) => !collapsed)}
-                />
+                <Suspense fallback={null}>
+                  <ImmersiveOutline
+                    mode={mode}
+                    collapsed={immersiveOutlineCollapsed}
+                    previewScrollElement={immersivePreviewScrollElement}
+                    onToggle={() => setImmersiveOutlineCollapsed((collapsed) => !collapsed)}
+                  />
+                </Suspense>
               )}
               <div className="immersive-document-area">
                 <header className="immersive-command-strip">
@@ -969,7 +993,9 @@ function App() {
               onPointerDown={handleChatbotPointerDown}
             />
             <div className={`chatbot-side-panel ${immersivePolicy.active ? 'immersive-chatbot-panel' : ''}`} style={{ width: chatbotPanelWidth }}>
-              <AIChatbotPanel />
+              <Suspense fallback={null}>
+                <AIChatbotPanel />
+              </Suspense>
             </div>
           </>
           )}
@@ -977,36 +1003,58 @@ function App() {
         </div>
       </div>
       <StatusBar />
-      {settingsOpen && <SettingsPanel />}
-      <AICompanionPopup />
-      <AITranslationPopup
-        originalText={translationOriginal}
-        translatedText={translationResult}
-        position={translationPosition}
-        onClose={() => setTranslationVisible(false)}
-        onApply={(text) => {
-          const { editorView, content } = useAppStore.getState();
-          const selection = editorView?.state.selection.main;
-          const from = selection?.from ?? content.length;
-          const to = selection?.to ?? content.length;
-          useAIStore.getState().proposeEdit({
-            kind: 'translation',
-            reason: 'AI 翻译：请核对术语、人名和数字等可能影响事实准确性的内容。',
-            before: content.slice(from, to),
-            after: text,
-            from,
-            to,
-          });
-          setTranslationVisible(false);
-        }}
-      />
-      <AIDiffConfirmDialog />
-      <ConverterDialog
-        action={useAppStore(state => state.converterDialog)}
-        onClose={() => useAppStore.getState().showConverterDialog(null)}
-      />
+      {settingsOpen && (
+        <Suspense fallback={null}>
+          <SettingsPanel />
+        </Suspense>
+      )}
+      {companionVisible && (
+        <Suspense fallback={null}>
+          <AICompanionPopup />
+        </Suspense>
+      )}
+      {translationPosition && (
+        <Suspense fallback={null}>
+          <AITranslationPopup
+            originalText={translationOriginal}
+            translatedText={translationResult}
+            position={translationPosition}
+            onClose={() => setTranslationVisible(false)}
+            onApply={(text) => {
+              const { editorView, content } = useAppStore.getState();
+              const selection = editorView?.state.selection.main;
+              const from = selection?.from ?? content.length;
+              const to = selection?.to ?? content.length;
+              useAIStore.getState().proposeEdit({
+                kind: 'translation',
+                reason: 'AI 翻译：请核对术语、人名和数字等可能影响事实准确性的内容。',
+                before: content.slice(from, to),
+                after: text,
+                from,
+                to,
+              });
+              setTranslationVisible(false);
+            }}
+          />
+        </Suspense>
+      )}
+      {pendingEdit && (
+        <Suspense fallback={null}>
+          <AIDiffConfirmDialog />
+        </Suspense>
+      )}
+      {converterDialog && (
+        <Suspense fallback={null}>
+          <ConverterDialog
+            action={converterDialog}
+            onClose={() => useAppStore.getState().showConverterDialog(null)}
+          />
+        </Suspense>
+      )}
       {closePromptTabs && (
-        <UnsavedChangesDialog tabs={closePromptTabs} onAction={resolveClosePrompt} />
+        <Suspense fallback={null}>
+          <UnsavedChangesDialog tabs={closePromptTabs} onAction={resolveClosePrompt} />
+        </Suspense>
       )}
     </div>
   );

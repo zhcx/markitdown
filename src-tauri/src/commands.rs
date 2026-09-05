@@ -165,6 +165,16 @@ pub struct EditorSettings {
     pub auto_complete: bool,
     #[serde(default = "default_favorite_emojis")]
     pub favorite_emojis: Vec<String>,
+    #[serde(default)]
+    pub input_engine: EditorInputEngine,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum EditorInputEngine {
+    #[default]
+    EditContext,
+    Textarea,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -254,6 +264,7 @@ impl Default for Settings {
                 spell_check: false,
                 auto_complete: true,
                 favorite_emojis: default_favorite_emojis(),
+                input_engine: EditorInputEngine::default(),
             },
             image_hosting: ImageHostingSettings {
                 active_service: "local".into(),
@@ -1687,6 +1698,25 @@ fn compare_versions(latest: &str, current: &str) -> Result<bool, String> {
 #[cfg(test)]
 mod update_tests {
     use super::{extract_latest_tag_from_atom, validate_update_download, Settings};
+
+    #[test]
+    fn editor_input_engine_survives_settings_round_trip() {
+        for engine in ["editContext", "textarea"] {
+            let mut value = serde_json::to_value(Settings::default()).unwrap();
+            value["editor"]["input_engine"] = serde_json::json!(engine);
+            let restored: Settings = serde_json::from_value(value).unwrap();
+            let saved = serde_json::to_value(restored).unwrap();
+            assert_eq!(saved["editor"]["input_engine"], engine);
+        }
+    }
+
+    #[test]
+    fn old_editor_settings_default_to_native_input() {
+        let mut value = serde_json::to_value(Settings::default()).unwrap();
+        value["editor"].as_object_mut().unwrap().remove("input_engine");
+        let restored: Settings = serde_json::from_value(value).unwrap();
+        assert_eq!(serde_json::to_value(restored).unwrap()["editor"]["input_engine"], "editContext");
+    }
 
     #[test]
     fn old_settings_without_agent_configuration_receive_safe_defaults() {
