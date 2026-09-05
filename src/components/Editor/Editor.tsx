@@ -408,10 +408,8 @@ export function Editor({ className, style, onActiveLineChange, onActiveLineRevea
       quickSuggestions: false,
       suggestOnTriggerCharacters: false,
       accessibilitySupport: 'off',
-      // 输入引擎由「设置 → 编辑器 → 输入法引擎」控制。默认 'textarea'
-      // （传统输入层）：WebView2 下原生 EditContext 会把 IME 组合文本
-      // 绘制到编辑器顶部空白区（文字跳顶），传统输入层配合 main.css 兜底
-      // 稳定；该设置可在设置面板中切换回 editContext。
+      // 默认使用原生 EditContext，让 Monaco 直接维护组合范围与字符边界；
+      // 传统 textarea 仅作为旧版 WebView 的兼容回退。
       editContext: useAppStore.getState().settings.editor.input_engine === 'editContext',
       contextmenu: false,
       unicodeHighlight: EDITOR_UNICODE_HIGHLIGHT_OPTIONS,
@@ -453,12 +451,6 @@ export function Editor({ className, style, onActiveLineChange, onActiveLineRevea
     };
     syncEditorViewport();
     const layoutDisposable = editor.onDidLayoutChange(syncEditorViewport);
-    const compStartDisposable = editor.onDidCompositionStart(() => {
-      root.classList.add('is-composing');
-    });
-    const compEndDisposable = editor.onDidCompositionEnd(() => {
-      root.classList.remove('is-composing');
-    });
 
     const clearCompanionTimer = () => {
       if (autoCompanionTimerRef.current !== null) window.clearTimeout(autoCompanionTimerRef.current);
@@ -685,8 +677,6 @@ export function Editor({ className, style, onActiveLineChange, onActiveLineRevea
       scrollDisposable.dispose();
       slashKeyDisposable.dispose();
       layoutDisposable.dispose();
-      compStartDisposable.dispose();
-      compEndDisposable.dispose();
       selectionToolbarResizeObserver.disconnect();
       editor.dispose();
       model.dispose();
@@ -704,6 +694,13 @@ export function Editor({ className, style, onActiveLineChange, onActiveLineRevea
     if (!model || !editor || model.getValue() === content) return;
     editor.executeEdits('external-update', [{ range: model.getFullModelRange(), text: content, forceMoveMarkers: true }]);
   }, [content]);
+
+  // 桌面设置会异步加载；保存输入引擎后同步更新现有实例，避免界面选择与实际引擎不一致。
+  useEffect(() => {
+    monacoRef.current?.updateOptions({
+      editContext: settings.editor.input_engine !== 'textarea',
+    });
+  }, [settings.editor.input_engine]);
 
   useEffect(() => {
     monacoRef.current?.updateOptions({

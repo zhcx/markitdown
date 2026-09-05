@@ -84,48 +84,23 @@ test('editor feeds Monaco a concrete font stack so wrap measurement re-runs on f
   assert.match(source, /fontFamily:\s*contentFontStack\(/);
 });
 
-test('editor defaults to the traditional textarea input path to avoid IME top-blink', async () => {
+test('editor defaults to native EditContext and keeps textarea as an explicit fallback', async () => {
   const editorSource = await readFile(new URL('../src/components/Editor/Editor.tsx', import.meta.url), 'utf8');
   const storeSource = await readFile(new URL('../src/stores/appStore.ts', import.meta.url), 'utf8');
+  const settingsSource = await readFile(new URL('../src/components/Settings/SettingsPanel.tsx', import.meta.url), 'utf8');
+  const layoutSource = await readFile(new URL('../src/utils/editorLayout.ts', import.meta.url), 'utf8');
 
-  // WebView2 下原生 EditContext 会把 IME 组合文本绘制到编辑器顶部空白区；
-  // 输入引擎由设置控制，默认 'textarea'（传统输入层）配合 main.css 兜底。
+  // 原生 EditContext 不依赖 Monaco textarea 对折行文本的可见范围计算；清除
+  // 应用层透明覆盖后应作为默认路径，textarea 仅供旧环境显式回退。
   assert.match(
     editorSource,
     /editContext:\s*useAppStore\.getState\(\)\.settings\.editor\.input_engine\s*===\s*'editContext'/,
   );
-  assert.match(storeSource, /input_engine:\s*'textarea'/);
+  assert.match(storeSource, /input_engine:\s*'editContext'/);
+  assert.match(settingsSource, /input_engine\s*\|\|\s*'editContext'/);
+  assert.doesNotMatch(layoutSource, /editContext:\s*false/);
   assert.match(editorSource, /accessibilitySupport:\s*'off'/);
 });
 
-test('input-carrier fallback hides non-composing carrier while allowing IME composition text display', async () => {
-  const css = await readFile(new URL('../src/styles/main.css', import.meta.url), 'utf8');
-
-  // 非组合态下，隐藏输入层（textarea:not(.ime-input)）保持透明
-  const nonComposingRule = css.match(/\.monaco-host\s+textarea\.inputarea:not\(\.ime-input\)[\s\S]*?\{[^}]*\}/)?.[0] ?? '';
-  assert.match(nonComposingRule, /color:\s*transparent\s*!important;/);
-  assert.match(nonComposingRule, /caret-color:\s*transparent\s*!important;/);
-  assert.match(nonComposingRule, /background:\s*transparent\s*!important;/);
-  assert.match(nonComposingRule, /text-shadow:\s*none\s*!important;/);
-
-  // 绝不对 .ime-input 强制设置 transparent，确保用户打字时能看清输入文本
-  assert.doesNotMatch(css, /\.monaco-host\s+textarea\.inputarea\.ime-input\s*\{[^}]*color:\s*transparent/);
-
-  // 严格保留元素几何与可见性（绝不修改 font-size、clip、opacity:0 或 pointer-events:none），
-  // 避免干扰系统输入法对组合窗锚点坐标与字形边界的探测。
-  assert.doesNotMatch(nonComposingRule, /opacity:\s*0\s*!important/);
-  assert.doesNotMatch(nonComposingRule, /pointer-events:\s*none\s*!important/);
-  assert.doesNotMatch(nonComposingRule, /font-size:\s*0/);
-  assert.doesNotMatch(nonComposingRule, /clip:\s*rect/);
-});
-
-test('editor has top padding mask against top blink', async () => {
-  const css = await readFile(new URL('../src/styles/main.css', import.meta.url), 'utf8');
-
-  // 顶部 24px 留白区域由 .overflow-guard::before / .monaco-editor::before 遮罩防护，
-  // 确保当 Monaco 隐藏输入层在折行时回退至 (top: 0, left: 0) 时，
-  // 视觉上被完全遮蔽于留白区，且 pointer-events: none 不影响对第 1 行正文的点击交互。
-  assert.match(css, /\.overflow-guard::before[\s\S]*?height:\s*24px/);
-  assert.match(css, /\.overflow-guard::before[\s\S]*?z-index:\s*15/);
-  assert.match(css, /\.overflow-guard::before[\s\S]*?pointer-events:\s*none/);
-});
+// 输入法可见性回归必须在打包后的 CSP 下检查真实行几何，不能用 CSS 字符串
+// 匹配代替。运行方法见 HANDOFF-editor-top-blink.md 和 scripts/verify-editor-ime.mjs。

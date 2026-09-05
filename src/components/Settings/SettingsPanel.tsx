@@ -479,10 +479,10 @@ export function SettingsPanel() {
               <div className="setting-item">
                 <label>
                   输入法引擎
-                  <small>默认使用传统输入层（更稳定，修复 IME 输入时文字闪现到编辑器顶部的问题）；如遇异常可切换为原生 EditContext</small>
+                  <small>默认使用原生 EditContext；旧版 WebView 输入异常时可回退到传统输入层</small>
                 </label>
                 <select
-                  value={localSettings.editor.input_engine || 'textarea'}
+                  value={localSettings.editor.input_engine || 'editContext'}
                   onChange={(e) =>
                     setLocalSettings({
                       ...localSettings,
@@ -490,8 +490,8 @@ export function SettingsPanel() {
                     })
                   }
                 >
-                  <option value="textarea">传统输入层（默认，稳定）</option>
-                  <option value="editContext">原生 EditContext（备选）</option>
+                  <option value="editContext">原生 EditContext（默认）</option>
+                  <option value="textarea">传统输入层（兼容）</option>
                 </select>
               </div>
               <SettingToggle

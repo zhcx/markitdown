@@ -1,118 +1,83 @@
-# Handoff: Zeditor 编辑器“打字过程中顶部空白位置闪现文字”终极修复交接
+# Zeditor 输入文字消失 / 首行上方闪字：CSP 排查与验证
 
-> 状态：已在 `fix/editor-top-blink-v0.4.4` 分支彻底修复、验证 139 项单元测试全通过、已 push 到 GitHub，并完成全量打包。
-> 更新时间：2026-09-03 16:32
+更新：2026-09-05。此前关于 TSF 捕获透明颜色、Monaco 必然隐藏正文、跨行必然调用
+`_renderAtTopLeft()` 的推断未被实测支持，旧交接结论撤销。不能用 CSS 正则测试或
+Vite 开发页面正常，宣称 Windows 安装包的问题已解决。
 
----
+## 已复现的根因
 
-## 1. 用户截图 `q1.png` 深度剖析
+在实际 release 程序的 WebView2 152 中，通过本地调试端口执行原生
+`Input.imeSetComposition` 并检查 DOM：
 
-用户提供的截图 `C:\Users\zhcx\Desktop\q1.png` 呈现了一个极其关键的视觉证据（分栏视图：左侧编辑器，右侧 Markdown 预览）：
+- `.view-line` 的 HTML 有 `style="top:24px;height:22px;line-height:22px"`。
+- 该节点 `style.cssText` 却为空，实际 `getBoundingClientRect().height` 为 0，top 落在容器顶部。
+- `securitypolicyviolation` 报 `style-src-attr` 和 `style-src-elem`，blockedURI 为 `inline`。
+- 真实策略为 `style-src 'self' 'unsafe-inline' 'nonce-…'`。
+- Tauri 给启动页内联样式注入 nonce 后，浏览器忽略同一指令中的 `'unsafe-inline'`。
+  Monaco 用 HTML 创建的行坐标，以及运行时样式表被拒绝；通过 `element.style.top`
+  等单属性方式更新的旧节点仍可定位，因此表现为间歇闪字、输入结束后恢复。
+- 在故障窗口仅重新应用被拒绝的两行 top/height，整段正文立即恢复。原 model 未丢数据。
 
-1. **内容特征**：第 1 行输入了一段很长的连续段落，在编辑器中折行（`wordWrap: 'on'`）成了 5 行。
-2. **预览区（右侧）正常排版**：
-   - 第 1 行~第 4 行正常折行。
-   - 第 5 行（段落末尾）正常显示：`的快乐；解放军四二九`。
-3. **编辑区（左侧）异常**：
-   - 行号 `1` 对应的下方显示了第 1~4 行。
-   - **第 5 行在第 4 行下方完全消失**！
-   - **在第 1 行上方的 24px 留白区（即编辑卡片顶部），赫然出现了：`的快乐；解放军四二九`**！
-   - 该行文字无行号、无当前行高亮条底色、缩进与正文第 1 列严密对齐。
+旧版顶部 24px 遮罩只是盖住了定位失败的正文，使“顶部闪字”变成“正文消失”。
 
----
+## 修复范围
 
-## 2. 根本原因定位（Monaco 内部源码级机理）
+1. `tauri.conf.json` 仅对 `style-src` 关闭 Tauri 的 CSP 自动注入，保留原先明确允许的
+   动态 CSS。脚本哈希注入及 `script-src`、对象/表单限制均保留。
+2. 删除顶部遮罩及输入载体 opacity/color/selection 干预。通用表单外观规则排除
+   Monaco 的 `.inputarea` / `.ime-text-area`，由 Monaco 管理组合态显隐和几何。
+3. 保留原生 EditContext 默认值和 textarea 兼容选择。Rust `EditorSettings` 补上
+   `input_engine` 的序列化/默认值；React 监听该设置并对现有实例调用 `updateOptions`。
+   旧实现没有 Rust 字段、也没有实时更新，所以设置界面与实际引擎可能不一致。
+4. 删除验证遮罩和透明补丁存在的旧测试，改用真实 WebView2 的行几何与 CSP 检查。
 
-通过对 Monaco Editor 核心源码的深入反编译与跟踪，找到了 100% 吻合的根因：
+## 回归命令
 
-### 2.1 Monaco 的 `VisibleTextAreaData` 折行缺陷
-查看 `node_modules/monaco-editor/esm/vs/editor/browser/controller/editContext/textArea/textAreaEditContext.js`（第 66~74 行）：
-```javascript
-if (this.startPosition.lineNumber === this.endPosition.lineNumber) {
-    this.visibleTextareaStart = visibleRangeProvider.visibleRangeForPosition(this.startPosition);
-    this.visibleTextareaEnd = visibleRangeProvider.visibleRangeForPosition(this.endPosition);
-} else {
-    // TODO: what if the view positions are not on the same line?
-    this.visibleTextareaStart = null;
-    this.visibleTextareaEnd = null;
-}
+先正常构建 `npm run tauri build`。在专用测试实例启动前设置进程环境变量
+`WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9235`。
+仅用于本地测试；不要在正式配置中启用调试端口。须退出同标识的其他实例，防止单实例转发。
+
+```text
+node scripts/verify-editor-ime.mjs verify-csp
+node scripts/verify-editor-ime.mjs verify-input test-output/ime-native.png
 ```
-- Monaco 源码中明确写着：`// TODO: what if the view positions are not on the same line?`。
-- 当一行文本折成多个视图行（如第 1 逻辑行折成了 5 个视图行），起始视图行号为 1，结束视图行号为 5，两者不相等。
-- Monaco 直接把 `visibleTextareaStart` 置为 `null`！
 
-### 2.2 降级执行 `_renderAtTopLeft()`
-由于 `visibleTextareaStart` 为 `null`，`_render()` 无法定位 textarea 到光标行，直接回退并执行：
-```javascript
-_renderAtTopLeft() {
-    this._doRender({
-        lastRenderPosition: null,
-        top: 0,
-        left: 0,
-        ...
-    });
-}
+`verify-csp` 检查 HTML 样式坐标/行高、动态样式表，以及非授权内联脚本仍被拒绝。
+旧 release 在行定位检查失败（`auto !== 24px`），且同时产生两类样式 CSP violation。
+
+`verify-input` 创建一个新的未命名测试标签页，检查短行/折行正文、连续组合更新、
+上屏、取消、首列输入和撤销，检查每行的非零高度、无重叠坐标及无样式 CSP 错误。
+测试文档会留在窗口中，便于截图和复核。保存另一输入引擎后再次运行；新实现应立即切换。
+可用第三个位置参数指定端口，例如 `verify-input test-output/ime-textarea.png 9235`。
+
+这是真实 WebView2 的浏览器组合路径测试，不是 OS 输入法候选窗口的自动测试。
+交付前仍应实测系统中文输入法，并区分哪些现象已复现验证。
+
+```text
+npm test
+npm run lint
+cargo test --locked --manifest-path src-tauri/Cargo.toml
+npm run tauri build
 ```
-- 这把输入载体 `<textarea class="inputarea ...">` 强行定位在 `(top: 0, left: 0)`！
-- 配合编辑器内部配置的 `padding: { top: 24, bottom: 40 }`，第 1 行正文从 `top: 24px` 开始。
-- **`top: 0` 恰恰位于第 1 行上方的 24px 顶部留白区域**！
 
-### 2.3 WebView2 + Windows TSF 原生绘制绕过常规 CSS
-- 当用户使用微软拼音等输入法打字时，Monaco 会把该 textarea 赋予 `.ime-input`（`z-index: 10`）。
-- Windows Text Services Framework (TSF) 在 WebView2 中合成中文输入时，会绕过普通的 CSS `color: transparent`，直接在 textarea 的屏幕物理区域使用 DirectWrite 绘制组合拼音与候选文字！
-- 因为 textarea 内持有整行文本且光标位于末尾第 5 行，textarea 自动滚动显示光标处的文字（`的快乐；解放军四二九`），导致用户在打字期间于顶部留白区看到清晰的文字闪烁；上屏后 textarea 恢复静止或清空，闪烁结束。
+设置测试涵盖两种引擎的 JSON 保存/加载往返，以及旧设置缺字段时的默认值。
 
----
+## 本次验证结果（2026-09-05 / 09-06）
 
-## 3. 四重防护彻底修复方案
+- 前端测试 137 项、Rust 测试 140 项、Lint 及正式 Tauri 打包通过。
+- 新 release 的 CSP 探针：HTML 行 top=24px / height=22px，动态样式色值正确；
+  两类样式 violation 均为零，内联脚本仍被拒绝。
+- EditContext 和 textarea 分别通过 17 个输入阶段检查；覆盖 4 行折行组合、
+  取消、提交、首列组合、撤销、退格、中英混输，以及 Enter 后出现第 2 逻辑行。
+- 使用 Windows 系统按键输入 b → bu，真实 textarea 进入 ime-input 状态；
+  8 个可见视图行全部保持正常坐标和 22px 高度，截图未出现正文消失或顶部闪字。
+- 设置界面保存两种引擎后，实际 DOM 引擎立即切换；Rust get_settings 重新读取值一致。
+  测试后已恢复原生 EditContext。此次未强制退出包含正在编辑文档的测试窗口。
+- 安装包保存于 test-output/ime-csp-fix-20260905，生成于 2026-09-05 19:02。
+  NSIS SHA-256：9ED55FB4FE5373D6B389842FC7C76BAE177537485F3C3C775E6AEC0FD395B020。
+  版本仍为 0.4.3，未签名；此目录用于与此前同版本的失败构建区分。
 
-为彻底根绝无论在单行、折行、中文 IME、英文还是混合输入下的顶部闪烁，实施了四重纵深防御：
-
-### 防护 1：DOM 运行时坐标钳位拦截（`Editor.tsx`）
-在 `src/components/Editor/Editor.tsx` 中为 `textarea.inputarea` 注入动态坐标校正：
-- 注册 `MutationObserver` 监听 textarea 的 `style` 与 `class` 变化，并挂载 `compositionstart` / `compositionupdate` 事件监听。
-- 一旦检测到 textarea 被 Monaco 置于顶部留白区（`top < 24px`），立即通过 `editor.getScrolledVisiblePosition(editor.getPosition())` 提取当前光标在视口中的精确像素坐标。
-- 将 textarea 瞬间校正到光标实际位置（`top` 与 `left`）。
-- **效果**：不仅 textarea 永远不会留在 `(top: 0, left: 0)`，而且 Windows 输入法的候选词浮窗能够始终精准贴合光标位置。
-
-### 防护 2：顶部 24px 留白区域实体保护遮罩（`main.css`）
-在 `src/styles/main.css` 中为 `.monaco-editor` 增加伪元素背景遮罩：
-```css
-.monaco-editor::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 24px;
-  background: var(--bg-document);
-  z-index: 20;
-  pointer-events: none;
-}
-```
-- 第 1 行及行号均从 `top: 24px` 起算，`0~24px` 纯属留白。
-- 遮罩以 `z-index: 20` 覆盖在 Monaco 输入层（`z-index: 10`）之上，背景色与卡片完全一致。
-- 附带 `pointer-events: none`，鼠标在顶部区域的点击无缝穿透到编辑器第 1 行。
-- 即使未来任何引擎把任何未预期的文本画在 `top: 0`，视觉上也绝对不可见。
-
-### 防护 3：严格保留输入层几何与尺寸，并允许组合态文字正常显示（`main.css` + `Editor.tsx`）
-- **关键教训（`q2.png` 与 `q3.png` 排查结论）**：
-  1. Windows TSF 输入法框架必须依赖真实 textarea 的字符尺寸与边界来定位候选词窗口。若设置 `font-size: 0` 或 `clip: rect`，会导致 TSF 字符边界归零，候选框瞬间脱钩漂移至屏幕左上角 `(0, 0)` 且文字无法上屏；若通过 JS 在组合期间改动 `style.top`，同样会破坏 TSF 坐标同步协议（`q2.png` 现象）。
-  2. 若在 CSS 中对 `.ime-input` 强制设置 `color: transparent !important; opacity: 0.01 !important;`，由于 Monaco 的 `.view-line` 在组合态期间尚未生成已上屏的 DOM 节点，完全依靠 `.ime-input` 呈现正在输入的拼音/文字，这会导致用户在打字过程中光标处完全空白（`q3.png` 现象）。
-- **最终策略**：
-  - 非组合态（`:not(.ime-input)`）下，隐藏载体保持透明。
-  - 组合输入态（`.ime-input`）下，允许正常显示前景色与光标，让用户在打字时清晰看到拼音与文字。
-  - 防顶部闪现完全由顶部的实体背景遮罩（`.overflow-guard::before`，`height: 24px, z-index: 15`）在视觉层统一覆盖；任何因折行回退到 `top: 0` 的输入框均被该遮罩遮蔽，既彻底消除顶部闪现，又保证输入法候选词浮窗正常贴近光标、打字过程文字清晰可见。
-
-### 防护 4：Monaco 原生覆盖层兜底（`main.css`）
-- 强制 `.monaco-host .textAreaCover { background: var(--bg-document) !important; }`，确保 Monaco 内部原生的 cover div 同样具备实体底色。
-
----
-
-## 4. 验证与构建产物
-
-1. **自动化测试**：
-   - 运行 `npm test`：**139/139 全部通过**。
-   - 运行 `npm run lint`：**0 错误，0 警告**。
-2. **Git 提交**：
-   - 分支：`fix/editor-top-blink-v0.4.4`（已推送到 `origin`）
+参考：
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy/style-src-attr
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/CSP
+- Tauri 本地 `node_modules/@tauri-apps/cli/config.schema.json` 的 `dangerousDisableAssetCspModification`
