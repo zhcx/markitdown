@@ -193,9 +193,7 @@ fn restore_sessions(storage_root: &Path) -> Vec<Arc<SessionRuntime>> {
         ) {
             session.status = AgentSessionStatus::Interrupted;
         }
-        if session.read_only
-            && session.worktree_path.as_deref() == Some(&session.workspace_root)
-        {
+        if session.read_only && session.worktree_path.as_deref() == Some(&session.workspace_root) {
             session.read_only = false;
             session.direct_write = true;
         }
@@ -500,11 +498,9 @@ pub async fn agent_start_turn(
     // 首条消息探测一次，后续消息零开销。
     let probe_backend = request.backend;
     let probe_executable = executable.clone();
-    tokio::task::spawn_blocking(move || {
-        ensure_backend_probed(&probe_executable, probe_backend)
-    })
-    .await
-    .map_err(|error| format!("{} 探测失败：{error}", request.backend.label()))??;
+    tokio::task::spawn_blocking(move || ensure_backend_probed(&probe_executable, probe_backend))
+        .await
+        .map_err(|error| format!("{} 探测失败：{error}", request.backend.label()))??;
 
     // One running turn per workspace, regardless of backend.
     supervisor.ensure_loaded().await;
@@ -576,7 +572,13 @@ pub async fn agent_start_turn(
             return Err("恢复会话时不能切换工作区".into());
         }
         // 会话标题取首条提问自动生成；已有标题的会话不再改名。
-        if session.title.as_deref().map(str::trim).unwrap_or("").is_empty() {
+        if session
+            .title
+            .as_deref()
+            .map(str::trim)
+            .unwrap_or("")
+            .is_empty()
+        {
             session.title = Some(derive_session_title(&request.prompt));
         }
         session.approval_mode = request.approval_mode;
@@ -1733,7 +1735,10 @@ mod tests {
 
     #[test]
     fn session_titles_flatten_whitespace_and_truncate_by_characters() {
-        assert_eq!(derive_session_title("  修复   登录\n页面的换行  "), "修复 登录 页面的换行");
+        assert_eq!(
+            derive_session_title("  修复   登录\n页面的换行  "),
+            "修复 登录 页面的换行"
+        );
         let long = derive_session_title("a".repeat(60).as_str());
         assert_eq!(long.chars().count(), 25); // 24 字符 + 省略号
         assert!(long.ends_with('…'));

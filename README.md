@@ -162,7 +162,7 @@ Agent 默认关闭，需要先在“设置 → AI 助手”中启用。Zeditor �
 
 ## 🚀 快速开始
 
-## v0.4.3 更新
+## v0.4.4 更新
 
 ### 更新日志
 
@@ -172,25 +172,28 @@ Agent 默认关闭，需要先在“设置 → AI 助手”中启用。Zeditor �
 - **编辑器输入修复**：修复生产包 CSP 拦截 Monaco 动态行样式导致的正文消失、折行高度归零和首行上方闪字。
 - **输入法引擎**：原生 EditContext 默认启用，textarea 作为兼容回退；设置保存后立即切换并在重启后保留。
 - **输入稳定性验证**：覆盖短行、折行、连续组合、取消、上屏、首列输入、撤销、退格、中英混输和换段。
+- **数据安全修复**：每个标签独立撤销状态，AI 异步结果校验文档身份，保存/关闭/更新竞态受到保护。
+- **自动保存**：按设置周期保存已有路径且已修改的标签。
+- **依赖审计**：更新高危依赖并通过 GitHub Actions 发布质量门禁。
 - **转换模块**：继续沿用 AnyDoc v1.2.0（本版本未变更转换引擎）。
 
-### v0.4.3 平台安装包对照
+### v0.4.4 平台安装包对照
 
-> 以下链接指向 v0.4.3 Release 资产；安装包由 GitHub Actions 根据 v0.4.3 标签源码构建。
+> 以下链接指向 v0.4.4 Release 资产；安装包由 GitHub Actions 根据 v0.4.4 标签源码构建。
 
 | 操作系统 | 架构 | 最低系统版本 | 推荐安装包 | 适用场景 |
 | --- | --- | --- | --- | --- |
-| Windows | x86_64 | Windows 10 1809+ | [NSIS `.exe`](https://github.com/zhcx/zeditor/releases/download/v0.4.3/Zeditor_0.4.3_x64-setup.exe) | 推荐大多数用户使用，按向导安装 |
-| Windows | x86_64 | Windows 10 1809+ | [MSI](https://github.com/zhcx/zeditor/releases/download/v0.4.3/Zeditor_0.4.3_x64_en-US.msi) | 企业部署、系统管理或静默安装 |
-| macOS Apple Silicon | arm64 | macOS 12+ | [DMG](https://github.com/zhcx/zeditor/releases/download/v0.4.3/Zeditor_0.4.3_aarch64.dmg) | M1、M2、M3、M4 等 Apple 芯片 |
-| macOS Apple Silicon | arm64 | macOS 12+ | [APP 压缩包](https://github.com/zhcx/zeditor/releases/download/v0.4.3/Zeditor_aarch64.app.tar.gz) | 手动解压或更新 |
-| macOS Intel | x86_64 | macOS 12+ | [DMG](https://github.com/zhcx/zeditor/releases/download/v0.4.3/Zeditor_0.4.3_x64.dmg) | Intel 芯片 Mac |
-| macOS Intel | x86_64 | macOS 12+ | [APP 压缩包](https://github.com/zhcx/zeditor/releases/download/v0.4.3/Zeditor_x64.app.tar.gz) | 手动解压或更新 |
-| Ubuntu / Debian | x86_64 | Ubuntu 20.04+ / Debian 11+ | [DEB](https://github.com/zhcx/zeditor/releases/download/v0.4.3/Zeditor_0.4.3_amd64.deb) | Ubuntu、Debian、Linux Mint 等 |
-| Fedora / RHEL / openSUSE | x86_64 | Fedora 38+ / RHEL 9+ | [RPM](https://github.com/zhcx/zeditor/releases/download/v0.4.3/Zeditor-0.4.3-1.x86_64.rpm) | RPM 系发行版 |
-| 通用 Linux | x86_64 | 需 webkit2gtk-4.1 | [AppImage](https://github.com/zhcx/zeditor/releases/download/v0.4.3/Zeditor_0.4.3_amd64.AppImage) | 无需安装，赋予执行权限后运行 |
+| Windows | x86_64 | Windows 10 1809+ | [NSIS `.exe`](https://github.com/zhcx/zeditor/releases/download/v0.4.4/Zeditor_0.4.4_x64-setup.exe) | 推荐大多数用户使用，按向导安装 |
+| Windows | x86_64 | Windows 10 1809+ | [MSI](https://github.com/zhcx/zeditor/releases/download/v0.4.4/Zeditor_0.4.4_x64_en-US.msi) | 企业部署、系统管理或静默安装 |
+| macOS Apple Silicon | arm64 | macOS 12+ | [DMG](https://github.com/zhcx/zeditor/releases/download/v0.4.4/Zeditor_0.4.4_aarch64.dmg) | M1、M2、M3、M4 等 Apple 芯片 |
+| macOS Apple Silicon | arm64 | macOS 12+ | [APP 压缩包](https://github.com/zhcx/zeditor/releases/download/v0.4.4/Zeditor_aarch64.app.tar.gz) | 手动解压或更新 |
+| macOS Intel | x86_64 | macOS 12+ | [DMG](https://github.com/zhcx/zeditor/releases/download/v0.4.4/Zeditor_0.4.4_x64.dmg) | Intel 芯片 Mac |
+| macOS Intel | x86_64 | macOS 12+ | [APP 压缩包](https://github.com/zhcx/zeditor/releases/download/v0.4.4/Zeditor_x64.app.tar.gz) | 手动解压或更新 |
+| Ubuntu / Debian | x86_64 | Ubuntu 20.04+ / Debian 11+ | [DEB](https://github.com/zhcx/zeditor/releases/download/v0.4.4/Zeditor_0.4.4_amd64.deb) | Ubuntu、Debian、Linux Mint 等 |
+| Fedora / RHEL / openSUSE | x86_64 | Fedora 38+ / RHEL 9+ | [RPM](https://github.com/zhcx/zeditor/releases/download/v0.4.4/Zeditor-0.4.4-1.x86_64.rpm) | RPM 系发行版 |
+| 通用 Linux | x86_64 | 需 webkit2gtk-4.1 | [AppImage](https://github.com/zhcx/zeditor/releases/download/v0.4.4/Zeditor_0.4.4_amd64.AppImage) | 无需安装，赋予执行权限后运行 |
 
-完整更新说明、转换模块下载与安装提示见 [`docs/releases/v0.4.3.md`](docs/releases/v0.4.3.md)。
+完整更新说明、转换模块下载与安装提示见 [`docs/releases/v0.4.4.md`](docs/releases/v0.4.4.md)。
 
 ## Contributors
 
@@ -391,8 +394,8 @@ SignPath Foundation 申请目前处于准备/审核阶段；在正式启用前�
 
 ## 🚀 版本更新日志
 
-- **v0.4.3**（2026-09-06）：修复生产包 CSP 导致的 Monaco 行定位失效、输入文字消失与首行闪字；原生 EditContext 默认启用，完善输入法设置保存和 WebView2 回归验证。详见 [v0.4.3 发布说明](docs/releases/v0.4.3.md)。
-  - 平台安装包（由 `v0.4.3` 标签触发 GitHub Actions 构建）：Windows `Zeditor_0.4.3_x64-setup.exe` / `Zeditor_0.4.3_x64_en-US.msi`、macOS（Apple Silicon / Intel）`.dmg`、Linux `.deb` / `.rpm` / `.AppImage`。
+ - **v0.4.4**（2026-09-06）：修复跨标签撤销、AI 异步回写、保存关闭竞态和自动保存，继续保留 WebView2 输入与行布局修复。详见 [v0.4.4 发布说明](docs/releases/v0.4.4.md)。
+  - 平台安装包（由 `v0.4.4` 标签触发 GitHub Actions 构建）：Windows `Zeditor_0.4.4_x64-setup.exe` / `Zeditor_0.4.4_x64_en-US.msi`、macOS（Apple Silicon / Intel）`.dmg`、Linux `.deb` / `.rpm` / `.AppImage`。
 - **v0.4.2**（2026-08-26）：编辑与预览体验打磨 —— 分栏拖拽改用 Pointer Events 更顺滑、编辑/预览滚动浏览更跟手，预览框链接改为系统默认浏览器打开。详见 [v0.4.2 发布说明](docs/releases/v0.4.2.md)。
   - 平台安装包（由 `v0.4.2` 标签触发 GitHub Actions 构建）：Windows `Zeditor_0.4.2_x64-setup.exe` / `Zeditor_0.4.2_x64_en-US.msi`、macOS（Apple Silicon / Intel）`.dmg`、Linux `.deb` / `.rpm` / `.AppImage`。
 - **v0.4.1**（2026-08-26）：资源管理器体验修复 —— 目录层级逐级缩进、时间线标题单行显示、一级目录关闭按钮（悬停 `×` + 右键菜单，关闭后收起其下所有文件夹并防止子目录被自动重新添加）、刷新保留已展开目录内容。详见 [v0.4.1 发布说明](docs/releases/v0.4.1.md)。

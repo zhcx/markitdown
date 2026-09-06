@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { save } from '@tauri-apps/plugin-dialog';
+import { useRef, useState } from 'react';
+import { message, save } from '@tauri-apps/plugin-dialog';
 import { useAppStore } from '../../stores/appStore';
 import { resolveSaveBaseName } from '../../utils/saveName';
 import { UnsavedChangesDialog } from '../UnsavedChangesDialog/UnsavedChangesDialog';
@@ -8,12 +8,16 @@ import type { UnsavedChangesAction } from '../../utils/windowCloseGuard';
 export function TabsBar() {
   const { tabs, activeTabId, setActiveTab, closeTab, addTab, saveTab } = useAppStore();
   const [pendingCloseTabId, setPendingCloseTabId] = useState<string | null>(null);
+  const closeEpoch = useRef(0);
+  const savingRef = useRef(false);
+  const [saving, setSaving] = useState(false);
   const pendingCloseTab = tabs.find(tab => tab.id === pendingCloseTabId) ?? null;
 
   const requestTabClose = (id: string) => {
     const tab = tabs.find(item => item.id === id);
     if (!tab) return;
 
+    closeEpoch.current += 1;
     if (tab.modified) {
       setPendingCloseTabId(id);
       return;
@@ -23,16 +27,23 @@ export function TabsBar() {
   };
 
   const resolveTabClose = async (action: UnsavedChangesAction) => {
+    if (action === 'cancel') closeEpoch.current += 1;
+    if (savingRef.current && action !== 'cancel') return;
+    const epoch = closeEpoch.current;
     const tab = useAppStore.getState().tabs.find(item => item.id === pendingCloseTabId);
     if (!tab || action === 'cancel') {
       setPendingCloseTabId(null);
       return;
     }
 
+    try {
     if (action === 'save') {
+      savingRef.current = true;
+      setSaving(true);
       // 未命名文档且启用 AI 时，先请求文件名建议再打开保存对话框；
       // AI 未启用时 resolveSaveBaseName 立即返回默认值。
       const baseName = tab.path ? '' : await resolveSaveBaseName(tab.title, tab.content);
+      if (epoch !== closeEpoch.current) return;
       const path = tab.path ?? await save({
         title: `保存“${tab.title}”`,
         filters: [{ name: 'Markdown', extensions: ['md', 'markdown', 'txt'] }],
@@ -42,11 +53,19 @@ export function TabsBar() {
         setPendingCloseTabId(null);
         return;
       }
+      if (epoch !== closeEpoch.current) return;
       await saveTab(tab.id, path);
+      if (epoch !== closeEpoch.current || useAppStore.getState().tabs.find(t => t.id === tab.id)?.modified) return;
     }
 
     setPendingCloseTabId(null);
-    closeTab(tab.id);
+    if (epoch === closeEpoch.current) closeTab(tab.id);
+    } catch (error) {
+      await message(`保存失败：${String(error)}`, {title:'无法保存文件',kind:'error'});
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
+    }
   };
 
   const handleCloseTab = (event: React.MouseEvent, id: string) => {
@@ -96,6 +115,7 @@ export function TabsBar() {
         <UnsavedChangesDialog
           tabs={[pendingCloseTab]}
           scope="tab"
+          busy={saving}
           onAction={(action) => { void resolveTabClose(action); }}
         />
       )}

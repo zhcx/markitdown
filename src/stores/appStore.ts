@@ -1,3 +1,4 @@
+import { createSaveQueue } from '../utils/documentSafety';
 import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
@@ -15,6 +16,8 @@ import { isConvertibleDocumentName } from '../utils/documentFormats';
 import { isTextFileName } from '../utils/fileIcon';
 import { normalizeAgentBackend } from '../utils/agentSettings';
 
+const enqueueSave = createSaveQueue();
+let pendingSaves = 0;
 const isTauriRuntime = () => typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
   const browserSettingsKey = 'zeditor.browser.settings';
 let settingsMutationVersion = 0;
@@ -517,6 +520,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   setContent: (content) => {
     const { activeTabId, tabs } = get();
     const activeTab = tabs.find(tab => tab.id === activeTabId);
+    if (activeTab?.content === content && get().content === content) return;
     if (activeTabId && activeTab) {
       if (activeTab.content !== content) {
         if (!pendingTimelineBaselines.has(activeTabId)) {
@@ -780,51 +784,50 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   saveTab: async (tabId, path) => {
-    const tab = get().tabs.find(item => item.id === tabId);
-    if (!tab) throw new Error('找不到要保存的标签页');
-
+    pendingSaves += 1;
     set({ isSaving: true });
     try {
-      await invoke('save_file_content', { path, content: tab.content });
-      set(state => ({
-        tabs: applySavedTab(state.tabs, tabId, path, tab.content),
-        currentFile: state.activeTabId === tabId ? path : state.currentFile,
-      }));
+      await enqueueSave(async () => {
+        const tab = get().tabs.find(item => item.id === tabId);
+        if (!tab) throw new Error('找不到要保存的标签页');
+        await invoke('save_file_content', { path, content: tab.content });
+        set(state => ({
+          tabs: applySavedTab(state.tabs, tabId, path, tab.content),
+          currentFile: state.activeTabId === tabId ? path : state.currentFile,
+        }));
 
-      // Cloud backup is a background side effect of a successful local save.
-      // It must never await remote completion or mark the document dirty again.
-      const workspaceRoots = readStoredStringArray('zeditor.workspace-roots');
-      const webdav = get().settings.webdav;
-      if (webdav?.enabled && isTauriRuntime()) {
-        void invoke('webdav_enqueue_backup', {
-          request: { local_path: path, workspace_roots: workspaceRoots },
-          settings: webdav,
-        }).catch(error => {
-          useWebDavStore.getState().setEnqueueError(path, String(error));
-        });
-      }
-      const s3 = get().settings.s3;
-      if (s3?.enabled && isTauriRuntime()) {
-        void invoke('s3_enqueue_backup', {
-          request: { local_path: path, workspace_roots: workspaceRoots },
-          settings: s3,
-        }).catch(error => {
-          useS3Store.getState().setEnqueueError(path, String(error));
-        });
-      }
+        // Cloud backup is a background side effect of a successful local save.
+        // It must never await remote completion or mark the document dirty again.
+        const workspaceRoots = readStoredStringArray('zeditor.workspace-roots');
+        const webdav = get().settings.webdav;
+        if (webdav?.enabled && isTauriRuntime()) {
+          void invoke('webdav_enqueue_backup', {
+            request: { local_path: path, workspace_roots: workspaceRoots },
+            settings: webdav,
+          }).catch(error => {
+            useWebDavStore.getState().setEnqueueError(path, String(error));
+          });
+        }
+        const s3 = get().settings.s3;
+        if (s3?.enabled && isTauriRuntime()) {
+          void invoke('s3_enqueue_backup', {
+            request: { local_path: path, workspace_roots: workspaceRoots },
+            settings: s3,
+          }).catch(error => {
+            useS3Store.getState().setEnqueueError(path, String(error));
+          });
+        }
+      });
     } finally {
-      set({ isSaving: false });
+      pendingSaves -= 1;
+      set({ isSaving: pendingSaves > 0 });
     }
   },
 
   saveFile: async (path) => {
     const { activeTabId } = get();
     if (!activeTabId) return;
-    try {
-      await get().saveTab(activeTabId, path);
-    } catch (error) {
-      console.error('Failed to save file:', error);
-    }
+    await get().saveTab(activeTabId, path);
   },
 
   updateWordCount: () => {
@@ -902,6 +905,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   updateTabContent: (id, content) => {
+    if (get().activeTabId === id) { get().setContent(content); return; }
     const { tabs } = get();
     set({
       tabs: tabs.map(t =>

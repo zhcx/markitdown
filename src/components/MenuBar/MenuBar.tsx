@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, lazy, Suspense } from 'react';
 import { useAppStore } from '../../stores/appStore';
-import { open as openDialog, save } from '@tauri-apps/plugin-dialog';
+import { open as openDialog, save, message } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { open } from '@tauri-apps/plugin-shell';
@@ -156,7 +156,7 @@ graph TD
     about: {
       title: '关于 Zeditor',
       body: `
-**Zeditor v0.4.3**
+**Zeditor v0.4.4**
 
 一款现代化的 Markdown 编辑器
 
@@ -178,7 +178,7 @@ graph TD
 - **v0.4.0**：品牌焕新，全新蓝色渐变 Z 图标与 GitHub 横幅；打磨云同步面板（WebDAV / S3）状态显示、滑动开关与历史版本打开
 - **v0.4.1**：优化资源管理器，目录层级缩进更清晰、时间线标题单行显示、一级目录可关闭、刷新保留展开内容
 - **v0.4.2**：优化分栏拖拽与编辑/预览滚动浏览体验；预览框链接改为系统浏览器打开
-- **v0.4.3**：修复 WebView2 生产包 CSP 导致的编辑器行定位失效、输入文字消失与首行闪字；原生 EditContext 默认启用，传统 textarea 作为兼容回退；设置保存后即时切换
+- **v0.4.4**：修复跨标签撤销、异步 AI 回写、保存关闭竞态和自动保存；输入法与 WebView2 行布局修复继续保留
 
 **技术栈**
 Tauri 2.0 + React 18 + TypeScript + Monaco Editor + markdown-it
@@ -373,14 +373,13 @@ https://github.com/zhcx/zeditor
 export function MenuBar() {
   const {
     content,
-    currentFile,
     settings,
     setSettings,
     setSettingsOpen,
     addTab,
     openFile,
     convertDocument,
-    saveFile,
+    saveTab,
     getActiveTab
   } = useAppStore();
 
@@ -440,40 +439,21 @@ export function MenuBar() {
     const unlistenProgress = await listen<DownloadProgress>('update-download-progress', (event) => {
       setDownloadProgress(event.payload);
     });
-    // 下载完成后：先保存未落盘的编辑，再触发安装（后端下载命令现在
-    // 只下载并返回路径，安装与退出由 finalize_update_install 执行，
-    // 避免进程在事件送达/保存完成前被直接终止导致内容丢失）。
-    const unlistenComplete = await listen<{ path: string }>('update-download-complete', async (event) => {
-      setDownloadDone(true);
-      try {
-        const activeTab = getActiveTab();
-        if (activeTab?.modified && currentFile) {
-          await saveFile(currentFile);
-        }
-      } catch (error) {
-        console.warn('安装前保存当前文档失败：', error);
-      }
-      try {
-        await invoke('finalize_update_install', { installerPath: event.payload.path });
-      } catch (error) {
-        console.error('启动安装程序失败:', error);
-        setDownloadError(`启动安装程序失败：${String(error)}`);
-      }
-    });
 
     try {
-      await invoke('download_and_install_update', {
+      const installerPath = await invoke<string>('download_and_install_update', {
         downloadUrl: updateInfo.asset_download_url,
         fileName: updateInfo.asset_name,
         assetSize: updateInfo.asset_size,
       });
+      setDownloadDone(true);
+      window.dispatchEvent(new CustomEvent('zeditor-install-update', {detail: installerPath}));
     } catch (error) {
       console.error('下载更新失败:', error);
       setDownloadError(`下载或启动安装程序失败：${String(error)}`);
       setDownloadProgress(null);
     } finally {
       unlistenProgress();
-      unlistenComplete();
     }
   };
 
@@ -518,8 +498,13 @@ export function MenuBar() {
   };
 
   const handleSaveFile = async () => {
-    if (currentFile) {
-      await saveFile(currentFile);
+    const tab = getActiveTab();
+    if (tab?.path) {
+      try {
+        await saveTab(tab.id, tab.path);
+      } catch (error) {
+        await message(`保存失败：${String(error)}`, { title: '无法保存文件', kind: 'error' });
+      }
     } else {
       await handleSaveAs();
     }
@@ -527,24 +512,26 @@ export function MenuBar() {
   };
 
   const handleSaveAs = async () => {
+    const targetTab = getActiveTab();
+    if (!targetTab) return;
     try {
       // 尚无文件路径的未命名文档先请求 AI 文件名建议（未启用 AI 时立即回退）。
       let suggestedBaseName: string | null = null;
-      if (!currentFile) {
-        const activeTab = getActiveTab();
+      if (!targetTab.path) {
+        const activeTab = targetTab;
         if (activeTab) {
           suggestedBaseName = await resolveSaveBaseName(activeTab.title, activeTab.content);
         }
       }
       const selected = await save({
         filters: [{ name: 'Markdown', extensions: ['md'] }],
-        defaultPath: currentFile || `${suggestedBaseName || 'untitled'}.md`,
+        defaultPath: targetTab.path || `${suggestedBaseName || 'untitled'}.md`,
       });
       if (selected) {
-        await saveFile(selected as string);
+        await saveTab(targetTab.id, selected as string);
       }
     } catch (error) {
-      console.error('Failed to save file:', error);
+      await message(`保存失败：${String(error)}`, {title:'无法保存文件',kind:'error'});
     }
     setActiveMenu(null);
   };

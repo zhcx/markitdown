@@ -5,9 +5,10 @@ interface UnsavedChangesDialogProps {
   tabs: CloseGuardTab[];
   onAction: (action: UnsavedChangesAction) => void;
   scope?: 'application' | 'tab';
+  busy?: boolean;
 }
 
-export function UnsavedChangesDialog({ tabs, onAction, scope = 'application' }: UnsavedChangesDialogProps) {
+export function UnsavedChangesDialog({ tabs, onAction, scope = 'application', busy = false }: UnsavedChangesDialogProps) {
   const saveButtonRef = useRef<HTMLButtonElement>(null);
   const isApplicationClose = scope === 'application';
 
@@ -87,11 +88,12 @@ export function UnsavedChangesDialog({ tabs, onAction, scope = 'application' }: 
           <button className="unsaved-action-button" type="button" onClick={() => onAction('cancel')}>
             取消
           </button>
-          <button className="unsaved-action-button discard" type="button" onClick={() => onAction('discard')}>
+          <button disabled={busy} className="unsaved-action-button discard" type="button" onClick={() => onAction('discard')}>
             不保存
           </button>
           <button
             ref={saveButtonRef}
+            disabled={busy}
             className="unsaved-action-button primary"
             type="button"
             onClick={() => onAction('save')}

@@ -10,6 +10,7 @@ import { useAIStore, type ProofreadResult } from '../../stores/aiStore';
 import type { EditorController, EditorDispatchSpec, EditorLine } from '../../types/editor';
 import { EDITOR_OVERFLOW_OPTIONS, EDITOR_UNICODE_HIGHLIGHT_OPTIONS } from '../../utils/editorLayout';
 import { contentFontStack } from '../../utils/appearanceSettings';
+import { DocumentSessions, sameDocument } from '../../utils/documentSafety';
 import { filterSlashCommands, findSlashCommandTrigger, type SlashCommand } from '../../utils/slashCommands';
 import { SlashCommandMenu, type SlashMenuAnchor } from './SlashCommandMenu';
 import { ImageOptionsModal, Toolbar } from '../Toolbar/Toolbar';
@@ -198,6 +199,8 @@ async function fileAsDataUrl(file: File) {
   });
 }
 
+const documentModels = new DocumentSessions<monaco.editor.ITextModel>();
+
 export function Editor({ className, style, onActiveLineChange, onActiveLineReveal }: EditorProps) {
   const editorRef = useRef<HTMLDivElement>(null);
   const monacoRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
@@ -215,9 +218,8 @@ export function Editor({ className, style, onActiveLineChange, onActiveLineRevea
   const [copyAsOpen, setCopyAsOpen] = useState(false);
   const [showContextImageModal, setShowContextImageModal] = useState(false);
   const [selectionToolbar, setSelectionToolbar] = useState<SelectionToolbarState | null>(null);
-  const { content, currentFile, setContent, settings, setEditorView } = useAppStore();
+  const { content, currentFile, activeTabId, tabs, updateTabContent, settings, setEditorView } = useAppStore();
   const { proofreadResults, rewriteSelection, translateText, setTranslationVisible, setStatus } = useAIStore();
-  const initialContentRef = useRef(content);
   const slashCommands = useMemo(() => filterSlashCommands(slashMenu?.query || ''), [slashMenu?.query]);
   const language = normalizeLanguage(settings.appearance.language);
 
@@ -304,7 +306,12 @@ export function Editor({ className, style, onActiveLineChange, onActiveLineRevea
     const selectedText = controller.getText(selection.from, selection.to);
     if (!selectedText) return;
     setStatus('loading', '正在润色选中文本...');
+    const snapshot = {activeTabId: useAppStore.getState().activeTabId, content: controller.getValue()};
     const polished = await rewriteSelection(selectedText);
+    if (!sameDocument(snapshot, useAppStore.getState())) {
+      setStatus('error', '文档已变化，请重新发起润色');
+      return;
+    }
     if (polished) controller.replaceRange(selection.from, selection.to, polished, { from: selection.from, to: selection.from + polished.length });
     controller.focus();
   }, [rewriteSelection, setStatus]);
@@ -376,10 +383,13 @@ export function Editor({ className, style, onActiveLineChange, onActiveLineRevea
 
   useEffect(() => {
     const root = editorRef.current;
-    if (!root || monacoRef.current) return;
+    if (!root || monacoRef.current || !activeTabId) return;
 
     const isDark = (document.documentElement.dataset.theme || '').endsWith('-dark');
-    const model = monaco.editor.createModel(initialContentRef.current, 'markdown');
+    const tab = useAppStore.getState().tabs.find(t => t.id === activeTabId);
+    if (!tab) return;
+    const model = documentModels.get(activeTabId, () => monaco.editor.createModel(tab.content, 'markdown'));
+    if (model.getValue() !== tab.content) model.setValue(tab.content);
     const editor = monaco.editor.create(root, {
       model,
       theme: isDark ? 'vs-dark' : 'vs',
@@ -562,7 +572,7 @@ export function Editor({ className, style, onActiveLineChange, onActiveLineRevea
     };
 
     const contentDisposable = editor.onDidChangeModelContent(() => {
-      setContent(model.getValue());
+      updateTabContent(activeTabId, model.getValue());
       scheduleCompanion();
       refreshSlashMenu();
     });
@@ -679,14 +689,15 @@ export function Editor({ className, style, onActiveLineChange, onActiveLineRevea
       layoutDisposable.dispose();
       selectionToolbarResizeObserver.disconnect();
       editor.dispose();
-      model.dispose();
       monacoRef.current = null;
       modelRef.current = null;
       controllerRef.current = null;
       slashMenuRef.current = null;
       setEditorView(null);
     };
-  }, [onActiveLineChange, onActiveLineReveal, setContent, setEditorView]);
+  }, [activeTabId, onActiveLineChange, onActiveLineReveal, updateTabContent, setEditorView]);
+
+  useEffect(() => { documentModels.retain(tabs.map(t => t.id)); }, [tabs]);
 
   useEffect(() => {
     const model = modelRef.current;

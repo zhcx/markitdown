@@ -1,3 +1,4 @@
+import { sameDocument, type DocumentSnapshot } from '../utils/documentSafety';
 import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
@@ -162,6 +163,7 @@ export type AIEditMode = 'ask' | 'suggest';
 export type AIChangeKind = 'polish' | 'translation' | 'fact' | 'structure' | 'continuation' | 'proofread';
 
 export interface AIEditProposal {
+  source: DocumentSnapshot;
   id: string;
   kind: AIChangeKind;
   reason: string;
@@ -183,6 +185,7 @@ interface AIAppliedRound {
   tabId: string;
   content: string;
   proposal: AIEditProposal;
+  appliedContent: string;
 }
 
 // 校对重试配置
@@ -284,7 +287,7 @@ interface AIState {
   // 操作
   setStatus: (status: AIStatus, message?: string) => void;
   setEditMode: (mode: AIEditMode) => void;
-  proposeEdit: (proposal: Omit<AIEditProposal, 'id' | 'createdAt'>) => void;
+  proposeEdit: (proposal: Omit<AIEditProposal, 'id' | 'createdAt' | 'source'>) => void;
   acceptPendingEdit: () => void;
   rejectPendingEdit: () => void;
   undoLastAiRound: () => void;
@@ -358,7 +361,7 @@ export const useAIStore = create<AIState>((set, get) => ({
     }
 
     set({
-      pendingEdit: { ...proposal, id: `ai-edit-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, createdAt: Date.now() },
+      pendingEdit: { ...proposal, source: {activeTabId:useAppStore.getState().activeTabId,content:useAppStore.getState().content}, id: `ai-edit-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, createdAt: Date.now() },
       status: 'success',
       statusMessage: 'AI 修改建议等待确认。',
     });
@@ -368,12 +371,12 @@ export const useAIStore = create<AIState>((set, get) => ({
     const proposal = get().pendingEdit;
     if (!proposal) return;
     const { editorView, content, activeTabId, setContent } = useAppStore.getState();
-    if (!activeTabId || proposal.from < 0 || proposal.to < proposal.from || proposal.to > content.length || content.slice(proposal.from, proposal.to) !== proposal.before) {
+    if (!activeTabId || !sameDocument(proposal.source, {activeTabId,content}) || proposal.from < 0 || proposal.to < proposal.from || proposal.to > content.length || content.slice(proposal.from, proposal.to) !== proposal.before) {
       set({ pendingEdit: null, status: 'error', statusMessage: '文档已发生变化，无法安全应用此建议。请重新生成。' });
       return;
     }
 
-    set({ lastAppliedRound: { tabId: activeTabId, content, proposal }, pendingEdit: null });
+    set({ lastAppliedRound: { tabId: activeTabId, content, proposal, appliedContent: content.slice(0,proposal.from)+proposal.after+content.slice(proposal.to) }, pendingEdit: null });
     if (editorView) {
       editorView.dispatch(editorView.state.update({
         changes: { from: proposal.from, to: proposal.to, insert: proposal.after },
@@ -393,6 +396,10 @@ export const useAIStore = create<AIState>((set, get) => ({
     const { activeTabId, setContent } = useAppStore.getState();
     if (!round || round.tabId !== activeTabId) {
       set({ status: 'error', statusMessage: '当前文档没有可撤销的 AI 修改。' });
+      return;
+    }
+    if (useAppStore.getState().content !== round.appliedContent) {
+      set({ status: 'error', statusMessage: 'AI 修改后文档又有编辑，无法安全还原整篇快照。请使用编辑器撤销。' });
       return;
     }
     setContent(round.content);
@@ -580,6 +587,7 @@ export const useAIStore = create<AIState>((set, get) => ({
   },
 
   rewriteSelection: async (text) => {
+    const snapshot = {activeTabId:useAppStore.getState().activeTabId,content:useAppStore.getState().content};
     const settings = useAppStore.getState().settings;
 
     if (!settings.ai.enabled) {
@@ -605,6 +613,10 @@ export const useAIStore = create<AIState>((set, get) => ({
         message?: string;
       }>('ai_request', requestData, 60000);
 
+      if (!sameDocument(snapshot, useAppStore.getState())) {
+        set({status:'error',statusMessage:'文档已变化，请重新生成 AI 结果'});
+        return '';
+      }
       set({ status: 'idle', statusMessage: '' });
 
       if (response.success && response.data?.rewritten) {
@@ -619,6 +631,7 @@ export const useAIStore = create<AIState>((set, get) => ({
   },
 
   translateText: async (text, targetLang = '英文') => {
+    const snapshot = {activeTabId:useAppStore.getState().activeTabId,content:useAppStore.getState().content};
     const settings = useAppStore.getState().settings;
 
     if (!settings.ai.enabled) {
@@ -645,6 +658,10 @@ export const useAIStore = create<AIState>((set, get) => ({
         message?: string;
       }>('ai_request', requestData, 60000);
 
+      if (!sameDocument(snapshot, useAppStore.getState())) {
+        set({status:'error',statusMessage:'文档已变化，请重新生成 AI 结果'});
+        return '';
+      }
       set({ status: 'idle', statusMessage: '' });
 
       if (response.success && response.data?.translated) {
@@ -660,6 +677,7 @@ export const useAIStore = create<AIState>((set, get) => ({
   },
 
   summarizeText: async (content) => {
+    const snapshot = {activeTabId:useAppStore.getState().activeTabId,content:useAppStore.getState().content};
     const settings = useAppStore.getState().settings;
 
     if (!settings.ai.enabled) {
@@ -685,6 +703,10 @@ export const useAIStore = create<AIState>((set, get) => ({
         message?: string;
       }>('ai_request', requestData, 60000);
 
+      if (!sameDocument(snapshot, useAppStore.getState())) {
+        set({status:'error',statusMessage:'文档已变化，请重新生成 AI 结果'});
+        return '';
+      }
       set({ status: 'idle', statusMessage: '' });
 
       if (response.success && response.data?.summary) {
@@ -699,6 +721,7 @@ export const useAIStore = create<AIState>((set, get) => ({
   },
 
   generateOutline: async (content) => {
+    const snapshot = {activeTabId:useAppStore.getState().activeTabId,content:useAppStore.getState().content};
     const settings = useAppStore.getState().settings;
 
     if (!settings.ai.enabled) {
@@ -724,6 +747,10 @@ export const useAIStore = create<AIState>((set, get) => ({
         message?: string;
       }>('ai_request', requestData, 60000);
 
+      if (!sameDocument(snapshot, useAppStore.getState())) {
+        set({status:'error',statusMessage:'文档已变化，请重新生成 AI 结果'});
+        return '';
+      }
       set({ status: 'idle', statusMessage: '' });
 
       if (response.success && response.data?.outline) {

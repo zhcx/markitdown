@@ -167,6 +167,8 @@ pub struct EditorSettings {
     pub favorite_emojis: Vec<String>,
     #[serde(default)]
     pub input_engine: EditorInputEngine,
+    #[serde(default)]
+    pub pin_toolbar: bool,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -265,6 +267,7 @@ impl Default for Settings {
                 auto_complete: true,
                 favorite_emojis: default_favorite_emojis(),
                 input_engine: EditorInputEngine::default(),
+                pin_toolbar: false,
             },
             image_hosting: ImageHostingSettings {
                 active_service: "local".into(),
@@ -1704,18 +1707,26 @@ mod update_tests {
         for engine in ["editContext", "textarea"] {
             let mut value = serde_json::to_value(Settings::default()).unwrap();
             value["editor"]["input_engine"] = serde_json::json!(engine);
+            value["editor"]["pin_toolbar"] = serde_json::json!(true);
             let restored: Settings = serde_json::from_value(value).unwrap();
             let saved = serde_json::to_value(restored).unwrap();
             assert_eq!(saved["editor"]["input_engine"], engine);
+            assert_eq!(saved["editor"]["pin_toolbar"], true);
         }
     }
 
     #[test]
     fn old_editor_settings_default_to_native_input() {
         let mut value = serde_json::to_value(Settings::default()).unwrap();
-        value["editor"].as_object_mut().unwrap().remove("input_engine");
+        value["editor"]
+            .as_object_mut()
+            .unwrap()
+            .remove("input_engine");
         let restored: Settings = serde_json::from_value(value).unwrap();
-        assert_eq!(serde_json::to_value(restored).unwrap()["editor"]["input_engine"], "editContext");
+        assert_eq!(
+            serde_json::to_value(restored).unwrap()["editor"]["input_engine"],
+            "editContext"
+        );
     }
 
     #[test]

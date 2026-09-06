@@ -126,6 +126,8 @@ function App() {
   const revealPreviewLineRef = useRef<(lineNumber: number) => void>(() => undefined);
   const revealEditorLineRef = useRef<(lineNumber: number) => void>(() => undefined);
   const closeGuardInProgress = useRef(false);
+  const closeCancelled = useRef(false);
+  const [closeSaving, setCloseSaving] = useState(false);
   const closePromptResolver = useRef<((action: UnsavedChangesAction) => void) | null>(null);
   const dragValues = useRef({ splitRatio, sidebarWidth, proofreadPanelWidth, chatbotPanelWidth });
   const immersivePolicy = getImmersiveWorkspacePolicy(mode, chatbotVisible);
@@ -138,17 +140,22 @@ function App() {
   const resolveClosePrompt = useCallback((action: UnsavedChangesAction) => {
     const resolve = closePromptResolver.current;
     closePromptResolver.current = null;
-    setClosePromptTabs(null);
+    if (action === 'cancel') closeCancelled.current = true;
+    if (action === 'save') setCloseSaving(true);
+    else setClosePromptTabs(null);
     resolve?.(action);
   }, []);
 
-  const requestAppClose = useCallback(async () => {
+  const requestAppClose = useCallback(async (installerPath?: string) => {
     if (!('__TAURI_INTERNALS__' in window) || closeGuardInProgress.current) return;
     closeGuardInProgress.current = true;
+    closeCancelled.current = false;
 
     try {
       const result = await guardWindowClose(useAppStore.getState().tabs, {
         promptAction: promptUnsavedChanges,
+        getTabs: () => useAppStore.getState().tabs,
+        isCancelled: () => closeCancelled.current,
         chooseSavePath: async tab => {
           // 与 TabsBar/另存为保持一致：未命名文档先尝试 AI 文件名建议。
           const fullTab = useAppStore.getState().tabs.find(item => item.id === tab.id);
@@ -174,6 +181,14 @@ function App() {
       });
 
       if (result === 'close') {
+        if (installerPath) {
+          try {
+            await invoke('finalize_update_install', { installerPath });
+          } catch (error) {
+            await message(`安装失败：${String(error)}`, { title: '更新失败', kind: 'error' });
+          }
+          return;
+        }
         try {
           await getCurrentWindow().destroy();
         } catch (error) {
@@ -186,8 +201,39 @@ function App() {
       }
     } finally {
       closeGuardInProgress.current = false;
+      setClosePromptTabs(null);
+      setCloseSaving(false);
     }
   }, [promptUnsavedChanges]);
+
+  useEffect(() => {
+    const install = (event: Event) => {
+      const path = (event as CustomEvent<string>).detail;
+      if (typeof path === 'string') void requestAppClose(path);
+    };
+    window.addEventListener('zeditor-install-update', install);
+    return () => window.removeEventListener('zeditor-install-update', install);
+  }, [requestAppClose]);
+
+  useEffect(() => {
+    const interval = settings.editor.auto_save_interval;
+    if (!Number.isFinite(interval) || interval <= 0) return;
+    let running = false;
+    const timer = window.setInterval(async () => {
+      if (running || closeGuardInProgress.current || useAppStore.getState().isSaving) return;
+      running = true;
+      try {
+        for (const tab of useAppStore.getState().tabs) {
+          if (tab.modified && tab.path) await useAppStore.getState().saveTab(tab.id, tab.path);
+        }
+      } catch (error) {
+        useAIStore.getState().setStatus('error', `自动保存失败：${String(error)}`);
+      } finally {
+        running = false;
+      }
+    }, Math.max(1000, interval));
+    return () => window.clearInterval(timer);
+  }, [settings.editor.auto_save_interval]);
 
   const balanceDocumentPanes = useCallback((proofreadWidth = proofreadPanelWidth, chatWidth = chatbotPanelWidth) => {
     const appBody = dividerRef.current?.closest('.app-body') as HTMLElement | null;
@@ -1053,7 +1099,7 @@ function App() {
       )}
       {closePromptTabs && (
         <Suspense fallback={null}>
-          <UnsavedChangesDialog tabs={closePromptTabs} onAction={resolveClosePrompt} />
+          <UnsavedChangesDialog tabs={closePromptTabs} busy={closeSaving} onAction={resolveClosePrompt} />
         </Suspense>
       )}
     </div>
